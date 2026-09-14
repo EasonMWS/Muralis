@@ -36,4 +36,20 @@
     <ProjectReference Include="..\Muralis.Core\Muralis.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    `dotnet publish` for unpackaged WinUI apps drops the compiled XAML (.xbf) and the
+    app resource index (.pri); without them the published app fails to parse any XAML.
+    Both are produced by the build, so they are added back to the publish list here.
+  -->
+  <Target Name="IncludeXamlResourcesInPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <_XamlResourceFiles Include="$(TargetDir)**\*.xbf" />
+      <_XamlResourceFiles Include="$(TargetDir)$(AssemblyName).pri" Condition="Exists('$(TargetDir)$(AssemblyName).pri')" />
+      <ResolvedFileToPublish Include="@(_XamlResourceFiles)">
+        <RelativePath>%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
 </Project>

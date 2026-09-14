@@ -1,5 +1,9 @@
 # Muralis
 
+[![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/download/dotnet/10.0)
+
 > A modern wallpaper studio for Windows 10 & 11.
 
 Muralis is a native Windows wallpaper manager built with WinUI 3. Browse, preview,
@@ -41,12 +45,16 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 ## Requirements
 
 - Windows 10 version 1809 (build 17763) or later / Windows 11
-- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) (or use a self-contained release build)
+- Release builds are **self-contained**: no installer and no .NET runtime installation
+  required. Building from source needs the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ## Download & Install
 
-Grab the latest release from the [Releases page](../../releases) and follow the
-instructions in the release notes. No installer required — unzip and run.
+1. Open the [Releases page](../../releases) and download `Muralis-<version>-win-x64.zip`.
+2. Extract the zip anywhere (for example `C:\Program Files\Muralis`).
+3. Run `Muralis.exe`. That's it — no installer, no runtime downloads.
+
+To upgrade, close Muralis and replace the extracted files with the newer release.
 
 ## Build from source
 
@@ -94,11 +102,17 @@ Muralis.Core.Tests   Unit tests for the core logic
 
 - [x] M1 — Project skeleton: MVVM, DI, logging, navigation, shell, four main pages
 - [x] M2 — Local wallpapers: import, grid, details, set as desktop background
-- [ ] M3 — Persistence: favorites, history, settings (SQLite + JSON)
-- [ ] M4 — Online wallpapers: provider, downloads, image cache
+- [x] M3 — Persistence: favorites, history, settings (SQLite + JSON)
+- [x] M4 — Online wallpapers: provider, downloads, image cache
 - [x] M5 — Rotation, run-at-startup, system tray
-- [ ] M6 — UI polish, performance, error & memory audits
-- [ ] M7 — Docs, CI, signed-off release build
+- [x] M6 — UI polish, performance, error & memory audits
+- [x] M7 — Docs, CI, release packaging
+
+### Later
+
+- Video wallpapers, web wallpapers and a plugin API
+- Localization (the UI ships in English for now)
+- Microsoft Store (MSIX) packaging
 
 ## Contributing
 

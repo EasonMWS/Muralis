@@ -7,39 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-14
+
+The first public release: a modern, native wallpaper manager for Windows 10 & 11.
+
 ### Added
 
-- Project skeleton: WinUI 3 shell with custom title bar, Mica backdrop and NavigationView
-- MVVM foundation with dependency injection and structured logging (Serilog rolling files)
-- Home, Browse, Detail, Library, Favorites and Settings pages
-- Settings service with JSON persistence in `%LOCALAPPDATA%\Muralis`
-- Local wallpaper library: multi-select import through the system file picker, deduplicated
-  in-place references, removal that never touches the original files (M2)
-- Apply wallpapers to the desktop with Fill/Fit/Stretch/Center/Tile/Span styles, backed by
-  `SystemParametersInfo` and per-monitor `IDesktopWallpaper` with graceful fallback (M2)
-- Automatic WebP/AVIF → JPEG transcoding for formats Windows cannot use as a background (M2)
-- Connected displays listing in Settings and per-display targeting on the details page (M2)
-- SQLite catalog (`%LOCALAPPDATA%\Muralis\muralis.db`, schema v1): imported wallpapers,
-  favorites and usage history persist across restarts (M3)
-- Favorites works for any wallpaper — even one that is not in the library yet (M3)
-- "Recently used" feed on Home backed by bounded usage history (200 entries) (M3)
-- Bing daily images provider (no API key): Home and Browse show fresh daily wallpapers,
-  with automatic fallback to the sample set when offline (M4)
+**Application shell**
+
+- WinUI 3 (Windows App SDK) app with a custom title bar, Mica backdrop and a
+  NavigationView shell; light, dark and system themes
+- Home, Browse, Details, Library, Favorites and Settings pages with designed
+  loading, empty and error states
+- Unpackaged, self-contained distribution: unzip and run, no installer required
+
+**Wallpapers**
+
+- Bing daily images provider (no API key needed) with automatic offline fallback to a
+  sample set; provider picker on the Browse page
 - Download service with progress, cancellation and conflict-safe file names; downloads
-  are saved to the configured folder and join the catalog with real dimensions (M4)
-- Thumbnail cache so online grids render instantly and work offline (M4)
-- Provider picker on the Browse page (Bing / sample wallpapers) (M4)
+  join the catalog with their real dimensions and file size
+- On-disk thumbnail cache so online grids render instantly and offline
+- WebP/AVIF images are transcoded automatically into a format Windows can use
+
+**Desktop integration**
+
+- Apply wallpapers with Fill, Fit, Stretch, Center, Tile and Span styles through
+  `SystemParametersInfo`, with per-monitor targeting via `IDesktopWallpaper`
+- Connected displays listed in Settings; choose a target display on the details page
 - Auto rotation: shuffle favorites or a folder every 15 minutes to 24 hours, with a
-  "Shuffle now" action and live settings (M5)
-- Run at sign-in through the per-user registry (no package identity needed) (M5)
-- System tray icon (native Shell_NotifyIcon): show window, next wallpaper, settings,
-  exit; optional close-to-tray so rotation keeps running (M5)
-- App icon (window, taskbar and tray) and a custom title-bar icon (M5)
+  "Shuffle now" action
+- Run at sign-in through the per-user registry
+- System tray icon (native `Shell_NotifyIcon`) with show / next wallpaper / settings /
+  exit; optional close-to-tray so rotation keeps running in the background
 
-### Fixed
+**Library and data**
 
-- Re-clicking the already-selected navigation item now leaves sub-pages such as details (M2)
+- Local library: multi-select import through the system file picker, deduplicated
+  in-place references, removal that never touches the original files
+- SQLite catalog (`%LOCALAPPDATA%\Muralis\muralis.db`, versioned schema) persisting
+  wallpapers, favorites and usage history across restarts
+- Favorites work for any wallpaper, even one that is not in the library yet
+- "Recently used" feed on Home backed by bounded usage history
+- Settings persisted as JSON with atomic writes
 
-## [0.1.0] - TBD
+**Engineering**
 
-Initial public release. Scope tracked in the [README roadmap](README.md#roadmap).
+- Layered solution: `Muralis.App` (UI + Windows interop), `Muralis.Core`
+  (platform-agnostic domain), `Muralis.Core.Tests` (xUnit)
+- Dependency injection, Serilog rolling file logs, global exception handling
+- CI (build + test) and tag-driven release workflows on GitHub Actions
+
+[Unreleased]: https://github.com/muralis/muralis/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/muralis/muralis/releases/tag/v0.1.0

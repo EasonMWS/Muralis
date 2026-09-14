@@ -47,3 +47,4 @@ desktop.ini
 # Local secrets / machine-specific settings
 launchSettings.local.json
 *.local.json
+vibe_images/

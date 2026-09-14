@@ -10,14 +10,14 @@ started, and what we expect from contributions.
 3. Build and run:
 
    ```bash
-   dotnet build Muralis.sln
+   dotnet build Muralis.slnx
    dotnet run --project src/Muralis.App
    ```
 
 4. Run the tests before opening a pull request:
 
    ```bash
-   dotnet test Muralis.sln
+   dotnet test tests/Muralis.Core.Tests
    ```
 
 Visual Studio 2026 is optional — everything works with the `dotnet` CLI.

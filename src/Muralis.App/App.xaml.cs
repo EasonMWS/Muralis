@@ -19,6 +19,9 @@ public partial class App : Application
         UnhandledException += OnXamlUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+        // Remove the tray icon and stop timers cleanly when the process exits.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => _host.Dispose();
     }
 
     public static T GetService<T>()

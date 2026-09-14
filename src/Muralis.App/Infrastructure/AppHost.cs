@@ -14,10 +14,18 @@ namespace Muralis.App.Infrastructure;
 
 /// <summary>
 /// Owns the dependency injection container and process-wide logging.
+/// Disposing the host stops background services (rotation timer, tray icon).
 /// </summary>
-public sealed class AppHost
+public sealed class AppHost : IDisposable
 {
     private ServiceProvider? _provider;
+
+    public void Dispose()
+    {
+        _provider?.Dispose();
+        _provider = null;
+        Log.CloseAndFlush();
+    }
 
     public IServiceProvider Services =>
         _provider ?? throw new InvalidOperationException("The application host has not been started yet.");
