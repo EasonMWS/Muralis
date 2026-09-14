@@ -19,7 +19,9 @@ namespace Muralis.App.Infrastructure;
 /// </summary>
 public sealed class AppHost : IDisposable
 {
+    private readonly Lock _loggingLock = new();
     private ServiceProvider? _provider;
+    private bool _loggingConfigured;
 
     public void Dispose()
     {
@@ -31,20 +33,55 @@ public sealed class AppHost : IDisposable
     public IServiceProvider Services =>
         _provider ?? throw new InvalidOperationException("The application host has not been started yet.");
 
+    /// <summary>
+    /// Sets up Serilog. Safe to call more than once; the first call wins so logging can
+    /// start as early as the application class constructor.
+    /// </summary>
+    public void EnsureLogging()
+    {
+        lock (_loggingLock)
+        {
+            if (_loggingConfigured)
+            {
+                return;
+            }
+
+            ConfigureSerilog();
+            _loggingConfigured = true;
+        }
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        ConfigureSerilog();
+        EnsureLogging();
         _provider = BuildProvider();
+
+        var logger = _provider.GetRequiredService<ILogger<AppHost>>();
+        StartupTrace.Log(logger, "host built");
 
         await _provider
             .GetRequiredService<ISettingsService>()
             .LoadAsync(cancellationToken)
             .ConfigureAwait(false);
+        StartupTrace.Log(logger, "settings loaded");
+    }
 
-        await _provider
+    /// <summary>
+    /// Loads the wallpaper catalog (SQLite). Runs after the window is on screen so the
+    /// database stays off the startup path; pages refresh through
+    /// <see cref="ILocalLibrary.Changed"/> once it finishes.
+    /// </summary>
+    public async Task InitializeCatalogAsync(CancellationToken cancellationToken = default)
+    {
+        var provider = _provider ?? throw new InvalidOperationException("The application host has not been started yet.");
+        var logger = provider.GetRequiredService<ILogger<AppHost>>();
+
+        await provider
             .GetRequiredService<ILocalLibrary>()
             .InitializeAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        StartupTrace.Log(logger, "catalog loaded");
     }
 
     private static ServiceProvider BuildProvider()

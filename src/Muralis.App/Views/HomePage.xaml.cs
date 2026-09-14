@@ -12,9 +12,12 @@ public sealed partial class HomePage : Page
         ViewModel = App.GetService<HomeViewModel>();
         InitializeComponent();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     public HomeViewModel ViewModel { get; }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) => ViewModel.DetachFromPage();
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {

@@ -13,9 +13,12 @@ public sealed partial class BrowsePage : Page
         InitializeComponent();
 
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     public BrowseViewModel ViewModel { get; }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) => ViewModel.DetachFromPage();
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {

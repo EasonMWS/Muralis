@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Muralis.App.Views;
@@ -26,7 +28,10 @@ public sealed class NavigatedEventArgs(string pageKey, object? parameter) : Even
 
 public sealed class NavigationService : INavigationService
 {
+    private readonly ILogger<NavigationService> _logger;
     private Frame? _frame;
+
+    public NavigationService(ILogger<NavigationService> logger) => _logger = logger;
 
     public bool CanGoBack => _frame?.CanGoBack ?? false;
 
@@ -57,7 +62,10 @@ public sealed class NavigationService : INavigationService
             return true;
         }
 
-        return _frame.Navigate(route.PageType, parameter, new EntranceNavigationTransitionInfo());
+        var startedAt = Stopwatch.GetTimestamp();
+        var navigated = _frame.Navigate(route.PageType, parameter, new EntranceNavigationTransitionInfo());
+        LogNavigation(pageKey, startedAt);
+        return navigated;
     }
 
     public bool GoBack()
@@ -67,9 +75,17 @@ public sealed class NavigationService : INavigationService
             return false;
         }
 
+        var startedAt = Stopwatch.GetTimestamp();
         _frame.GoBack(new EntranceNavigationTransitionInfo());
+        LogNavigation(Routes.KeyForPageType(_frame.CurrentSourcePageType) ?? "back", startedAt);
         return true;
     }
+
+    private void LogNavigation(string pageKey, long startedAt) =>
+        _logger.LogInformation(
+            "Page '{Page}' built in {ElapsedMs:0} ms",
+            pageKey,
+            Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
 
     private void OnFrameNavigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {

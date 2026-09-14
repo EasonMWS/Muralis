@@ -88,10 +88,13 @@ public sealed partial class HomeViewModel : ViewModelBase
         IsLoading = true;
         SetError(null);
 
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, PageToken);
+        var linkedToken = linkedCancellation.Token;
+
         try
         {
             var result = await _providers
-                .GetFeaturedAsync(24, cancellationToken)
+                .GetFeaturedAsync(24, linkedToken)
                 .ConfigureAwait(true);
 
             if (result.Items.Count == 0)
@@ -117,7 +120,8 @@ public sealed partial class HomeViewModel : ViewModelBase
             _logger.LogInformation("Home feed loaded with {Count} wallpapers", Recommended.Count);
 
             // Pull thumbnails in the background so the hero and cards fill in as files arrive.
-            _ = _imageCache.WarmThumbnailsAsync(Recommended.ToList(), cancellationToken);
+            // The page token stops that work when the user navigates away.
+            _ = _imageCache.WarmThumbnailsAsync(Recommended.ToList(), PageToken);
         }
         catch (OperationCanceledException)
         {

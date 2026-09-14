@@ -37,6 +37,8 @@ public sealed partial class MainWindow : Window
         ConfigureTitleBar();
         ApplyWindowIcon();
 
+        Activated += OnFirstActivated;
+
         _navigation.Attach(RootFrame);
         _navigation.Navigated += OnNavigated;
 
@@ -46,6 +48,12 @@ public sealed partial class MainWindow : Window
 
         RootNavigationView.SelectedItem = RootNavigationView.MenuItems[0];
         _navigation.NavigateTo(Routes.Home);
+    }
+
+    private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
+    {
+        Activated -= OnFirstActivated;
+        StartupTrace.Log(_logger, "window shown to the user");
     }
 
     /// <summary>

@@ -33,6 +33,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Browse warns when some sources are unreachable but still shows the rest; search results
   are merged with the local catalog so favorites and downloaded files appear immediately
 
+**Performance**
+
+- The startup path no longer waits for SQLite: the catalog loads after the window is
+  visible and pages refresh through the library's change event
+- Thumbnails download four at a time instead of one after another (Home's first eight
+  images from an empty cache: 4.7 s → 3.0 s)
+- Leaving a page cancels its provider calls and thumbnail warm-up
+- Decoded bitmaps are cached least-recently-used with a hard limit, so browsing a large
+  grid no longer grows memory without bound (262 MB → 251 MB after 105 items)
+- Decode sizes now match their target: 512 px for cards, 1024 px for the Home hero and
+  the details preview, never the full-resolution file
+- Startup phases, page construction and image loading are timed in the log, and
+  `tools/perf-measure.ps1` reproduces the numbers (see
+  [docs/performance.md](docs/performance.md))
+
 ### Changed
 
 - Downloads go through the owning provider, so a source can transform or register the

@@ -40,9 +40,12 @@ public sealed partial class SettingsPage : Page
         };
 
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     public SettingsViewModel ViewModel { get; }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) => ViewModel.DetachFromPage();
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {

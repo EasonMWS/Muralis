@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.UI.Xaml;
@@ -49,14 +48,26 @@ public sealed partial class NullToVisibilityConverter : IValueConverter
 
 /// <summary>
 /// Loads a local image file into a downscaled <see cref="BitmapImage"/> so grid
-/// thumbnails never decode at full resolution.
+/// thumbnails never decode at full resolution. Decoded bitmaps are kept in a
+/// least-recently-used cache with a hard entry limit: a grid of a few hundred
+/// wallpapers must not pin hundreds of megabytes of pixels.
 /// </summary>
 public sealed partial class LocalPathToImageSourceConverter : IValueConverter
 {
     private const int DefaultDecodeWidth = 512;
 
-    // Created and read on the UI thread only; the dictionary is just a decode cache.
-    private static readonly ConcurrentDictionary<string, BitmapImage> Cache = new();
+    /// <summary>
+    /// Roughly two screenfuls of cards. Bitmaps decode at the logical size times the
+    /// display scale, so a small bound keeps a long browsing session from pinning tens of
+    /// megabytes; evicted entries re-decode on demand from local files.
+    /// </summary>
+    private const int MaxCachedBitmaps = 24;
+
+    private static readonly Lock CacheLock = new();
+    private static readonly Dictionary<string, LinkedListNode<CacheEntry>> CacheIndex = new(StringComparer.Ordinal);
+    private static readonly LinkedList<CacheEntry> CacheOrder = new();
+
+    private sealed record CacheEntry(string Key, BitmapImage Bitmap);
 
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
@@ -70,11 +81,47 @@ public sealed partial class LocalPathToImageSourceConverter : IValueConverter
             : DefaultDecodeWidth;
 
         var key = $"{path}|{decodeWidth}|{SafeLastWriteTime(path)}";
-        return Cache.GetOrAdd(key, _ => CreateBitmap(path, decodeWidth));
+        return GetOrAdd(key, path, decodeWidth);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
         throw new NotSupportedException();
+
+    private static BitmapImage GetOrAdd(string key, string path, int decodeWidth)
+    {
+        lock (CacheLock)
+        {
+            if (CacheIndex.TryGetValue(key, out var existing))
+            {
+                CacheOrder.Remove(existing);
+                CacheOrder.AddFirst(existing);
+                return existing.Value.Bitmap;
+            }
+        }
+
+        // Decode outside the lock; a duplicate decode of the same key is harmless.
+        var bitmap = CreateBitmap(path, decodeWidth);
+
+        lock (CacheLock)
+        {
+            if (CacheIndex.TryGetValue(key, out var raced))
+            {
+                return raced.Value.Bitmap;
+            }
+
+            var node = CacheOrder.AddFirst(new CacheEntry(key, bitmap));
+            CacheIndex[key] = node;
+
+            while (CacheOrder.Count > MaxCachedBitmaps && CacheOrder.Last is { } oldest)
+            {
+                CacheOrder.RemoveLast();
+                CacheIndex.Remove(oldest.Value.Key);
+                oldest.Value.Bitmap.UriSource = null;
+            }
+        }
+
+        return bitmap;
+    }
 
     private static BitmapImage CreateBitmap(string path, int decodeWidth)
     {

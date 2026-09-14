@@ -24,7 +24,7 @@
                 Margin="18"
                 MaxHeight="640"
                 HorizontalAlignment="Center"
-                Source="{x:Bind ViewModel.Wallpaper.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}}" />
+                Source="{x:Bind ViewModel.Wallpaper.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}, ConverterParameter=1024}" />
         </Border>
 
         <!--  Info and actions  -->

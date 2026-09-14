@@ -11,9 +11,12 @@ public sealed partial class LibraryPage : Page
     {
         ViewModel = App.GetService<LibraryViewModel>();
         InitializeComponent();
+        Unloaded += OnUnloaded;
     }
 
     public LibraryViewModel ViewModel { get; }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) => ViewModel.DetachFromPage();
 
     private void OnImportClick(object sender, RoutedEventArgs e) =>
         ViewModel.ImportCommand.Execute(null);

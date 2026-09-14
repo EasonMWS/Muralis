@@ -7,6 +7,9 @@ namespace Muralis.Core.Services;
 
 public sealed class ImageCacheService : IImageCacheService
 {
+    /// <summary>Enough to fill a screenful at once without hammering the source.</summary>
+    private const int MaxParallelDownloads = 4;
+
     private readonly HttpClient _httpClient;
     private readonly ILogger<ImageCacheService> _logger;
     private readonly string _thumbnailDirectory;
@@ -22,42 +25,129 @@ public sealed class ImageCacheService : IImageCacheService
     {
         Directory.CreateDirectory(_thumbnailDirectory);
 
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        var pending = new List<(Wallpaper Wallpaper, string TargetPath)>();
+        var skipped = 0;
+
         foreach (var wallpaper in wallpapers)
         {
-            if (cancellationToken.IsCancellationRequested)
+            if (wallpaper.HasLocalFile
+                || wallpaper.CachedThumbnailPath is not null
+                || string.IsNullOrEmpty(wallpaper.ThumbnailUrl))
             {
-                return;
-            }
-
-            if (wallpaper.HasLocalFile || wallpaper.CachedThumbnailPath is not null || string.IsNullOrEmpty(wallpaper.ThumbnailUrl))
-            {
+                skipped++;
                 continue;
             }
 
-            try
+            var targetPath = Path.Combine(
+                _thumbnailDirectory,
+                WallpaperId.ShortHash(wallpaper.ThumbnailUrl) + ".jpg");
+
+            if (File.Exists(targetPath))
             {
-                var targetPath = Path.Combine(
-                    _thumbnailDirectory,
-                    WallpaperId.ShortHash(wallpaper.ThumbnailUrl) + ".jpg");
-
-                if (!File.Exists(targetPath))
-                {
-                    var bytes = await _httpClient
-                        .GetByteArrayAsync(wallpaper.ThumbnailUrl, cancellationToken)
-                        .ConfigureAwait(true); // resume on the caller's (UI) thread so the assignment below is safe
-                    await File.WriteAllBytesAsync(targetPath, bytes, cancellationToken).ConfigureAwait(true);
-                }
-
+                // Already downloaded earlier; just point the wallpaper at it.
                 wallpaper.CachedThumbnailPath = targetPath;
+                skipped++;
+                continue;
             }
-            catch (OperationCanceledException)
+
+            pending.Add((wallpaper, targetPath));
+        }
+
+        if (pending.Count == 0)
+        {
+            return;
+        }
+
+        using var gate = new SemaphoreSlim(MaxParallelDownloads);
+        var downloads = pending
+            .Select(item => DownloadThumbnailAsync(item.Wallpaper, item.TargetPath, gate, cancellationToken))
+            .ToList();
+
+        try
+        {
+            // Resume on the caller's thread: the assignments below touch bound properties.
+            await Task.WhenAll(downloads).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left; whatever finished is still assigned below.
+        }
+
+        var fetched = 0;
+        foreach (var download in downloads)
+        {
+            if (download.Status == TaskStatus.RanToCompletion && download.Result is { } completed)
             {
-                return;
+                completed.Wallpaper.CachedThumbnailPath = completed.TargetPath;
+                fetched++;
             }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
-            {
-                _logger.LogWarning(ex, "Could not cache the thumbnail for {Id}", wallpaper.Id);
-            }
+        }
+
+        var elapsedMs = System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
+        if (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogInformation(
+                "Thumbnail warm-up cancelled: {Fetched} of {Total} fetched in {ElapsedMs:0} ms",
+                fetched,
+                pending.Count,
+                elapsedMs);
+            return;
+        }
+
+        _logger.LogInformation(
+            "Thumbnails warmed: {Fetched} of {Total} fetched ({Skipped} not needed) in {ElapsedMs:0} ms",
+            fetched,
+            pending.Count,
+            skipped,
+            elapsedMs);
+    }
+
+    private async Task<(Wallpaper Wallpaper, string TargetPath)?> DownloadThumbnailAsync(
+        Wallpaper wallpaper,
+        string targetPath,
+        SemaphoreSlim gate,
+        CancellationToken cancellationToken)
+    {
+        var url = wallpaper.ThumbnailUrl;
+        if (string.IsNullOrEmpty(url))
+        {
+            return null;
+        }
+
+        try
+        {
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+
+        try
+        {
+            var bytes = await _httpClient
+                .GetByteArrayAsync(url, cancellationToken)
+                .ConfigureAwait(false);
+
+            // A unique temporary name keeps concurrent warm-ups of the same thumbnail safe.
+            var temporaryPath = targetPath + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
+            await File.WriteAllBytesAsync(temporaryPath, bytes, cancellationToken).ConfigureAwait(false);
+            File.Move(temporaryPath, targetPath, overwrite: true);
+            return (wallpaper, targetPath);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
+        {
+            _logger.LogWarning(ex, "Could not cache the thumbnail for {Id}", wallpaper.Id);
+            return null;
+        }
+        finally
+        {
+            gate.Release();
         }
     }
 

@@ -46,7 +46,7 @@
                     Visibility="{x:Bind ViewModel.Featured, Mode=OneWay, Converter={StaticResource NullToVisibility}}">
                     <Grid>
                         <Image
-                            Source="{x:Bind ViewModel.Featured.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
+                            Source="{x:Bind ViewModel.Featured.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}, ConverterParameter=1024}"
                             Stretch="UniformToFill" />
                         <Border
                             Height="230"

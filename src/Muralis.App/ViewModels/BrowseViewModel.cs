@@ -227,6 +227,9 @@ public sealed partial class BrowseViewModel : ViewModelBase
         SetError(null);
         NotifyStateChanged();
 
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, PageToken);
+        var linkedToken = linkedCancellation.Token;
+
         try
         {
             var result = await _providers
@@ -237,7 +240,7 @@ public sealed partial class BrowseViewModel : ViewModelBase
                         PageSize = 60,
                     },
                     scope?.Provider?.Id,
-                    cancellationToken)
+                    linkedToken)
                 .ConfigureAwait(true);
 
             Items.Clear();
@@ -253,11 +256,12 @@ public sealed partial class BrowseViewModel : ViewModelBase
                 scope?.Provider?.Id ?? "all sources");
 
             // Thumbnails are cached in the background; cards update as files arrive.
-            _ = _imageCache.WarmThumbnailsAsync(Items.ToList(), cancellationToken);
+            // The page token stops that work when the user navigates away.
+            _ = _imageCache.WarmThumbnailsAsync(Items.ToList(), PageToken);
         }
         catch (OperationCanceledException)
         {
-            // Superseded or the page was left.
+            // Superseded, or the page was left.
         }
         catch (Exception ex)
         {

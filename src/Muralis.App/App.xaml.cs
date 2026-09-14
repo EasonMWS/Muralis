@@ -5,6 +5,7 @@ using Muralis.App.Infrastructure;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
+using Serilog;
 
 namespace Muralis.App;
 
@@ -15,7 +16,11 @@ public partial class App : Application
 
     public App()
     {
+        _host.EnsureLogging();
+        Log.Information("Startup: app class created at {ElapsedMs:0} ms (process start + {ProcessMs:0} ms)", StartupTrace.ElapsedMs, StartupTrace.ProcessToAppMs);
+
         InitializeComponent();
+        Log.Information("Startup: app resources loaded at {ElapsedMs:0} ms", StartupTrace.ElapsedMs);
 
         UnhandledException += OnXamlUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
@@ -49,13 +54,20 @@ public partial class App : Application
             Resources["Loc"] = localization;
 
             _mainWindow = _host.Services.GetRequiredService<MainWindow>();
+            StartupTrace.Log(logger, "window created");
             _mainWindow.Activate();
+            StartupTrace.Log(logger, "window activated");
 
             _host.Services.GetRequiredService<IThemeService>().ApplyFromSettings();
 
             // The tray icon and rotation timer need the window to exist first.
             _host.Services.GetRequiredService<TrayService>();
             _host.Services.GetRequiredService<RotationService>().ApplySettings();
+
+            // SQLite and the catalog are not needed for the first frame; loading them in
+            // the background keeps the window's appear time short. Pages listening to
+            // ILocalLibrary.Changed refresh as soon as the catalog is ready.
+            _ = InitializeCatalogInBackgroundAsync(logger);
         }
         catch (Exception ex)
         {
@@ -63,6 +75,18 @@ public partial class App : Application
             // so the failure is visible instead of leaving a headless process behind.
             System.Diagnostics.Debug.WriteLine($"Fatal startup failure: {ex}");
             throw;
+        }
+    }
+
+    private async Task InitializeCatalogInBackgroundAsync(Microsoft.Extensions.Logging.ILogger logger)
+    {
+        try
+        {
+            await _host.InitializeCatalogAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not load the wallpaper catalog");
         }
     }
 

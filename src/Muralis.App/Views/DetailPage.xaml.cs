@@ -13,9 +13,12 @@ public sealed partial class DetailPage : Page
         ViewModel = App.GetService<DetailViewModel>();
         InitializeComponent();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     public DetailViewModel ViewModel { get; }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) => ViewModel.DetachFromPage();
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {

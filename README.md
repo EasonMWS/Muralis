@@ -28,6 +28,10 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 - **Runs in the tray** — close to the notification area and keep rotating; optional run at sign-in
 - **Per-display targeting** — pick which monitor receives a wallpaper
 - **English & 简体中文** — the UI follows your Windows language, or pick one in Settings; switching applies instantly
+- **Light on the machine** — nothing heavy on the startup path (no network, database or
+  image work before the window is up), idle CPU/GPU at ~0%, cancellable background
+  loading and bounded image caches; see [docs/performance.md](docs/performance.md) for
+  measured numbers
 - **Native look & feel** — Mica, custom title bar, light/dark/system theme support
 
 ## Screenshots
