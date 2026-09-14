@@ -7,6 +7,7 @@ using Muralis.App.ViewModels;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
 using Muralis.Core.Providers;
+using Muralis.Core.Repositories;
 using Muralis.Core.Services;
 
 namespace Muralis.App.Infrastructure;
@@ -30,6 +31,11 @@ public sealed class AppHost
             .GetRequiredService<ISettingsService>()
             .LoadAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        await _provider
+            .GetRequiredService<ILocalLibrary>()
+            .InitializeAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static ServiceProvider BuildProvider()
@@ -45,6 +51,8 @@ public sealed class AppHost
         // Core services (platform-agnostic).
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IWallpaperProvider, MockWallpaperProvider>();
+        services.AddSingleton<IWallpaperRepository>(sp => new SqliteWallpaperRepository(
+            sp.GetRequiredService<ILogger<SqliteWallpaperRepository>>()));
         services.AddSingleton<ILocalLibrary, LocalLibrary>();
 
         // Application services.

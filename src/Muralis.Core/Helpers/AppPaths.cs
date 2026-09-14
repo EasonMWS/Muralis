@@ -10,6 +10,8 @@ public static class AppPaths
 
     public static string SettingsFile => Path.Combine(RootDirectory, "settings.json");
 
+    public static string DatabaseFile => Path.Combine(RootDirectory, "muralis.db");
+
     public static string LogsDirectory => Path.Combine(RootDirectory, "logs");
 
     public static string CacheDirectory => Path.Combine(RootDirectory, "cache");

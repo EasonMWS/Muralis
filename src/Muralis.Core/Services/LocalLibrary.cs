@@ -6,19 +6,24 @@ using Muralis.Core.Models;
 namespace Muralis.Core.Services;
 
 /// <summary>
-/// In-memory wallpaper library. Milestone 3 swaps the storage for SQLite behind
-/// the same <see cref="ILocalLibrary"/> interface.
+/// The catalog facade in front of <see cref="IWallpaperRepository"/>. Keeps an in-memory
+/// mirror so the UI can read synchronously, while every change is written through to SQLite.
 /// </summary>
 public sealed class LocalLibrary : ILocalLibrary
 {
     private static readonly string[] SupportedExtensions =
         [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".avif"];
 
+    private readonly IWallpaperRepository _repository;
     private readonly ILogger<LocalLibrary> _logger;
     private readonly Lock _gate = new();
-    private readonly List<Wallpaper> _items = [];
+    private readonly List<Wallpaper> _cache = [];
 
-    public LocalLibrary(ILogger<LocalLibrary> logger) => _logger = logger;
+    public LocalLibrary(IWallpaperRepository repository, ILogger<LocalLibrary> logger)
+    {
+        _repository = repository;
+        _logger = logger;
+    }
 
     public IReadOnlyList<Wallpaper> Items
     {
@@ -26,12 +31,43 @@ public sealed class LocalLibrary : ILocalLibrary
         {
             lock (_gate)
             {
-                return _items.ToArray();
+                return _cache
+                    .Where(item => item.Source == WallpaperSource.Local)
+                    .OrderByDescending(item => item.CreatedAt)
+                    .ToArray();
+            }
+        }
+    }
+
+    public IReadOnlyList<Wallpaper> Favorites
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _cache
+                    .Where(item => item.IsFavorite)
+                    .OrderByDescending(item => item.CreatedAt)
+                    .ToArray();
             }
         }
     }
 
     public event EventHandler? Changed;
+
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        var items = await _repository.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+        {
+            _cache.Clear();
+            _cache.AddRange(items);
+        }
+
+        _logger.LogInformation("Catalog loaded with {Count} wallpapers ({Favorites} favorites)",
+            items.Count, items.Count(item => item.IsFavorite));
+        RaiseChanged();
+    }
 
     public async Task<ImportResult> ImportAsync(IEnumerable<string> filePaths, CancellationToken cancellationToken = default)
     {
@@ -53,13 +89,10 @@ public sealed class LocalLibrary : ILocalLibrary
             }
 
             var id = WallpaperId.ForLocalFile(path);
-            lock (_gate)
+            if (Find(id) is not null)
             {
-                if (_items.Any(item => string.Equals(item.Id, id, StringComparison.Ordinal)))
-                {
-                    duplicates++;
-                    continue;
-                }
+                duplicates++;
+                continue;
             }
 
             var wallpaper = await CreateWallpaperAsync(id, path).ConfigureAwait(false);
@@ -69,9 +102,10 @@ public sealed class LocalLibrary : ILocalLibrary
                 continue;
             }
 
+            await _repository.UpsertAsync(wallpaper, cancellationToken).ConfigureAwait(false);
             lock (_gate)
             {
-                _items.Add(wallpaper);
+                _cache.Add(wallpaper);
             }
 
             added++;
@@ -83,49 +117,89 @@ public sealed class LocalLibrary : ILocalLibrary
 
         if (added > 0)
         {
-            Changed?.Invoke(this, EventArgs.Empty);
+            RaiseChanged();
         }
 
         return new ImportResult(added, duplicates, failed);
     }
 
-    public bool Remove(string wallpaperId)
+    public async Task<bool> RemoveAsync(string wallpaperId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(wallpaperId);
 
+        var removed = await _repository.DeleteAsync(wallpaperId, cancellationToken).ConfigureAwait(false);
+        if (!removed)
+        {
+            return false;
+        }
+
         lock (_gate)
         {
-            var removed = _items.RemoveAll(item => string.Equals(item.Id, wallpaperId, StringComparison.Ordinal)) > 0;
-            if (removed)
-            {
-                _logger.LogInformation("Removed {Id} from the library (file on disk is untouched)", wallpaperId);
-            }
-
-            if (removed)
-            {
-                Changed?.Invoke(this, EventArgs.Empty);
-            }
-
-            return removed;
+            _cache.RemoveAll(item => string.Equals(item.Id, wallpaperId, StringComparison.Ordinal));
         }
+
+        _logger.LogInformation("Removed {Id} from the library (file on disk is untouched)", wallpaperId);
+        RaiseChanged();
+        return true;
     }
+
+    public async Task SetFavoriteAsync(Wallpaper wallpaper, bool isFavorite, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(wallpaper);
+
+        wallpaper.IsFavorite = isFavorite;
+        await _repository.UpsertAsync(wallpaper, cancellationToken).ConfigureAwait(false);
+        EnsureCached(wallpaper);
+
+        _logger.LogDebug("Favorite state for {Id} set to {IsFavorite}", wallpaper.Id, isFavorite);
+        RaiseChanged();
+    }
+
+    public async Task RecordUsageAsync(Wallpaper wallpaper, string? monitorName, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(wallpaper);
+
+        var now = DateTimeOffset.Now;
+        wallpaper.LastUsedAt = now;
+
+        await _repository.UpsertAsync(wallpaper, cancellationToken).ConfigureAwait(false);
+        await _repository.AddHistoryAsync(
+            new HistoryEntry
+            {
+                WallpaperId = wallpaper.Id,
+                Title = wallpaper.Title,
+                AppliedAt = now,
+                MonitorName = monitorName,
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        EnsureCached(wallpaper);
+        RaiseChanged();
+    }
+
+    public Task<IReadOnlyList<Wallpaper>> GetRecentlyUsedAsync(int limit, CancellationToken cancellationToken = default) =>
+        _repository.GetRecentlyUsedAsync(limit, cancellationToken);
 
     public Wallpaper? Find(string wallpaperId)
     {
         lock (_gate)
         {
-            return _items.FirstOrDefault(item => string.Equals(item.Id, wallpaperId, StringComparison.Ordinal));
+            return _cache.FirstOrDefault(item => string.Equals(item.Id, wallpaperId, StringComparison.Ordinal));
         }
     }
 
-    public void MarkUsed(string wallpaperId, DateTimeOffset usedAt)
+    private void EnsureCached(Wallpaper wallpaper)
     {
-        var item = Find(wallpaperId);
-        if (item is not null)
+        lock (_gate)
         {
-            item.LastUsedAt = usedAt;
+            if (_cache.All(item => !string.Equals(item.Id, wallpaper.Id, StringComparison.Ordinal)))
+            {
+                _cache.Add(wallpaper);
+            }
         }
     }
+
+    private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 
     private static bool IsSupportedImage(string path) =>
         !string.IsNullOrWhiteSpace(path)
@@ -140,6 +214,7 @@ public sealed class LocalLibrary : ILocalLibrary
             return await Task.Run(() =>
             {
                 ImageMetadataReader.TryReadDimensions(path, out var width, out var height);
+                var fileInfo = new FileInfo(path);
                 return new Wallpaper
                 {
                     Id = id,
@@ -147,8 +222,8 @@ public sealed class LocalLibrary : ILocalLibrary
                     LocalPath = path,
                     Width = width,
                     Height = height,
-                    FileSize = new FileInfo(path).Length,
-                    CreatedAt = new FileInfo(path).CreationTimeUtc,
+                    FileSize = fileInfo.Length,
+                    CreatedAt = fileInfo.CreationTimeUtc,
                     Source = WallpaperSource.Local,
                 };
             }).ConfigureAwait(false);

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Muralis.Core.Repositories;
 using Muralis.Core.Services;
 using Xunit;
 
@@ -7,17 +8,21 @@ namespace Muralis.Core.Tests.Services;
 public sealed class LocalLibraryTests : IDisposable
 {
     private readonly string _directory;
-    private readonly LocalLibrary _library = new(NullLogger<LocalLibrary>.Instance);
+    private readonly string _databasePath;
+    private readonly LocalLibrary _library;
 
     public LocalLibraryTests()
     {
         _directory = Path.Combine(Path.GetTempPath(), "muralis-library-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_directory);
+        _databasePath = Path.Combine(_directory, "test.db");
+        _library = CreateLibrary(_databasePath);
     }
 
     [Fact]
     public async Task Import_AddsSupportedImagesWithMetadata()
     {
+        await _library.InitializeAsync();
         var path = CreateImage("wide shot-1.png", 1920, 1080);
 
         var result = await _library.ImportAsync([path]);
@@ -34,6 +39,7 @@ public sealed class LocalLibraryTests : IDisposable
     [Fact]
     public async Task Import_SkipsDuplicates()
     {
+        await _library.InitializeAsync();
         var path = CreateImage("one.png");
 
         await _library.ImportAsync([path]);
@@ -47,6 +53,7 @@ public sealed class LocalLibraryTests : IDisposable
     [Fact]
     public async Task Import_CountsUnsupportedFilesAsFailed()
     {
+        await _library.InitializeAsync();
         var textFile = Path.Combine(_directory, "notes.txt");
         await File.WriteAllTextAsync(textFile, "not an image");
 
@@ -60,11 +67,12 @@ public sealed class LocalLibraryTests : IDisposable
     [Fact]
     public async Task Remove_DropsRecordButKeepsFileOnDisk()
     {
+        await _library.InitializeAsync();
         var path = CreateImage("keep-me.png");
         await _library.ImportAsync([path]);
         var id = _library.Items[0].Id;
 
-        var removed = _library.Remove(id);
+        var removed = await _library.RemoveAsync(id);
 
         Assert.True(removed);
         Assert.Empty(_library.Items);
@@ -72,20 +80,62 @@ public sealed class LocalLibraryTests : IDisposable
     }
 
     [Fact]
-    public async Task MarkUsed_UpdatesLastUsedAt()
+    public async Task RecordUsage_UpdatesLastUsedAndRecentlyUsed()
     {
+        await _library.InitializeAsync();
         var path = CreateImage("used.png");
         await _library.ImportAsync([path]);
-        var when = new DateTimeOffset(2026, 9, 14, 12, 0, 0, TimeSpan.Zero);
+        var item = _library.Items[0];
 
-        _library.MarkUsed(_library.Items[0].Id, when);
+        await _library.RecordUsageAsync(item, "Display 1");
 
-        Assert.Equal(when, _library.Items[0].LastUsedAt);
+        Assert.NotNull(item.LastUsedAt);
+        var recent = await _library.GetRecentlyUsedAsync(5);
+        var used = Assert.Single(recent);
+        Assert.Equal(item.Id, used.Id);
+    }
+
+    [Fact]
+    public async Task Favorites_PersistAcrossInstances()
+    {
+        await _library.InitializeAsync();
+        var path = CreateImage("starred.png");
+        await _library.ImportAsync([path]);
+        await _library.SetFavoriteAsync(_library.Items[0], true);
+
+        // A fresh library over the same database must still see the favorite.
+        var reopened = CreateLibrary(_databasePath);
+        await reopened.InitializeAsync();
+
+        var favorite = Assert.Single(reopened.Favorites);
+        Assert.Equal(_library.Items[0].Id, favorite.Id);
+    }
+
+    [Fact]
+    public async Task FavoritingAnExternalWallpaper_AddsItToTheCatalog()
+    {
+        await _library.InitializeAsync();
+        var external = new Muralis.Core.Models.Wallpaper
+        {
+            Id = "bing:2026-09-14",
+            Title = "Bing daily image",
+            RemoteUrl = "https://example.com/image.jpg",
+            Source = Muralis.Core.Models.WallpaperSource.Online,
+        };
+
+        await _library.SetFavoriteAsync(external, true);
+
+        var favorite = Assert.Single(_library.Favorites);
+        Assert.Equal("bing:2026-09-14", favorite.Id);
+
+        // Online entries never show up in the local library list.
+        Assert.Empty(_library.Items);
     }
 
     [Fact]
     public async Task Import_RaisesChangedOnlyWhenSomethingWasAdded()
     {
+        await _library.InitializeAsync();
         var path = CreateImage("event.png");
         var raised = 0;
         _library.Changed += (_, _) => raised++;
@@ -94,6 +144,12 @@ public sealed class LocalLibraryTests : IDisposable
         await _library.ImportAsync([path]);
 
         Assert.Equal(1, raised);
+    }
+
+    private static LocalLibrary CreateLibrary(string databasePath)
+    {
+        var repository = new SqliteWallpaperRepository(NullLogger<SqliteWallpaperRepository>.Instance, databasePath);
+        return new LocalLibrary(repository, NullLogger<LocalLibrary>.Instance);
     }
 
     private string CreateImage(string name, int width = 320, int height = 200)

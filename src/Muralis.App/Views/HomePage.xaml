@@ -122,6 +122,29 @@
                     </ListView>
                 </StackPanel>
 
+                <!--  Recently used  -->
+                <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.HasRecent, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Recently used" />
+                    <ListView
+                        Padding="0"
+                        IsItemClickEnabled="True"
+                        ItemClick="OnWallpaperItemClick"
+                        ItemContainerStyle="{StaticResource WallpaperRowItemContainerStyle}"
+                        ItemTemplate="{StaticResource WallpaperRowTemplate}"
+                        ItemsSource="{x:Bind ViewModel.RecentlyUsed}"
+                        SelectionMode="None"
+                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                        ScrollViewer.HorizontalScrollMode="Enabled"
+                        ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                        ScrollViewer.VerticalScrollMode="Disabled">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsStackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                    </ListView>
+                </StackPanel>
+
                 <!--  Quick tiles  -->
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>

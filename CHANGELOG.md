@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SystemParametersInfo` and per-monitor `IDesktopWallpaper` with graceful fallback (M2)
 - Automatic WebP/AVIF → JPEG transcoding for formats Windows cannot use as a background (M2)
 - Connected displays listing in Settings and per-display targeting on the details page (M2)
+- SQLite catalog (`%LOCALAPPDATA%\Muralis\muralis.db`, schema v1): imported wallpapers,
+  favorites and usage history persist across restarts (M3)
+- Favorites works for any wallpaper — even one that is not in the library yet (M3)
+- "Recently used" feed on Home backed by bounded usage history (200 entries) (M3)
 
 ### Fixed
 

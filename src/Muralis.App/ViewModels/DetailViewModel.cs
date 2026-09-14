@@ -57,7 +57,8 @@ public sealed partial class DetailViewModel : ObservableObject
 
     public bool HasMultipleMonitors => Monitors.Count > 1;
 
-    public bool CanRemoveFromLibrary => Wallpaper is not null && _library.Find(Wallpaper.Id) is not null;
+    public bool CanRemoveFromLibrary =>
+        Wallpaper is { Source: WallpaperSource.Local } && _library.Find(Wallpaper.Id) is not null;
 
     public string ApplyButtonText => IsApplying ? "Applying…" : "Set as desktop wallpaper";
 
@@ -121,10 +122,11 @@ public sealed partial class DetailViewModel : ObservableObject
         try
         {
             var fitMode = _settingsService.Current.DefaultFitMode;
-            await _wallpaperService.SetWallpaperAsync(path, fitMode, SelectedMonitor?.Id);
-
-            _library.MarkUsed(Wallpaper.Id, DateTimeOffset.Now);
             var target = SelectedMonitor is null ? "all displays" : SelectedMonitor.DisplayName;
+
+            await _wallpaperService.SetWallpaperAsync(path, fitMode, SelectedMonitor?.Id);
+            await _library.RecordUsageAsync(Wallpaper, target);
+
             SuccessNotice = $"Desktop wallpaper updated — {fitMode} on {target}.";
         }
         catch (NotSupportedException ex)
@@ -160,24 +162,35 @@ public sealed partial class DetailViewModel : ObservableObject
             return;
         }
 
-        _library.Remove(Wallpaper.Id);
+        await _library.RemoveAsync(Wallpaper.Id);
         SuccessNotice = "Removed from your library.";
         ErrorNotice = null;
         NotifyDerivedChanged();
     }
 
     [RelayCommand]
-    private void ToggleFavorite()
+    private async Task ToggleFavoriteAsync()
     {
         if (Wallpaper is null)
         {
             return;
         }
 
-        Wallpaper.IsFavorite = !Wallpaper.IsFavorite;
-        NotifyDerivedChanged();
-        SuccessNotice = Wallpaper.IsFavorite ? "Added to favorites." : "Removed from favorites.";
-        ErrorNotice = null;
+        try
+        {
+            await _library.SetFavoriteAsync(Wallpaper, !Wallpaper.IsFavorite);
+            SuccessNotice = Wallpaper.IsFavorite ? "Added to favorites." : "Removed from favorites.";
+            ErrorNotice = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update the favorite state");
+            ErrorNotice = "Could not update favorites. See the log for details.";
+        }
+        finally
+        {
+            NotifyDerivedChanged();
+        }
     }
 
     [RelayCommand]

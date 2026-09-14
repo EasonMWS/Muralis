@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
@@ -11,8 +12,10 @@ namespace Muralis.App.ViewModels;
 public sealed partial class HomeViewModel : ObservableObject
 {
     private readonly IWallpaperProvider _wallpaperProvider;
+    private readonly ILocalLibrary _library;
     private readonly INavigationService _navigation;
     private readonly ILogger<HomeViewModel> _logger;
+    private readonly DispatcherQueue _dispatcherQueue;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -25,15 +28,24 @@ public sealed partial class HomeViewModel : ObservableObject
 
     public HomeViewModel(
         IWallpaperProvider wallpaperProvider,
+        ILocalLibrary library,
         INavigationService navigation,
         ILogger<HomeViewModel> logger)
     {
         _wallpaperProvider = wallpaperProvider;
+        _library = library;
         _navigation = navigation;
         _logger = logger;
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+        _library.Changed += OnLibraryChanged;
     }
 
     public ObservableCollection<Wallpaper> Recommended { get; } = [];
+
+    public ObservableCollection<Wallpaper> RecentlyUsed { get; } = [];
+
+    public bool HasRecent => RecentlyUsed.Count > 0;
 
     public string Greeting => DateTime.Now.Hour switch
     {
@@ -71,6 +83,8 @@ public sealed partial class HomeViewModel : ObservableObject
             }
 
             Featured = Recommended.FirstOrDefault();
+            await RefreshRecentAsync();
+
             _logger.LogInformation("Home feed loaded with {Count} wallpapers", Recommended.Count);
         }
         catch (OperationCanceledException)
@@ -105,4 +119,35 @@ public sealed partial class HomeViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenLibrary() => _navigation.NavigateTo(Routes.Library);
+
+    private void OnLibraryChanged(object? sender, EventArgs e)
+    {
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            _ = RefreshRecentAsync();
+        }
+        else
+        {
+            _dispatcherQueue.TryEnqueue(() => _ = RefreshRecentAsync());
+        }
+    }
+
+    private async Task RefreshRecentAsync()
+    {
+        try
+        {
+            var recent = await _library.GetRecentlyUsedAsync(8);
+            RecentlyUsed.Clear();
+            foreach (var item in recent)
+            {
+                RecentlyUsed.Add(item);
+            }
+
+            OnPropertyChanged(nameof(HasRecent));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not load the recently used feed");
+        }
+    }
 }
