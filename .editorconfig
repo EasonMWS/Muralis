@@ -1,0 +1,55 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+max_line_length = 140
+
+[*.{xml,xaml,csproj,props,targets,resw,resx}]
+indent_size = 2
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# Namespaces and usings
+dotnet_sort_system_directives_first = true
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# Modern C# style
+csharp_prefer_braces = when_multiline:silent
+csharp_style_var_for_built_in_types = false:silent
+csharp_style_var_when_type_is_apparent = true:silent
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+csharp_style_expression_bodied_properties = true:silent
+csharp_style_prefer_primary_constructors = false:silent
+
+# Nullability
+dotnet_style_null_propagation = true:suggestion
+csharp_style_throw_expression = true:suggestion
+
+# Naming: interfaces begin with I
+dotnet_naming_rule.interfaces_start_with_i.severity = warning
+dotnet_naming_rule.interfaces_start_with_i.symbols = interface_symbols
+dotnet_naming_rule.interfaces_start_with_i.style = i_prefixed
+
+dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
+dotnet_naming_style.i_prefixed.required_prefix = I
+dotnet_naming_style.i_prefixed.capitalization = pascal_case
+
+# Private fields: _camelCase
+dotnet_naming_rule.private_fields_underscore.severity = suggestion
+dotnet_naming_rule.private_fields_underscore.symbols = private_field_symbols
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+
+dotnet_naming_symbols.private_field_symbols.applicable_kinds = field
+dotnet_naming_symbols.private_field_symbols.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case

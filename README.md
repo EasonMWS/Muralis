@@ -1,0 +1,98 @@
+# Muralis
+
+> A modern wallpaper studio for Windows 10 & 11.
+
+Muralis is a native Windows wallpaper manager built with WinUI 3. Browse, preview,
+download, favorite and apply beautiful static wallpapers — then let Muralis rotate
+them for you. Designed to feel like a first-party Windows 11 app: Mica backdrop,
+Fluent controls, light/dark themes, and a clean, calm layout.
+
+> **Status:** v0.1 in development. See the [Roadmap](#roadmap).
+
+## Features
+
+- **Browse** — discover wallpapers in a responsive card grid with resolution, aspect ratio and tags
+- **Preview & apply** — open a wallpaper, then set it as your desktop background with one click
+- **Fit modes** — Fill, Fit, Stretch, Center, Tile and Span
+- **Local library** — import your own images and manage them without touching the original files
+- **Favorites** — keep the ones you love, persisted across restarts
+- **Downloads** — asynchronous downloads with progress, cancellation and conflict-safe file names
+- **Auto rotation** — shuffle your favorite wallpapers every 15 minutes to 24 hours (planned)
+- **Multi-monitor aware** — architecture ready for per-display wallpapers (planned)
+- **Native look & feel** — Mica, custom title bar, light/dark/system theme support
+
+## Screenshots
+
+_Coming with the v0.1 release._
+
+## Requirements
+
+- Windows 10 version 1809 (build 17763) or later / Windows 11
+- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) (or use a self-contained release build)
+
+## Download & Install
+
+Grab the latest release from the [Releases page](../../releases) and follow the
+instructions in the release notes. No installer required — unzip and run.
+
+## Build from source
+
+Prerequisites:
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- Windows 10/11 (Developer Mode is **not** required — Muralis ships unpackaged)
+
+```bash
+git clone https://github.com/<your-org>/muralis.git
+cd muralis
+dotnet build Muralis.slnx -c Release
+dotnet run --project src/Muralis.App
+```
+
+Run the tests:
+
+```bash
+dotnet test tests/Muralis.Core.Tests
+```
+
+> Tip: if `dotnet` is not on your PATH, use the SDK you installed
+> (e.g. `%USERPROFILE%\.dotnet\dotnet.exe`).
+
+## Architecture
+
+Muralis follows a layered MVVM design with a clean separation between UI and logic:
+
+```
+Muralis.App    WinUI 3 shell — Views, ViewModels, controls, Windows platform services
+Muralis.Core   Platform-agnostic domain — models, abstractions, services, providers, repositories
+Muralis.Core.Tests   Unit tests for the core logic
+```
+
+- **MVVM** via CommunityToolkit.Mvvm source generators
+- **Dependency injection** via Microsoft.Extensions.DependencyInjection
+- **Logging** via Microsoft.Extensions.Logging + Serilog rolling file sink
+- **Storage** — JSON for settings, SQLite for the wallpaper catalog (favorites, history)
+- **Wallpaper API** — `IWallpaperService` abstraction; Windows implementation uses
+  `SystemParametersInfo` and the `IDesktopWallpaper` COM interface
+- **Providers** — `IWallpaperProvider` abstraction so new sources (Bing, Unsplash,
+  Wallhaven, custom) can be plugged in without touching the app
+
+## Roadmap
+
+- [x] M1 — Project skeleton: MVVM, DI, logging, navigation, shell, four main pages
+- [ ] M2 — Local wallpapers: import, grid, details, set as desktop background
+- [ ] M3 — Persistence: favorites, history, settings (SQLite + JSON)
+- [ ] M4 — Online wallpapers: provider, downloads, image cache
+- [ ] M5 — Rotation, run-at-startup, system tray
+- [ ] M6 — UI polish, performance, error & memory audits
+- [ ] M7 — Docs, CI, signed-off release build
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+## License
+
+[MIT](LICENSE) © Muralis Contributors
+
+Muralis is not affiliated with Microsoft. Windows is a trademark of Microsoft Corporation.

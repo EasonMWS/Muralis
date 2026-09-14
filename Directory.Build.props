@@ -1,0 +1,18 @@
+<Project>
+
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>Muralis</Product>
+    <Description>A modern wallpaper studio for Windows.</Description>
+    <Authors>Muralis Contributors</Authors>
+    <Copyright>Copyright (c) 2026 Muralis Contributors</Copyright>
+    <NeutralLanguage>en-US</NeutralLanguage>
+
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

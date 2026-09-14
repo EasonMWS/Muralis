@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muralis.App.Views.LibraryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Muralis.App.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:Muralis.Core.Models"
+    Background="Transparent"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <DataTemplate x:Key="WallpaperGridTemplate" x:DataType="models:Wallpaper">
+            <controls:WallpaperCard Wallpaper="{x:Bind}" />
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid Padding="36,24,36,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Library" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="Your own images, ready to become wallpapers. Original files are never modified." />
+            </StackPanel>
+            <Button
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="Import images"
+                Click="OnImportClick"
+                Style="{StaticResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <FontIcon FontSize="16" Glyph="&#xE710;" />
+                    <TextBlock Text="Import images" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <Grid Grid.Row="1" Margin="0,20,0,0">
+            <GridView
+                Padding="0"
+                IsItemClickEnabled="True"
+                ItemClick="OnWallpaperItemClick"
+                ItemContainerStyle="{StaticResource WallpaperItemContainerStyle}"
+                ItemTemplate="{StaticResource WallpaperGridTemplate}"
+                ItemsSource="{x:Bind ViewModel.Items}"
+                SelectionMode="None">
+                <GridView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsWrapGrid
+                            ItemHeight="165"
+                            ItemWidth="284"
+                            Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </GridView.ItemsPanel>
+            </GridView>
+
+            <controls:EmptyState
+                ActionCommand="{x:Bind ViewModel.ImportCommand}"
+                ActionText="Import images"
+                Description="Add pictures from your PC — JPG, PNG or BMP anywhere on disk. Muralis keeps a reference to your file and never modifies the original."
+                Glyph="&#xE8B9;"
+                Title="Your library is empty"
+                Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
+    </Grid>
+</Page>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="Muralis.App.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Muralis.App.Converters">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="ms-appx:///Themes/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+            <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+            <converters:NullToVisibilityConverter x:Key="NullToVisibility" />
+            <converters:LocalPathToImageSourceConverter x:Key="PathToImageSource" />
+            <converters:IdToPlaceholderBrushConverter x:Key="IdToPlaceholderBrush" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -1,0 +1,49 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+artifacts/
+publish/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+.vscode/*.log
+
+# MSIX / packaging
+AppPackages/
+BundleArtifacts/
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+Package.StoreAssociation.xml
+*_pkginfo.txt
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+coverage*.json
+coverage*.xml
+
+# Logs
+*.log
+[Ll]ogs/
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Local secrets / machine-specific settings
+launchSettings.local.json
+*.local.json

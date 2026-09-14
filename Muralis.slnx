@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Muralis.App/Muralis.App.csproj" />
+    <Project Path="src/Muralis.Core/Muralis.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Muralis.Core.Tests/Muralis.Core.Tests.csproj" />
+  </Folder>
+</Solution>

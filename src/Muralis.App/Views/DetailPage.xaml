@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muralis.App.Views.DetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="Transparent"
+    mc:Ignorable="d">
+
+    <Grid Padding="36,16,36,36" ColumnSpacing="28">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="420" />
+            <ColumnDefinition Width="360" />
+        </Grid.ColumnDefinitions>
+
+        <!--  Preview  -->
+        <Border
+            Grid.Column="0"
+            VerticalAlignment="Top"
+            Style="{StaticResource LargeCardBorderStyle}"
+            Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <Image
+                Margin="18"
+                MaxHeight="640"
+                HorizontalAlignment="Center"
+                Source="{x:Bind ViewModel.Wallpaper.LocalPath, Mode=OneWay, Converter={StaticResource PathToImageSource}}" />
+        </Border>
+
+        <!--  Info and actions  -->
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="18">
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        Style="{StaticResource TitleTextBlockStyle}"
+                        Text="{x:Bind ViewModel.Wallpaper.Title, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border
+                            Padding="10,4"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="12">
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.SourceText, Mode=OneWay}" />
+                        </Border>
+                        <Border
+                            Padding="10,4"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="12">
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.Wallpaper.ResolutionText, Mode=OneWay}" />
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+
+                <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Spacing="12">
+                        <Grid>
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Aspect ratio" />
+                            <TextBlock HorizontalAlignment="Right" Text="{x:Bind ViewModel.Wallpaper.AspectRatioText, Mode=OneWay}" />
+                        </Grid>
+                        <Grid Visibility="{x:Bind ViewModel.Wallpaper.FileSizeText, Mode=OneWay, Converter={StaticResource NullToVisibility}}">
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="File size" />
+                            <TextBlock HorizontalAlignment="Right" Text="{x:Bind ViewModel.Wallpaper.FileSizeText, Mode=OneWay}" />
+                        </Grid>
+                        <Grid>
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Location" />
+                            <TextBlock
+                                MaxWidth="220"
+                                HorizontalAlignment="Right"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.Wallpaper.LocalPath, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis"
+                                ToolTipService.ToolTip="{x:Bind ViewModel.Wallpaper.LocalPath, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Spacing="10">
+                    <Button
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Set as desktop wallpaper"
+                        Click="OnSetAsWallpaperClick"
+                        Style="{StaticResource AccentButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon FontSize="16" Glyph="&#xE8B9;" />
+                            <TextBlock Text="Set as desktop wallpaper" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="{x:Bind ViewModel.FavoriteLabel, Mode=OneWay}"
+                        Click="OnToggleFavoriteClick">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon FontSize="16" Glyph="{x:Bind ViewModel.FavoriteGlyphText, Mode=OneWay}" />
+                            <TextBlock Text="{x:Bind ViewModel.FavoriteLabel, Mode=OneWay}" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Show file location"
+                        Click="OnOpenInExplorerClick">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon FontSize="16" Glyph="&#xE7C5;" />
+                            <TextBlock Text="Show file location" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <InfoBar
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                    Severity="Informational"
+                    Visibility="{x:Bind ViewModel.StatusMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

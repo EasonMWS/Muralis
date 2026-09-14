@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muralis.App.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="Transparent"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="36,24,36,40" VerticalScrollBarVisibility="Auto">
+        <StackPanel
+            MaxWidth="880"
+            HorizontalAlignment="Left"
+            Spacing="10">
+
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Settings" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="Personalize how Muralis looks and behaves." />
+            </StackPanel>
+
+            <InfoBar
+                IsClosable="False"
+                IsOpen="True"
+                Message="{x:Bind ViewModel.SuccessMessage, Mode=OneWay}"
+                Severity="Success"
+                Visibility="{x:Bind ViewModel.SuccessMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+            <InfoBar
+                IsClosable="False"
+                IsOpen="True"
+                Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                Severity="Error"
+                Title="Something went wrong"
+                Visibility="{x:Bind ViewModel.ErrorMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+
+            <!--  Appearance  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="Appearance" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE790;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Theme" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Choose light, dark, or match the Windows setting." />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="2"
+                        VerticalAlignment="Center">
+                        <RadioButton
+                            Click="OnSystemThemeClick"
+                            Content="System"
+                            GroupName="ThemeGroup"
+                            IsChecked="{x:Bind ViewModel.IsSystemTheme, Mode=OneWay}" />
+                        <RadioButton
+                            Click="OnLightThemeClick"
+                            Content="Light"
+                            GroupName="ThemeGroup"
+                            IsChecked="{x:Bind ViewModel.IsLightTheme, Mode=OneWay}" />
+                        <RadioButton
+                            Click="OnDarkThemeClick"
+                            Content="Dark"
+                            GroupName="ThemeGroup"
+                            IsChecked="{x:Bind ViewModel.IsDarkTheme, Mode=OneWay}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!--  Wallpapers  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="Wallpapers" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE91B;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Default style" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="How wallpapers are fitted to your desktop." />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="FitModeCombo"
+                        Grid.Column="2"
+                        MinWidth="150"
+                        VerticalAlignment="Center"
+                        ItemsSource="{x:Bind ViewModel.FitModes}"
+                        SelectionChanged="OnFitModeSelectionChanged" />
+                </Grid>
+            </Border>
+
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE7E8;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Start with Windows" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Coming in a later milestone — Muralis will be able to launch at sign-in." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        IsEnabled="{x:Bind ViewModel.IsStartupSupported}"
+                        IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}"
+                        OffContent="Off"
+                        OnContent="On" />
+                </Grid>
+            </Border>
+
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE895;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Auto rotation" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Coming in a later milestone — shuffle wallpapers on a schedule." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        IsEnabled="{x:Bind ViewModel.IsRotationSupported}"
+                        OffContent="Off"
+                        OnContent="On" />
+                </Grid>
+            </Border>
+
+            <!--  Downloads  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="Downloads" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE896;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Download folder" />
+                        <TextBlock
+                            MaxWidth="380"
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{x:Bind ViewModel.DownloadFolder, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            ToolTipService.ToolTip="{x:Bind ViewModel.DownloadFolder, Mode=OneWay}" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                        <Button Click="OnOpenDownloadFolderClick" Content="Open" />
+                        <Button Click="OnChangeDownloadFolderClick" Content="Change…" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!--  Storage  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="Storage" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE7B8;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Image cache" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.CacheSizeText, Mode=OneWay}" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                        <Button Click="OnRefreshCacheClick" Content="Refresh" />
+                        <Button Click="OnClearCacheClick" Content="Clear cache" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!--  About  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="About" />
+            <Border Padding="20" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border
+                        Width="48"
+                        Height="48"
+                        Background="{ThemeResource AccentFillColorTertiaryBrush}"
+                        CornerRadius="10">
+                        <FontIcon
+                            FontSize="20"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                            Glyph="&#xE8B9;" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Muralis — Wallpaper Studio" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.AppVersion, Mode=OneWay}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="A modern, open-source wallpaper manager for Windows." />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Spacing="6">
+                        <HyperlinkButton
+                            HorizontalAlignment="Left"
+                            Content="View on GitHub"
+                            NavigateUri="{x:Bind ViewModel.GitHubUrl}" />
+                        <TextBlock
+                            Margin="12,0,0,0"
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="MIT License" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
