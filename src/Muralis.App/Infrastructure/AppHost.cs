@@ -6,6 +6,7 @@ using Muralis.App.Services.Platform;
 using Muralis.App.ViewModels;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
+using Muralis.Core.Networking;
 using Muralis.Core.Providers;
 using Muralis.Core.Repositories;
 using Muralis.Core.Services;
@@ -56,15 +57,36 @@ public sealed class AppHost : IDisposable
             builder.AddSerilog(dispose: false);
         });
 
-        // Shared HTTP client for providers, downloads and thumbnail caching.
-        services.AddSingleton(_ => new HttpClient { Timeout = TimeSpan.FromSeconds(90) });
+        // Shared HTTP pipeline for providers, downloads and thumbnails: transient failures
+        // are retried with backoff, and provider JSON responses are cached on disk so
+        // browsing does not re-hit rate-limited APIs.
+        services.AddSingleton<IMetadataCache, MetadataCache>();
+        services.AddSingleton<IProviderConfiguration, ProviderConfiguration>();
+        services.AddSingleton(sp => new HttpClient(
+            new HttpRetryHandler(
+                sp.GetRequiredService<ILogger<HttpRetryHandler>>(),
+                new MetadataCacheHandler(
+                    sp.GetRequiredService<IMetadataCache>(),
+                    sp.GetRequiredService<ILogger<MetadataCacheHandler>>(),
+                    new HttpClientHandler())))
+        {
+            Timeout = TimeSpan.FromSeconds(90),
+        });
 
         // Core services (platform-agnostic).
         services.AddSingleton<ISettingsService, SettingsService>();
-        services.AddSingleton<MockWallpaperProvider>();
+
+        // Wallpaper sources, in the order the UI lists them.
         services.AddSingleton<BingWallpaperProvider>();
-        services.AddSingleton<IWallpaperProvider>(sp => sp.GetRequiredService<MockWallpaperProvider>());
+        services.AddSingleton<WallhavenWallpaperProvider>();
+        services.AddSingleton<ApodWallpaperProvider>();
+        services.AddSingleton<MockWallpaperProvider>();
         services.AddSingleton<IWallpaperProvider>(sp => sp.GetRequiredService<BingWallpaperProvider>());
+        services.AddSingleton<IWallpaperProvider>(sp => sp.GetRequiredService<WallhavenWallpaperProvider>());
+        services.AddSingleton<IWallpaperProvider>(sp => sp.GetRequiredService<ApodWallpaperProvider>());
+        services.AddSingleton<IWallpaperProvider>(sp => sp.GetRequiredService<MockWallpaperProvider>());
+        services.AddSingleton<WallpaperProviderManager>();
+
         services.AddSingleton<IWallpaperRepository>(sp => new SqliteWallpaperRepository(
             sp.GetRequiredService<ILogger<SqliteWallpaperRepository>>()));
         services.AddSingleton<ILocalLibrary, LocalLibrary>();

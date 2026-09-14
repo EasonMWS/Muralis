@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
@@ -47,6 +46,12 @@ public sealed class BingWallpaperProvider : IWallpaperProvider
             .ToList();
     }
 
+    public async Task<IReadOnlyList<Wallpaper>> GetFeaturedAsync(int count, CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+        return _cache.Take(count).ToList();
+    }
+
     public async Task<Wallpaper?> GetWallpaperAsync(string id, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
@@ -70,8 +75,8 @@ public sealed class BingWallpaperProvider : IWallpaperProvider
 
             var market = CultureInfo.CurrentUICulture.Name;
             var url = string.Format(CultureInfo.InvariantCulture, ArchiveEndpoint, market);
-            var response = await _httpClient
-                .GetFromJsonAsync<BingArchiveResponse>(url, cancellationToken)
+            var response = await RemoteJson
+                .GetAsync<BingArchiveResponse>(_httpClient, url, CacheLifetime, _logger, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             var images = response?.Images ?? [];

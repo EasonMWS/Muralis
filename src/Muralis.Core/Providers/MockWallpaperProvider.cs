@@ -60,6 +60,12 @@ public sealed class MockWallpaperProvider : IWallpaperProvider
         return Task.FromResult(match);
     }
 
+    public Task<IReadOnlyList<Wallpaper>> GetFeaturedAsync(int count, CancellationToken cancellationToken = default)
+    {
+        EnsureLoaded();
+        return Task.FromResult<IReadOnlyList<Wallpaper>>(_cache.Take(count).ToList());
+    }
+
     private void EnsureLoaded()
     {
         lock (_loadLock)

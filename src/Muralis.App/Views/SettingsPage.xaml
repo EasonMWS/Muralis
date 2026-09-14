@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Muralis.Core.Models"
+    xmlns:vm="using:Muralis.App.ViewModels"
     Background="Transparent"
     mc:Ignorable="d">
 
@@ -290,6 +291,92 @@
                         OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
                         OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
                 </Grid>
+            </Border>
+
+            <!--  Wallpaper sources  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Settings_Sources_Title], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE8B9;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Sources_Default_Title], Source={StaticResource Loc}}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_Sources_Default_Description], Source={StaticResource Loc}}" />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="DefaultSourceCombo"
+                        Grid.Column="2"
+                        MinWidth="180"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding [Settings_Sources_Default_Title], Source={StaticResource Loc}}"
+                        DisplayMemberPath="Name"
+                        ItemsSource="{x:Bind ViewModel.DefaultSourceItems}"
+                        SelectionChanged="OnDefaultSourceSelectionChanged" />
+                </Grid>
+            </Border>
+
+            <Border Padding="16,6" Style="{StaticResource CardBorderStyle}">
+                <ItemsControl ItemsSource="{x:Bind ViewModel.ProviderSources}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ProviderSourceItem">
+                            <Grid Padding="0,10" ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon
+                                    VerticalAlignment="Center"
+                                    FontSize="18"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Glyph="{x:Bind Glyph}" />
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind Name, Mode=OneWay}" />
+                                    <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind Description, Mode=OneWay}" />
+                                    <StackPanel
+                                        Orientation="Horizontal"
+                                        Spacing="6"
+                                        Visibility="{x:Bind NeedsApiKey, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                                        <FontIcon
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                            Glyph="&#xE7BA;" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource CardCaptionStyle}"
+                                            Text="{Binding [Settings_Sources_NeedsKey], Source={StaticResource Loc}}" />
+                                        <HyperlinkButton
+                                            Padding="0"
+                                            Content="{Binding [Settings_Sources_Setup], Source={StaticResource Loc}}"
+                                            NavigateUri="{x:Bind SetupUrl}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <ToggleSwitch
+                                    Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                    IsOn="{x:Bind IsEnabled, Mode=TwoWay}"
+                                    OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                                    OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </Border>
 
             <!--  Displays  -->

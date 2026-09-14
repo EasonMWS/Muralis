@@ -16,6 +16,7 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 ## Features
 
 - **Browse** — discover wallpapers in a responsive card grid with resolution, aspect ratio and tags
+- **Multiple sources** — Bing, Wallhaven and NASA APOD (plus the samples shipped with Windows): search all of them at once or one at a time, switch sources off, and choose which one fills the Home page
 - **Preview & apply** — open a wallpaper, then set it as your desktop background with one click
 - **Fit modes** — Fill, Fit, Stretch, Center, Tile and Span
 - **Per-display control** — pick which monitor receives a wallpaper on multi-monitor setups
@@ -48,6 +49,25 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 - Windows 10 version 1809 (build 17763) or later / Windows 11
 - Release builds are **self-contained**: no installer and no .NET runtime installation
   required. Building from source needs the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+
+## Wallpaper sources
+
+Each source is a plugin behind one interface (`IWallpaperProvider`), managed by a central
+provider manager: enable or disable sources and pick the default one in **Settings →
+Wallpaper sources**, then search a single source or all of them from Browse.
+
+| Source | Search | API key |
+| --- | --- | --- |
+| Bing daily images | – | not needed |
+| Wallhaven (safe-for-work only) | yes | optional |
+| NASA APOD | – | required, free |
+| Sample wallpapers (offline) | yes | not needed |
+
+Keys are never hardcoded: put them in `%LOCALAPPDATA%\Muralis\providers.json` or a
+`MURALIS_PROVIDER_<ID>_API_KEY` environment variable. Provider responses are cached on
+disk so rate-limited APIs are not polled while browsing. See
+[docs/providers.md](docs/providers.md) for key setup, caching/retry behaviour, the recipe
+for adding a source, and why Unsplash/Pexels are deliberately not bundled.
 
 ## Download & Install
 

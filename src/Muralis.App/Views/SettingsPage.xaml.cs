@@ -33,6 +33,10 @@ public sealed partial class SettingsPage : Page
                 // Option labels were re-localized; rebuild the combo boxes and keep the selection.
                 ApplyOptionSources();
             }
+            else if (e.PropertyName is nameof(SettingsViewModel.SelectedDefaultSource) or nameof(SettingsViewModel.DefaultSourceItems))
+            {
+                SyncDefaultSourceSelection();
+            }
         };
 
         Loaded += OnLoaded;
@@ -70,10 +74,35 @@ public sealed partial class SettingsPage : Page
             LanguageCombo.SelectedItem = ViewModel.LanguageOptions
                 .FirstOrDefault(option => option.Preference == ViewModel.SelectedLanguageOption?.Preference)
                 ?? ViewModel.LanguageOptions[0];
+
+            SyncDefaultSourceSelection();
         }
         finally
         {
             _initializing = wasInitializing;
+        }
+    }
+
+    /// <summary>Keeps the default-source picker in sync without treating it as a user change.</summary>
+    private void SyncDefaultSourceSelection()
+    {
+        var wasInitializing = _initializing;
+        _initializing = true;
+        try
+        {
+            DefaultSourceCombo.SelectedItem = ViewModel.SelectedDefaultSource;
+        }
+        finally
+        {
+            _initializing = wasInitializing;
+        }
+    }
+
+    private void OnDefaultSourceSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initializing && DefaultSourceCombo.SelectedItem is ProviderSourceItem item)
+        {
+            ViewModel.SelectedDefaultSource = item;
         }
     }
 

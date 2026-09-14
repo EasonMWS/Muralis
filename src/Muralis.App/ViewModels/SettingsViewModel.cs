@@ -8,6 +8,7 @@ using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
 using Muralis.Core.Models;
+using Muralis.Core.Services;
 
 namespace Muralis.App.ViewModels;
 
@@ -82,6 +83,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly IWallpaperService _wallpaperService;
     private readonly IStartupService _startupService;
     private readonly RotationService _rotationService;
+    private readonly WallpaperProviderManager _providers;
     private readonly WindowContext _windowContext;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _applyingSettings = true;
@@ -122,6 +124,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         IWallpaperService wallpaperService,
         IStartupService startupService,
         RotationService rotationService,
+        WallpaperProviderManager providers,
         WindowContext windowContext,
         ILocalizationService localization,
         ILogger<SettingsViewModel> logger)
@@ -134,8 +137,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _wallpaperService = wallpaperService;
         _startupService = startupService;
         _rotationService = rotationService;
+        _providers = providers;
         _windowContext = windowContext;
         _logger = logger;
+
+        _providers.Register(this);
 
         var settings = _settingsService.Current;
         CacheSizeText = Loc.Get("Settings_Status_Calculating");
@@ -150,6 +156,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         RotationSourceOptions = BuildRotationSourceOptions();
         LanguageOptions = BuildLanguageOptions();
         SelectedLanguageOption = FindLanguageOption(localization.Preference);
+        BuildProviderSources();
 
         _applyingSettings = false;
     }
@@ -203,6 +210,31 @@ public sealed partial class SettingsViewModel : ViewModelBase
     public IReadOnlyList<LanguageOption> LanguageOptions { get; private set; } = [];
 
     public ObservableCollection<MonitorInfo> Monitors { get; } = [];
+
+    /// <summary>Every registered source with its enable switch, in registration order.</summary>
+    public ObservableCollection<ProviderSourceItem> ProviderSources { get; } = [];
+
+    /// <summary>The usable sources the user can pick for the Home feed.</summary>
+    public ObservableCollection<ProviderSourceItem> DefaultSourceItems { get; } = [];
+
+    /// <summary>The source Home takes its featured wallpapers from.</summary>
+    public ProviderSourceItem? SelectedDefaultSource
+    {
+        get => DefaultSourceItems.FirstOrDefault(item =>
+            string.Equals(item.Id, _providers.DefaultProvider?.Id, StringComparison.OrdinalIgnoreCase));
+        set
+        {
+            if (value is null || _applyingSettings
+                || string.Equals(value.Id, _providers.DefaultProvider?.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _providers.SetDefaultProvider(value.Id);
+            OnPropertyChanged();
+            SetStatus("Settings_Status_DefaultSourceUpdated", isError: false, value.Name);
+        }
+    }
 
     public IntervalOption CurrentIntervalOption =>
         IntervalOptions.FirstOrDefault(option => option.Value == _settingsService.Current.Rotation.Interval)
@@ -266,6 +298,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(RotationStatusText));
         OnPropertyChanged(nameof(MonitorCountText));
         OnPropertyChanged(nameof(AppVersion));
+        OnPropertyChanged(nameof(SelectedDefaultSource));
+
+        foreach (var item in ProviderSources)
+        {
+            item.Refresh();
+        }
 
         if (_status is { } status)
         {
@@ -512,6 +550,45 @@ public sealed partial class SettingsViewModel : ViewModelBase
     ];
 
     private IReadOnlyList<LanguageOption> BuildLanguageOptions() => Loc.Languages;
+
+    private void BuildProviderSources()
+    {
+        ProviderSources.Clear();
+        foreach (var provider in _providers.Providers)
+        {
+            ProviderSources.Add(new ProviderSourceItem(provider, _providers, Loc, ReportProviderStatus));
+        }
+
+        RebuildDefaultSourceItems();
+    }
+
+    /// <summary>
+    /// Rebuilds only the default-source picker: enable switches re-filter it, while the
+    /// row list itself stays untouched so no visual tree is torn down mid-toggle.
+    /// </summary>
+    private void RebuildDefaultSourceItems()
+    {
+        DefaultSourceItems.Clear();
+        foreach (var item in ProviderSources.Where(item => item.Availability == ProviderAvailability.Available))
+        {
+            DefaultSourceItems.Add(item);
+        }
+
+        OnPropertyChanged(nameof(SelectedDefaultSource));
+    }
+
+    private void ReportProviderStatus(string key, string providerName, bool isError) =>
+        SetStatus(key, isError, providerName);
+
+    public override void OnProvidersChanged()
+    {
+        foreach (var item in ProviderSources)
+        {
+            item.Refresh();
+        }
+
+        RebuildDefaultSourceItems();
+    }
 
     private LanguageOption FindLanguageOption(string preference) =>
         LanguageOptions.FirstOrDefault(option => option.Preference == preference) ?? LanguageOptions[0];

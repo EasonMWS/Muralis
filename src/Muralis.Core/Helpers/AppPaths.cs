@@ -10,6 +10,9 @@ public static class AppPaths
 
     public static string SettingsFile => Path.Combine(RootDirectory, "settings.json");
 
+    /// <summary>Optional per-user provider credentials (API keys). Never part of the repository.</summary>
+    public static string ProvidersFile => Path.Combine(RootDirectory, "providers.json");
+
     public static string DatabaseFile => Path.Combine(RootDirectory, "muralis.db");
 
     public static string LogsDirectory => Path.Combine(RootDirectory, "logs");
@@ -17,6 +20,9 @@ public static class AppPaths
     public static string CacheDirectory => Path.Combine(RootDirectory, "cache");
 
     public static string ThumbnailsDirectory => Path.Combine(CacheDirectory, "thumbnails");
+
+    /// <summary>Cached provider responses (search results, feeds) with a freshness window.</summary>
+    public static string MetadataCacheDirectory => Path.Combine(CacheDirectory, "metadata");
 
     public static string DefaultDownloadFolder { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), AppName);

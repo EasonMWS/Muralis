@@ -19,6 +19,9 @@ public sealed class AppSettings
 
     public WallpaperFitMode DefaultFitMode { get; set; } = WallpaperFitMode.Fill;
 
+    /// <summary>Which wallpaper sources are switched on, and which one feeds the Home page.</summary>
+    public ProviderSettings Providers { get; set; } = new();
+
     /// <summary>
     /// Folder where downloaded wallpapers are stored. Empty means
     /// <see cref="Helpers.AppPaths.DefaultDownloadFolder"/>.

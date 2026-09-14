@@ -11,6 +11,9 @@ public static class AppInfo
 
     public const string GitHubUrl = "https://github.com/EasonMWS/Muralis";
 
+    /// <summary>How to enable sources and configure API keys.</summary>
+    public const string ProvidersDocUrl = "https://github.com/EasonMWS/Muralis/blob/main/docs/providers.md";
+
     public const string LicenseName = "MIT License";
 
     public static string Version { get; } =

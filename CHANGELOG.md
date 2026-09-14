@@ -18,6 +18,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plus one satellite assembly per language); view models refresh their text live
   through a weakly-referenced language-change notification
 
+**Wallpaper sources**
+
+- Pluggable provider architecture (`IWallpaperProvider` + `WallpaperProviderManager`):
+  sources can be enabled/disabled, one is the default, and Browse can search a single
+  source or all enabled sources at once — a failing source never hides the others
+- New sources: **Wallhaven** (SFW only) and **NASA APOD** (free API key), alongside the
+  existing Bing feed and the sample set bundled with Windows
+- API keys live in `%LOCALAPPDATA%\Muralis\providers.json` or
+  `MURALIS_PROVIDER_<ID>_API_KEY` environment variables — never in the repository;
+  Settings shows which sources still need a key ([docs](docs/providers.md))
+- Provider responses are cached on disk with per-source freshness windows, and idempotent
+  requests are retried with exponential backoff (honouring `Retry-After`)
+- Browse warns when some sources are unreachable but still shows the rest; search results
+  are merged with the local catalog so favorites and downloaded files appear immediately
+
+### Changed
+
+- Downloads go through the owning provider, so a source can transform or register the
+  download URL (the hook Unsplash-style APIs require)
+- Formatting helpers return neutral values instead of English fallbacks
+  ("Unknown resolution", "Online") so no untranslated text can reach the UI
+
 ### Fixed
 
 - The window no longer shows the default Windows icon: the custom title bar replaces
@@ -26,11 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while the full image has not been downloaded yet
 - The details page no longer shows bare labels for wallpapers whose size or
   location is not known yet
-
-### Changed
-
-- Formatting helpers return neutral values instead of English fallbacks
-  ("Unknown resolution", "Online") so no untranslated text can reach the UI
 
 ## [0.1.0] - 2026-09-14
 

@@ -6,20 +6,20 @@ using Microsoft.UI.Dispatching;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
-using Muralis.Core.Providers;
+using Muralis.Core.Services;
 
 namespace Muralis.App.ViewModels;
 
 public sealed partial class HomeViewModel : ViewModelBase
 {
-    private readonly BingWallpaperProvider _onlineProvider;
-    private readonly MockWallpaperProvider _sampleProvider;
+    private readonly WallpaperProviderManager _providers;
     private readonly IImageCacheService _imageCache;
     private readonly ILocalLibrary _library;
     private readonly INavigationService _navigation;
     private readonly ILogger<HomeViewModel> _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private string? _errorKey;
+    private object?[] _errorArgs = [];
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -31,8 +31,7 @@ public sealed partial class HomeViewModel : ViewModelBase
     public partial Wallpaper? Featured { get; set; }
 
     public HomeViewModel(
-        BingWallpaperProvider onlineProvider,
-        MockWallpaperProvider sampleProvider,
+        WallpaperProviderManager providers,
         IImageCacheService imageCache,
         ILocalLibrary library,
         INavigationService navigation,
@@ -40,8 +39,7 @@ public sealed partial class HomeViewModel : ViewModelBase
         ILogger<HomeViewModel> logger)
         : base(localization)
     {
-        _onlineProvider = onlineProvider;
-        _sampleProvider = sampleProvider;
+        _providers = providers;
         _imageCache = imageCache;
         _library = library;
         _navigation = navigation;
@@ -71,7 +69,7 @@ public sealed partial class HomeViewModel : ViewModelBase
     {
         if (_errorKey is not null)
         {
-            ErrorMessage = Loc.Get(_errorKey);
+            ErrorMessage = Loc.Format(_errorKey, _errorArgs);
         }
 
         OnPropertyChanged(nameof(Greeting));
@@ -92,28 +90,23 @@ public sealed partial class HomeViewModel : ViewModelBase
 
         try
         {
-            IReadOnlyList<Wallpaper> items;
-            try
+            var result = await _providers
+                .GetFeaturedAsync(24, cancellationToken)
+                .ConfigureAwait(true);
+
+            if (result.Items.Count == 0)
             {
-                items = await _onlineProvider
-                    .GetWallpapersAsync(new WallpaperQuery { PageSize = 24 }, cancellationToken)
-                    .ConfigureAwait(true);
+                _logger.LogWarning("No source could provide a featured feed");
+                SetError("Home_Error_LoadFailed");
             }
-            catch (OperationCanceledException)
+            else if (result.Failures.Count > 0)
             {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Bing feed unavailable; falling back to sample wallpapers");
-                SetError("Home_Error_FeedUnavailable");
-                items = await _sampleProvider
-                    .GetWallpapersAsync(new WallpaperQuery { PageSize = 24 }, cancellationToken)
-                    .ConfigureAwait(true);
+                // The default source failed and the samples filled in.
+                SetError("Home_Error_SourceUnavailable", ProviderDisplay.Name(Loc, result.Failures[0].Provider));
             }
 
             Recommended.Clear();
-            foreach (var item in items)
+            foreach (var item in result.Items)
             {
                 Recommended.Add(item);
             }
@@ -160,10 +153,11 @@ public sealed partial class HomeViewModel : ViewModelBase
     private void OpenLibrary() => _navigation.NavigateTo(Routes.Library);
 
     /// <summary>Stores the resource key so the message can be re-resolved after a language change.</summary>
-    private void SetError(string? key)
+    private void SetError(string? key, params object?[] args)
     {
         _errorKey = key;
-        ErrorMessage = key is null ? null : Loc.Get(key);
+        _errorArgs = args;
+        ErrorMessage = key is null ? null : Loc.Format(key, args);
     }
 
     private void OnLibraryChanged(object? sender, EventArgs e)

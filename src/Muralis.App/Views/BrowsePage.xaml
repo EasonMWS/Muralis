@@ -45,11 +45,11 @@
                 <ComboBox
                     x:Name="ProviderCombo"
                     MinWidth="160"
-                    ItemsSource="{x:Bind ViewModel.Providers}"
-                    SelectionChanged="OnProviderSelectionChanged"
+                    ItemsSource="{x:Bind ViewModel.Sources}"
+                    SelectedItem="{x:Bind ViewModel.SelectedSource, Mode=TwoWay}"
                     ToolTipService.ToolTip="{Binding [Browse_SourceTooltip], Source={StaticResource Loc}}">
                     <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ProviderOption">
+                        <DataTemplate x:DataType="vm:SourceOption">
                             <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
@@ -93,11 +93,11 @@
             </GridView>
 
             <controls:EmptyState
-                ActionCommand="{x:Bind ViewModel.ClearSearchCommand}"
-                ActionText="{Binding [Browse_Empty_Action], Source={StaticResource Loc}}"
-                Description="{Binding [Browse_Empty_Description], Source={StaticResource Loc}}"
+                ActionCommand="{x:Bind ViewModel.EmptyActionCommand}"
+                ActionText="{x:Bind ViewModel.EmptyActionText, Mode=OneWay}"
+                Description="{x:Bind ViewModel.EmptyDescription, Mode=OneWay}"
                 Glyph="&#xE721;"
-                Title="{Binding [Browse_Empty_Title], Source={StaticResource Loc}}"
+                Title="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}"
                 Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
 
             <ProgressRing
@@ -114,7 +114,7 @@
                 IsClosable="False"
                 IsOpen="True"
                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                Severity="Error"
+                Severity="{x:Bind ViewModel.ErrorSeverity, Mode=OneWay}"
                 Title="{Binding [Common_Error_Title], Source={StaticResource Loc}}"
                 Visibility="{x:Bind ViewModel.ErrorMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
         </Grid>

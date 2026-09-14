@@ -110,8 +110,8 @@
   <data name="Greeting_Night" xml:space="preserve">
     <value>夜深了</value>
   </data>
-  <data name="Home_Error_FeedUnavailable" xml:space="preserve">
-    <value>Bing 暂时无法访问 — 已改为显示示例壁纸。</value>
+  <data name="Home_Error_SourceUnavailable" xml:space="preserve">
+    <value>{0} 暂时无法访问 — 已改为显示示例壁纸。</value>
   </data>
   <data name="Home_Error_LoadFailed" xml:space="preserve">
     <value>壁纸加载失败，请稍后重试。</value>
@@ -120,6 +120,21 @@
   <!--  Browse  -->
   <data name="Browse_Title" xml:space="preserve">
     <value>浏览</value>
+  </data>
+  <data name="Browse_AllSources" xml:space="preserve">
+    <value>全部来源</value>
+  </data>
+  <data name="Browse_NoSources_Title" xml:space="preserve">
+    <value>没有可用的壁纸来源</value>
+  </data>
+  <data name="Browse_NoSources_Description" xml:space="preserve">
+    <value>请在设置中启用壁纸来源，或为需要密钥的来源添加 API key。</value>
+  </data>
+  <data name="Browse_GotoSettings" xml:space="preserve">
+    <value>打开设置</value>
+  </data>
+  <data name="Browse_Error_SomeSourcesUnavailable" xml:space="preserve">
+    <value>部分来源暂时无法访问：{0}。</value>
   </data>
   <data name="Browse_ProviderFallback" xml:space="preserve">
     <value>壁纸</value>
@@ -154,8 +169,26 @@
   <data name="Provider_bing" xml:space="preserve">
     <value>Bing 每日壁纸</value>
   </data>
+  <data name="Provider_Description_bing" xml:space="preserve">
+    <value>微软必应每日壁纸，无需账号。</value>
+  </data>
+  <data name="Provider_wallhaven" xml:space="preserve">
+    <value>Wallhaven</value>
+  </data>
+  <data name="Provider_Description_wallhaven" xml:space="preserve">
+    <value>大型社区壁纸库，仅提供安全内容（SFW）。</value>
+  </data>
+  <data name="Provider_nasa" xml:space="preserve">
+    <value>NASA 每日天文图</value>
+  </data>
+  <data name="Provider_Description_nasa" xml:space="preserve">
+    <value>NASA 每日天文图（APOD），需要免费的 API key。</value>
+  </data>
   <data name="Provider_mock" xml:space="preserve">
     <value>示例壁纸</value>
+  </data>
+  <data name="Provider_Description_mock" xml:space="preserve">
+    <value>随 Windows 附带的图片，可离线使用。</value>
   </data>
 
   <!--  Library  -->
@@ -370,6 +403,33 @@
   </data>
   <data name="Settings_Section_Wallpapers" xml:space="preserve">
     <value>壁纸</value>
+  </data>
+  <data name="Settings_Sources_Title" xml:space="preserve">
+    <value>壁纸来源</value>
+  </data>
+  <data name="Settings_Sources_Default_Title" xml:space="preserve">
+    <value>默认来源</value>
+  </data>
+  <data name="Settings_Sources_Default_Description" xml:space="preserve">
+    <value>主页和搜索优先使用的来源。</value>
+  </data>
+  <data name="Settings_Sources_NeedsKey" xml:space="preserve">
+    <value>需要 API key</value>
+  </data>
+  <data name="Settings_Sources_Setup" xml:space="preserve">
+    <value>如何配置</value>
+  </data>
+  <data name="Settings_Status_SourceEnabled" xml:space="preserve">
+    <value>已启用{0}。</value>
+  </data>
+  <data name="Settings_Status_SourceDisabled" xml:space="preserve">
+    <value>已停用{0}。</value>
+  </data>
+  <data name="Settings_Status_SourceMustStayEnabled" xml:space="preserve">
+    <value>至少需要保留一个启用的来源。</value>
+  </data>
+  <data name="Settings_Status_DefaultSourceUpdated" xml:space="preserve">
+    <value>默认来源已设为{0}。</value>
   </data>
   <data name="Settings_DefaultStyle_Title" xml:space="preserve">
     <value>默认样式</value>

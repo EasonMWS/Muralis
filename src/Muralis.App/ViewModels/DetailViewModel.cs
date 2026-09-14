@@ -7,6 +7,7 @@ using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
 using Muralis.Core.Models;
+using Muralis.Core.Services;
 
 namespace Muralis.App.ViewModels;
 
@@ -21,6 +22,7 @@ public sealed partial class DetailViewModel : ViewModelBase
     private readonly IDialogService _dialogs;
     private readonly IDownloadService _downloadService;
     private readonly IImageCacheService _imageCache;
+    private readonly WallpaperProviderManager _providers;
     private readonly ILogger<DetailViewModel> _logger;
     private CancellationTokenSource? _downloadCts;
     private Notice? _successNotice;
@@ -57,6 +59,7 @@ public sealed partial class DetailViewModel : ViewModelBase
         IDialogService dialogs,
         IDownloadService downloadService,
         IImageCacheService imageCache,
+        WallpaperProviderManager providers,
         ILocalizationService localization,
         ILogger<DetailViewModel> logger)
         : base(localization)
@@ -67,6 +70,7 @@ public sealed partial class DetailViewModel : ViewModelBase
         _dialogs = dialogs;
         _downloadService = downloadService;
         _imageCache = imageCache;
+        _providers = providers;
         _logger = logger;
 
         DownloadProgressText = string.Empty;
@@ -241,7 +245,14 @@ public sealed partial class DetailViewModel : ViewModelBase
                 DownloadProgressText = $"{value * 100:0}%";
             });
 
-            var path = await _downloadService.DownloadAsync(wallpaper.RemoteUrl, folder, wallpaper.Title, progress, token);
+            var sourceUrl = await _providers.GetDownloadUrlAsync(wallpaper, token).ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(sourceUrl))
+            {
+                SetError("Detail_Error_NoDownloadLink");
+                return;
+            }
+
+            var path = await _downloadService.DownloadAsync(sourceUrl, folder, wallpaper.Title, progress, token);
 
             if (ImageMetadataReader.TryReadDimensions(path, out var width, out var height))
             {

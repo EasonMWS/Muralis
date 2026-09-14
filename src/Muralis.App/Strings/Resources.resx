@@ -110,8 +110,8 @@
   <data name="Greeting_Night" xml:space="preserve">
     <value>Good night</value>
   </data>
-  <data name="Home_Error_FeedUnavailable" xml:space="preserve">
-    <value>Bing is unreachable right now — showing sample wallpapers instead.</value>
+  <data name="Home_Error_SourceUnavailable" xml:space="preserve">
+    <value>{0} is unreachable right now — showing sample wallpapers instead.</value>
   </data>
   <data name="Home_Error_LoadFailed" xml:space="preserve">
     <value>We couldn't load wallpapers just now. Please try again.</value>
@@ -120,6 +120,21 @@
   <!--  Browse  -->
   <data name="Browse_Title" xml:space="preserve">
     <value>Browse</value>
+  </data>
+  <data name="Browse_AllSources" xml:space="preserve">
+    <value>All sources</value>
+  </data>
+  <data name="Browse_NoSources_Title" xml:space="preserve">
+    <value>No wallpaper sources are available</value>
+  </data>
+  <data name="Browse_NoSources_Description" xml:space="preserve">
+    <value>Turn a source on — or add the API key it needs — in Settings.</value>
+  </data>
+  <data name="Browse_GotoSettings" xml:space="preserve">
+    <value>Open settings</value>
+  </data>
+  <data name="Browse_Error_SomeSourcesUnavailable" xml:space="preserve">
+    <value>Some sources could not be reached: {0}.</value>
   </data>
   <data name="Browse_ProviderFallback" xml:space="preserve">
     <value>Wallpapers</value>
@@ -154,8 +169,26 @@
   <data name="Provider_bing" xml:space="preserve">
     <value>Bing daily images</value>
   </data>
+  <data name="Provider_Description_bing" xml:space="preserve">
+    <value>Microsoft's daily Bing wallpapers. No account needed.</value>
+  </data>
+  <data name="Provider_wallhaven" xml:space="preserve">
+    <value>Wallhaven</value>
+  </data>
+  <data name="Provider_Description_wallhaven" xml:space="preserve">
+    <value>Large community wallpaper library. Safe-for-work content only.</value>
+  </data>
+  <data name="Provider_nasa" xml:space="preserve">
+    <value>NASA APOD</value>
+  </data>
+  <data name="Provider_Description_nasa" xml:space="preserve">
+    <value>NASA's Astronomy Picture of the Day. Needs a free API key.</value>
+  </data>
   <data name="Provider_mock" xml:space="preserve">
     <value>Sample wallpapers</value>
+  </data>
+  <data name="Provider_Description_mock" xml:space="preserve">
+    <value>Images that ship with Windows. Works offline.</value>
   </data>
 
   <!--  Library  -->
@@ -370,6 +403,33 @@
   </data>
   <data name="Settings_Section_Wallpapers" xml:space="preserve">
     <value>Wallpapers</value>
+  </data>
+  <data name="Settings_Sources_Title" xml:space="preserve">
+    <value>Wallpaper sources</value>
+  </data>
+  <data name="Settings_Sources_Default_Title" xml:space="preserve">
+    <value>Default source</value>
+  </data>
+  <data name="Settings_Sources_Default_Description" xml:space="preserve">
+    <value>Which source fills the Home page and leads searches.</value>
+  </data>
+  <data name="Settings_Sources_NeedsKey" xml:space="preserve">
+    <value>Needs an API key</value>
+  </data>
+  <data name="Settings_Sources_Setup" xml:space="preserve">
+    <value>How to set it up</value>
+  </data>
+  <data name="Settings_Status_SourceEnabled" xml:space="preserve">
+    <value>{0} enabled.</value>
+  </data>
+  <data name="Settings_Status_SourceDisabled" xml:space="preserve">
+    <value>{0} disabled.</value>
+  </data>
+  <data name="Settings_Status_SourceMustStayEnabled" xml:space="preserve">
+    <value>At least one source must stay enabled.</value>
+  </data>
+  <data name="Settings_Status_DefaultSourceUpdated" xml:space="preserve">
+    <value>Default source set to {0}.</value>
   </data>
   <data name="Settings_DefaultStyle_Title" xml:space="preserve">
     <value>Default style</value>

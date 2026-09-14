@@ -2,21 +2,26 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Xaml.Controls;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
-using Muralis.Core.Providers;
+using Muralis.Core.Services;
 
 namespace Muralis.App.ViewModels;
 
 public sealed partial class BrowseViewModel : ViewModelBase
 {
+    private readonly WallpaperProviderManager _providers;
     private readonly IImageCacheService _imageCache;
     private readonly INavigationService _navigation;
     private readonly ILogger<BrowseViewModel> _logger;
     private CancellationTokenSource? _searchDebounce;
     private readonly bool _isInitialized;
+    private bool _suppressReload;
     private string? _errorKey;
+    private object?[] _errorArgs = [];
+    private bool _errorIsWarning;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -28,35 +33,40 @@ public sealed partial class BrowseViewModel : ViewModelBase
     public partial string SearchText { get; set; }
 
     [ObservableProperty]
-    public partial ProviderOption? SelectedProvider { get; set; }
+    public partial SourceOption? SelectedSource { get; set; }
 
     public BrowseViewModel(
-        BingWallpaperProvider bing,
-        MockWallpaperProvider sample,
+        WallpaperProviderManager providers,
         INavigationService navigation,
         IImageCacheService imageCache,
         ILocalizationService localization,
         ILogger<BrowseViewModel> logger)
         : base(localization)
     {
+        _providers = providers;
         _navigation = navigation;
         _imageCache = imageCache;
         _logger = logger;
 
-        Providers = [new ProviderOption(bing, localization), new ProviderOption(sample, localization)];
-        SelectedProvider = Providers[0];
+        providers.Register(this);
+        RebuildSources(selectDefault: true);
 
         SearchText = string.Empty;
         _isInitialized = true;
     }
 
-    public IReadOnlyList<ProviderOption> Providers { get; }
+    /// <summary>The "all sources" entry followed by every usable provider.</summary>
+    public ObservableCollection<SourceOption> Sources { get; } = [];
 
     public ObservableCollection<Wallpaper> Items { get; } = [];
 
-    public string ProviderName => SelectedProvider?.Name ?? Loc.Get("Browse_ProviderFallback");
+    public bool HasAvailableSources => _providers.EnabledProviders.Count > 0;
 
-    public bool SupportsSearch => SelectedProvider?.Provider.SupportsSearch ?? false;
+    public string ProviderName => SelectedSource?.Name ?? Loc.Get("Browse_ProviderFallback");
+
+    public bool SupportsSearch => SelectedSource?.Provider is { } provider
+        ? provider.SupportsSearch
+        : _providers.EnabledProviders.Any(candidate => candidate.SupportsSearch);
 
     public bool IsEmpty => !IsLoading && ErrorMessage is null && Items.Count == 0;
 
@@ -66,30 +76,59 @@ public sealed partial class BrowseViewModel : ViewModelBase
 
     public bool IsInitialLoading => IsLoading && Items.Count == 0;
 
+    public InfoBarSeverity ErrorSeverity => _errorIsWarning ? InfoBarSeverity.Warning : InfoBarSeverity.Error;
+
+    public string EmptyTitle => HasAvailableSources ? Loc.Get("Browse_Empty_Title") : Loc.Get("Browse_NoSources_Title");
+
+    public string EmptyDescription => HasAvailableSources ? Loc.Get("Browse_Empty_Description") : Loc.Get("Browse_NoSources_Description");
+
+    public string EmptyActionText => HasAvailableSources ? Loc.Get("Browse_Empty_Action") : Loc.Get("Browse_GotoSettings");
+
     public override void OnLanguageChanged()
     {
-        foreach (var provider in Providers)
+        foreach (var source in Sources)
         {
-            provider.RefreshName();
+            source.RefreshName();
         }
 
         if (_errorKey is not null)
         {
-            ErrorMessage = Loc.Get(_errorKey);
+            ErrorMessage = Loc.Format(_errorKey, _errorArgs);
         }
 
-        OnPropertyChanged(nameof(ProviderName));
-        OnPropertyChanged(nameof(ResultSummary));
+        NotifyStateChanged();
+        OnPropertyChanged(nameof(EmptyTitle));
+        OnPropertyChanged(nameof(EmptyDescription));
+        OnPropertyChanged(nameof(EmptyActionText));
     }
 
+    public override void OnProvidersChanged()
+    {
+        RebuildSources(selectDefault: false);
+        NotifyStateChanged();
+    }
+
+    /// <summary>Primary action of the empty state: clear the search, or open the settings when no source is usable.</summary>
     [RelayCommand]
-    private void ClearSearch() => SearchText = string.Empty;
+    private void EmptyAction()
+    {
+        if (!HasAvailableSources)
+        {
+            _navigation.NavigateTo(Routes.Settings);
+            return;
+        }
+
+        SearchText = string.Empty;
+    }
 
     [RelayCommand]
     private Task LoadAsync(CancellationToken cancellationToken) => LoadCoreAsync(cancellationToken);
 
     [RelayCommand]
     private Task RefreshAsync(CancellationToken cancellationToken) => LoadCoreAsync(cancellationToken);
+
+    [RelayCommand]
+    private void ClearSearch() => SearchText = string.Empty;
 
     [RelayCommand]
     private void OpenWallpaper(Wallpaper? wallpaper)
@@ -108,14 +147,45 @@ public sealed partial class BrowseViewModel : ViewModelBase
         }
     }
 
-    partial void OnSelectedProviderChanged(ProviderOption? value)
+    partial void OnSelectedSourceChanged(SourceOption? value)
     {
         OnPropertyChanged(nameof(ProviderName));
         OnPropertyChanged(nameof(SupportsSearch));
 
-        if (_isInitialized)
+        if (_isInitialized && !_suppressReload)
         {
             _ = LoadCoreAsync(CancellationToken.None);
+        }
+    }
+
+    private void RebuildSources(bool selectDefault)
+    {
+        var previousId = SelectedSource?.Provider?.Id;
+        var wasAllSources = SelectedSource?.IsAllSources ?? false;
+
+        Sources.Clear();
+        Sources.Add(new SourceOption(null, Loc));
+        foreach (var provider in _providers.EnabledProviders)
+        {
+            Sources.Add(new SourceOption(provider, Loc));
+        }
+
+        var restored = Sources.FirstOrDefault(source =>
+                wasAllSources && source.IsAllSources
+                || (!wasAllSources && source.Provider is not null && string.Equals(source.Provider.Id, previousId, StringComparison.OrdinalIgnoreCase)))
+            ?? (selectDefault
+                ? Sources.FirstOrDefault(source => string.Equals(source.Provider?.Id, _providers.DefaultProvider?.Id, StringComparison.OrdinalIgnoreCase))
+                : null)
+            ?? Sources[0];
+
+        _suppressReload = true;
+        try
+        {
+            SelectedSource = restored;
+        }
+        finally
+        {
+            _suppressReload = false;
         }
     }
 
@@ -152,36 +222,35 @@ public sealed partial class BrowseViewModel : ViewModelBase
             return;
         }
 
-        var option = SelectedProvider;
-        if (option is null)
-        {
-            return;
-        }
-
-        var provider = option.Provider;
+        var scope = SelectedSource;
         IsLoading = true;
         SetError(null);
         NotifyStateChanged();
 
         try
         {
-            var items = await provider
-                .GetWallpapersAsync(
+            var result = await _providers
+                .SearchAsync(
                     new WallpaperQuery
                     {
-                        SearchText = provider.SupportsSearch ? SearchText : null,
+                        SearchText = SupportsSearch ? SearchText : null,
                         PageSize = 60,
                     },
+                    scope?.Provider?.Id,
                     cancellationToken)
                 .ConfigureAwait(true);
 
             Items.Clear();
-            foreach (var item in items)
+            foreach (var item in result.Items)
             {
                 Items.Add(item);
             }
 
-            _logger.LogInformation("Browse loaded {Count} wallpapers from '{Provider}'", Items.Count, provider.Id);
+            ReportFailures(result.Failures);
+            _logger.LogInformation(
+                "Browse loaded {Count} wallpapers from '{Scope}'",
+                Items.Count,
+                scope?.Provider?.Id ?? "all sources");
 
             // Thumbnails are cached in the background; cards update as files arrive.
             _ = _imageCache.WarmThumbnailsAsync(Items.ToList(), cancellationToken);
@@ -192,7 +261,7 @@ public sealed partial class BrowseViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load wallpapers from '{Provider}'", provider.Id);
+            _logger.LogError(ex, "Failed to load wallpapers for '{Scope}'", scope?.Provider?.Id ?? "all sources");
             SetError("Browse_Error_LoadFailed");
         }
         finally
@@ -202,11 +271,34 @@ public sealed partial class BrowseViewModel : ViewModelBase
         }
     }
 
+    private void ReportFailures(IReadOnlyList<ProviderFailure> failures)
+    {
+        if (failures.Count == 0)
+        {
+            return;
+        }
+
+        if (Items.Count == 0)
+        {
+            SetError("Browse_Error_LoadFailed");
+            return;
+        }
+
+        var names = string.Join(
+            Loc.Get("Common_ListSeparator"),
+            failures.Select(failure => ProviderDisplay.Name(Loc, failure.Provider)));
+
+        SetError("Browse_Error_SomeSourcesUnavailable", isWarning: true, names);
+    }
+
     /// <summary>Stores the resource key so the message can be re-resolved after a language change.</summary>
-    private void SetError(string? key)
+    private void SetError(string? key, bool isWarning = false, params object?[] args)
     {
         _errorKey = key;
-        ErrorMessage = key is null ? null : Loc.Get(key);
+        _errorArgs = args;
+        _errorIsWarning = isWarning;
+        ErrorMessage = key is null ? null : Loc.Format(key, args);
+        OnPropertyChanged(nameof(ErrorSeverity));
     }
 
     private void NotifyStateChanged()
@@ -214,5 +306,8 @@ public sealed partial class BrowseViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(IsInitialLoading));
         OnPropertyChanged(nameof(ResultSummary));
+        OnPropertyChanged(nameof(HasAvailableSources));
+        OnPropertyChanged(nameof(ProviderName));
+        OnPropertyChanged(nameof(SupportsSearch));
     }
 }

@@ -12,7 +12,6 @@ public sealed partial class BrowsePage : Page
         ViewModel = App.GetService<BrowseViewModel>();
         InitializeComponent();
 
-        ProviderCombo.SelectedItem = ViewModel.SelectedProvider;
         Loaded += OnLoaded;
     }
 
@@ -29,12 +28,4 @@ public sealed partial class BrowsePage : Page
 
     private void OnWallpaperItemClick(object sender, ItemClickEventArgs e) =>
         ViewModel.OpenWallpaperCommand.Execute(e.ClickedItem as Wallpaper);
-
-    private void OnProviderSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (ProviderCombo.SelectedItem is ProviderOption option && !ReferenceEquals(option, ViewModel.SelectedProvider))
-        {
-            ViewModel.SelectedProvider = option;
-        }
-    }
 }
