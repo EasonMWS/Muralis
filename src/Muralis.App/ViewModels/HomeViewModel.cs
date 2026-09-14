@@ -6,12 +6,15 @@ using Microsoft.UI.Dispatching;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
+using Muralis.Core.Providers;
 
 namespace Muralis.App.ViewModels;
 
 public sealed partial class HomeViewModel : ObservableObject
 {
-    private readonly IWallpaperProvider _wallpaperProvider;
+    private readonly BingWallpaperProvider _onlineProvider;
+    private readonly MockWallpaperProvider _sampleProvider;
+    private readonly IImageCacheService _imageCache;
     private readonly ILocalLibrary _library;
     private readonly INavigationService _navigation;
     private readonly ILogger<HomeViewModel> _logger;
@@ -27,12 +30,16 @@ public sealed partial class HomeViewModel : ObservableObject
     public partial Wallpaper? Featured { get; set; }
 
     public HomeViewModel(
-        IWallpaperProvider wallpaperProvider,
+        BingWallpaperProvider onlineProvider,
+        MockWallpaperProvider sampleProvider,
+        IImageCacheService imageCache,
         ILocalLibrary library,
         INavigationService navigation,
         ILogger<HomeViewModel> logger)
     {
-        _wallpaperProvider = wallpaperProvider;
+        _onlineProvider = onlineProvider;
+        _sampleProvider = sampleProvider;
+        _imageCache = imageCache;
         _library = library;
         _navigation = navigation;
         _logger = logger;
@@ -72,9 +79,25 @@ public sealed partial class HomeViewModel : ObservableObject
 
         try
         {
-            var items = await _wallpaperProvider
-                .GetWallpapersAsync(new WallpaperQuery { PageSize = 24 }, cancellationToken)
-                .ConfigureAwait(true);
+            IReadOnlyList<Wallpaper> items;
+            try
+            {
+                items = await _onlineProvider
+                    .GetWallpapersAsync(new WallpaperQuery { PageSize = 24 }, cancellationToken)
+                    .ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Bing feed unavailable; falling back to sample wallpapers");
+                ErrorMessage = "Bing is unreachable right now — showing sample wallpapers instead.";
+                items = await _sampleProvider
+                    .GetWallpapersAsync(new WallpaperQuery { PageSize = 24 }, cancellationToken)
+                    .ConfigureAwait(true);
+            }
 
             Recommended.Clear();
             foreach (var item in items)
@@ -86,6 +109,9 @@ public sealed partial class HomeViewModel : ObservableObject
             await RefreshRecentAsync();
 
             _logger.LogInformation("Home feed loaded with {Count} wallpapers", Recommended.Count);
+
+            // Pull thumbnails in the background so the hero and cards fill in as files arrive.
+            _ = _imageCache.WarmThumbnailsAsync(Recommended.ToList(), cancellationToken);
         }
         catch (OperationCanceledException)
         {

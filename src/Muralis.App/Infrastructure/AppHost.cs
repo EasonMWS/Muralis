@@ -48,12 +48,20 @@ public sealed class AppHost
             builder.AddSerilog(dispose: false);
         });
 
+        // Shared HTTP client for providers, downloads and thumbnail caching.
+        services.AddSingleton(_ => new HttpClient { Timeout = TimeSpan.FromSeconds(90) });
+
         // Core services (platform-agnostic).
         services.AddSingleton<ISettingsService, SettingsService>();
-        services.AddSingleton<IWallpaperProvider, MockWallpaperProvider>();
+        services.AddSingleton<MockWallpaperProvider>();
+        services.AddSingleton<BingWallpaperProvider>();
+        services.AddSingleton<IWallpaperProvider>(sp => sp.GetRequiredService<MockWallpaperProvider>());
+        services.AddSingleton<IWallpaperProvider>(sp => sp.GetRequiredService<BingWallpaperProvider>());
         services.AddSingleton<IWallpaperRepository>(sp => new SqliteWallpaperRepository(
             sp.GetRequiredService<ILogger<SqliteWallpaperRepository>>()));
         services.AddSingleton<ILocalLibrary, LocalLibrary>();
+        services.AddSingleton<IDownloadService, DownloadService>();
+        services.AddSingleton<IImageCacheService, ImageCacheService>();
 
         // Application services.
         services.AddSingleton<WindowContext>();

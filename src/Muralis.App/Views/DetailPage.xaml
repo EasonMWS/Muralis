@@ -24,7 +24,7 @@
                 Margin="18"
                 MaxHeight="640"
                 HorizontalAlignment="Center"
-                Source="{x:Bind ViewModel.Wallpaper.LocalPath, Mode=OneWay, Converter={StaticResource PathToImageSource}}" />
+                Source="{x:Bind ViewModel.Wallpaper.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}}" />
         </Border>
 
         <!--  Info and actions  -->
@@ -134,8 +134,35 @@
 
                     <Button
                         HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Download to PC"
+                        Click="OnDownloadClick"
+                        Visibility="{x:Bind ViewModel.CanDownload, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon FontSize="16" Glyph="&#xE896;" />
+                            <TextBlock Text="Download to PC" />
+                        </StackPanel>
+                    </Button>
+
+                    <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.IsDownloading, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <ProgressBar Maximum="1" Value="{x:Bind ViewModel.DownloadProgress, Mode=OneWay}" />
+                        <Grid>
+                            <TextBlock
+                                Style="{StaticResource CardCaptionStyle}"
+                                Text="{x:Bind ViewModel.DownloadProgressText, Mode=OneWay}" />
+                            <Button
+                                HorizontalAlignment="Right"
+                                AutomationProperties.Name="Cancel download"
+                                Click="OnCancelDownloadClick"
+                                Content="Cancel"
+                                Padding="12,4" />
+                        </Grid>
+                    </StackPanel>
+
+                    <Button
+                        HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Show file location"
-                        Click="OnOpenInExplorerClick">
+                        Click="OnOpenInExplorerClick"
+                        Visibility="{x:Bind ViewModel.CanShowInExplorer, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <FontIcon FontSize="16" Glyph="&#xE7C5;" />
                             <TextBlock Text="Show file location" />

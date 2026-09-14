@@ -155,6 +155,15 @@ public sealed class LocalLibrary : ILocalLibrary
         RaiseChanged();
     }
 
+    public async Task SaveAsync(Wallpaper wallpaper, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(wallpaper);
+
+        await _repository.UpsertAsync(wallpaper, cancellationToken).ConfigureAwait(false);
+        EnsureCached(wallpaper);
+        RaiseChanged();
+    }
+
     public async Task RecordUsageAsync(Wallpaper wallpaper, string? monitorName, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(wallpaper);

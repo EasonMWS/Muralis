@@ -24,25 +24,59 @@ public static class FileNameHelper
 
             if (c is '_' or '-' or '.' || char.IsWhiteSpace(c))
             {
-                FlushWord(words, current);
+                FlushWords(words, current);
                 continue;
             }
 
             // Split "img14" into "img" + "14", but keep units like "4k" together.
             if (i > 0 && char.IsDigit(c) && char.IsLetter(name[i - 1]))
             {
-                FlushWord(words, current);
+                FlushWords(words, current);
             }
 
             current.Append(c);
         }
 
-        FlushWord(words, current);
+        FlushWords(words, current);
 
         return words.Count == 0 ? "Untitled" : string.Join(' ', words.Select(Capitalize));
     }
 
-    private static void FlushWord(List<string> words, StringBuilder current)
+    /// <summary>Removes characters that are not allowed in file names.</summary>
+    public static string SanitizeFileName(string name)
+    {
+        var cleaned = string.Join('_', name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+        return cleaned.Length == 0 ? "wallpaper" : cleaned;
+    }
+
+    /// <summary>
+    /// Returns <paramref name="path"/> when it is free, otherwise appends " (2)", " (3)", ...
+    /// so a download never overwrites an existing file.
+    /// </summary>
+    public static string EnsureUniqueFilePath(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return path;
+        }
+
+        var directory = Path.GetDirectoryName(path) ?? string.Empty;
+        var name = Path.GetFileNameWithoutExtension(path);
+        var extension = Path.GetExtension(path);
+
+        for (var counter = 2; counter < 1000; counter++)
+        {
+            var candidate = Path.Combine(directory, $"{name} ({counter}){extension}");
+            if (!File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return Path.Combine(directory, $"{name} ({Guid.NewGuid():N}){extension}");
+    }
+
+    private static void FlushWords(List<string> words, StringBuilder current)
     {
         if (current.Length > 0)
         {

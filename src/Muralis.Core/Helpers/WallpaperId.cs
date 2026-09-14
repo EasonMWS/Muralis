@@ -10,7 +10,8 @@ public static class WallpaperId
 
     public static string ForRemote(string providerId, string key) => $"{providerId}:{key}";
 
-    private static string ShortHash(string value)
+    /// <summary>Stable short hash used for ids and cache file names.</summary>
+    public static string ShortHash(string value)
     {
         var normalized = value.Replace('\\', '/').ToLowerInvariant();
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));

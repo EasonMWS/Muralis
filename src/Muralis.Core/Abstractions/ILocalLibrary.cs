@@ -33,6 +33,9 @@ public interface ILocalLibrary
     /// </summary>
     Task SetFavoriteAsync(Wallpaper wallpaper, bool isFavorite, CancellationToken cancellationToken = default);
 
+    /// <summary>Persists changes made to a wallpaper (e.g. a finished download), adding it if needed.</summary>
+    Task SaveAsync(Wallpaper wallpaper, CancellationToken cancellationToken = default);
+
     /// <summary>Records that the wallpaper was applied to the desktop and when.</summary>
     Task RecordUsageAsync(Wallpaper wallpaper, string? monitorName, CancellationToken cancellationToken = default);
 

@@ -12,7 +12,7 @@
         CornerRadius="8">
         <Grid>
             <Image
-                Source="{x:Bind Wallpaper.LocalPath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
+                Source="{x:Bind Wallpaper.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
                 Stretch="UniformToFill" />
 
             <!--  Bottom scrim so the title stays readable on any image  -->
@@ -53,7 +53,7 @@
                 <TextBlock
                     FontSize="12"
                     Foreground="#B3FFFFFF"
-                    Text="{x:Bind Wallpaper.ResolutionText, Mode=OneWay}"
+                    Text="{x:Bind Wallpaper.MetaText, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
             </StackPanel>
         </Grid>

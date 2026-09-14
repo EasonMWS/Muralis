@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   favorites and usage history persist across restarts (M3)
 - Favorites works for any wallpaper — even one that is not in the library yet (M3)
 - "Recently used" feed on Home backed by bounded usage history (200 entries) (M3)
+- Bing daily images provider (no API key): Home and Browse show fresh daily wallpapers,
+  with automatic fallback to the sample set when offline (M4)
+- Download service with progress, cancellation and conflict-safe file names; downloads
+  are saved to the configured folder and join the catalog with real dimensions (M4)
+- Thumbnail cache so online grids render instantly and work offline (M4)
+- Provider picker on the Browse page (Bing / sample wallpapers) (M4)
 
 ### Fixed
 

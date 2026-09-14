@@ -5,12 +5,13 @@ using Microsoft.Extensions.Logging;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
+using Muralis.Core.Providers;
 
 namespace Muralis.App.ViewModels;
 
 public sealed partial class BrowseViewModel : ObservableObject
 {
-    private readonly IWallpaperProvider _wallpaperProvider;
+    private readonly IImageCacheService _imageCache;
     private readonly INavigationService _navigation;
     private readonly ILogger<BrowseViewModel> _logger;
     private CancellationTokenSource? _searchDebounce;
@@ -25,22 +26,34 @@ public sealed partial class BrowseViewModel : ObservableObject
     [ObservableProperty]
     public partial string SearchText { get; set; }
 
+    [ObservableProperty]
+    public partial IWallpaperProvider? SelectedProvider { get; set; }
+
     public BrowseViewModel(
-        IWallpaperProvider wallpaperProvider,
+        BingWallpaperProvider bing,
+        MockWallpaperProvider sample,
         INavigationService navigation,
+        IImageCacheService imageCache,
         ILogger<BrowseViewModel> logger)
     {
-        _wallpaperProvider = wallpaperProvider;
         _navigation = navigation;
+        _imageCache = imageCache;
         _logger = logger;
+
+        Providers = [bing, sample];
+        SelectedProvider = bing;
 
         SearchText = string.Empty;
         _isInitialized = true;
     }
 
+    public IReadOnlyList<IWallpaperProvider> Providers { get; }
+
     public ObservableCollection<Wallpaper> Items { get; } = [];
 
-    public string ProviderName => _wallpaperProvider.DisplayName;
+    public string ProviderName => SelectedProvider?.DisplayName ?? "Wallpapers";
+
+    public bool SupportsSearch => SelectedProvider?.SupportsSearch ?? false;
 
     public bool IsEmpty => !IsLoading && ErrorMessage is null && Items.Count == 0;
 
@@ -71,6 +84,17 @@ public sealed partial class BrowseViewModel : ObservableObject
         if (_isInitialized)
         {
             _ = DebouncedSearchAsync();
+        }
+    }
+
+    partial void OnSelectedProviderChanged(IWallpaperProvider? value)
+    {
+        OnPropertyChanged(nameof(ProviderName));
+        OnPropertyChanged(nameof(SupportsSearch));
+
+        if (_isInitialized)
+        {
+            _ = LoadCoreAsync(CancellationToken.None);
         }
     }
 
@@ -107,14 +131,26 @@ public sealed partial class BrowseViewModel : ObservableObject
             return;
         }
 
+        var provider = SelectedProvider;
+        if (provider is null)
+        {
+            return;
+        }
+
         IsLoading = true;
         ErrorMessage = null;
         NotifyStateChanged();
 
         try
         {
-            var items = await _wallpaperProvider
-                .GetWallpapersAsync(new WallpaperQuery { SearchText = SearchText, PageSize = 60 }, cancellationToken)
+            var items = await provider
+                .GetWallpapersAsync(
+                    new WallpaperQuery
+                    {
+                        SearchText = provider.SupportsSearch ? SearchText : null,
+                        PageSize = 60,
+                    },
+                    cancellationToken)
                 .ConfigureAwait(true);
 
             Items.Clear();
@@ -123,7 +159,10 @@ public sealed partial class BrowseViewModel : ObservableObject
                 Items.Add(item);
             }
 
-            _logger.LogInformation("Browse loaded {Count} wallpapers (search: '{Search}')", Items.Count, SearchText);
+            _logger.LogInformation("Browse loaded {Count} wallpapers from '{Provider}'", Items.Count, provider.Id);
+
+            // Thumbnails are cached in the background; cards update as files arrive.
+            _ = _imageCache.WarmThumbnailsAsync(Items.ToList(), cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -131,8 +170,8 @@ public sealed partial class BrowseViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load the browse feed");
-            ErrorMessage = "We couldn't load wallpapers. Please try again.";
+            _logger.LogError(ex, "Failed to load wallpapers from '{Provider}'", provider.Id);
+            ErrorMessage = "We couldn't load wallpapers. Check your connection and try again.";
         }
         finally
         {

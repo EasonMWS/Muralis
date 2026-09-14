@@ -38,6 +38,12 @@ public sealed partial class DetailPage : Page
     private void OnOpenInExplorerClick(object sender, RoutedEventArgs e) =>
         ViewModel.OpenInExplorerCommand.Execute(null);
 
+    private void OnDownloadClick(object sender, RoutedEventArgs e) =>
+        ViewModel.DownloadCommand.Execute(null);
+
+    private void OnCancelDownloadClick(object sender, RoutedEventArgs e) =>
+        ViewModel.CancelDownloadCommand.Execute(null);
+
     private void OnRemoveFromLibraryClick(object sender, RoutedEventArgs e) =>
         ViewModel.RemoveFromLibraryCommand.Execute(null);
 

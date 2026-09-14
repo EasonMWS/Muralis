@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Muralis.App.ViewModels;
+using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
 
 namespace Muralis.App.Views;
@@ -11,6 +12,8 @@ public sealed partial class BrowsePage : Page
     {
         ViewModel = App.GetService<BrowseViewModel>();
         InitializeComponent();
+
+        ProviderCombo.SelectedItem = ViewModel.SelectedProvider;
         Loaded += OnLoaded;
     }
 
@@ -27,4 +30,12 @@ public sealed partial class BrowsePage : Page
 
     private void OnWallpaperItemClick(object sender, ItemClickEventArgs e) =>
         ViewModel.OpenWallpaperCommand.Execute(e.ClickedItem as Wallpaper);
+
+    private void OnProviderSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ProviderCombo.SelectedItem is IWallpaperProvider provider && !ReferenceEquals(provider, ViewModel.SelectedProvider))
+        {
+            ViewModel.SelectedProvider = provider;
+        }
+    }
 }
