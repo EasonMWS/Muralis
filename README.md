@@ -14,6 +14,8 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 - **Browse** — discover wallpapers in a responsive card grid with resolution, aspect ratio and tags
 - **Preview & apply** — open a wallpaper, then set it as your desktop background with one click
 - **Fit modes** — Fill, Fit, Stretch, Center, Tile and Span
+- **Per-display control** — pick which monitor receives a wallpaper on multi-monitor setups
+- **Format friendly** — WebP and AVIF images are transcoded automatically so Windows can use them
 - **Local library** — import your own images and manage them without touching the original files
 - **Favorites** — keep the ones you love, persisted across restarts
 - **Downloads** — asynchronous downloads with progress, cancellation and conflict-safe file names
@@ -23,7 +25,17 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 
 ## Screenshots
 
-_Coming with the v0.1 release._
+| Home | Browse |
+| --- | --- |
+| ![Home](docs/screenshots/home.png) | ![Browse](docs/screenshots/browse.png) |
+
+| Wallpaper details | Library |
+| --- | --- |
+| ![Details](docs/screenshots/detail.png) | ![Library](docs/screenshots/library.png) |
+
+| Settings | Dark theme |
+| --- | --- |
+| ![Settings](docs/screenshots/settings.png) | ![Dark theme](docs/screenshots/browse-dark.png) |
 
 ## Requirements
 
@@ -80,7 +92,7 @@ Muralis.Core.Tests   Unit tests for the core logic
 ## Roadmap
 
 - [x] M1 — Project skeleton: MVVM, DI, logging, navigation, shell, four main pages
-- [ ] M2 — Local wallpapers: import, grid, details, set as desktop background
+- [x] M2 — Local wallpapers: import, grid, details, set as desktop background
 - [ ] M3 — Persistence: favorites, history, settings (SQLite + JSON)
 - [ ] M4 — Online wallpapers: provider, downloads, image cache
 - [ ] M5 — Rotation, run-at-startup, system tray

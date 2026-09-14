@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Muralis.App.Services;
+using Muralis.App.Services.Platform;
 using Muralis.App.ViewModels;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
@@ -44,6 +45,7 @@ public sealed class AppHost
         // Core services (platform-agnostic).
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IWallpaperProvider, MockWallpaperProvider>();
+        services.AddSingleton<ILocalLibrary, LocalLibrary>();
 
         // Application services.
         services.AddSingleton<WindowContext>();
@@ -51,6 +53,10 @@ public sealed class AppHost
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IFilePickerService, FilePickerService>();
+
+        // Windows platform services.
+        services.AddSingleton<IImageFormatService, ImageFormatService>();
+        services.AddSingleton<IWallpaperService, WindowsWallpaperService>();
 
         // Shell and view models.
         services.AddSingleton<MainWindow>();

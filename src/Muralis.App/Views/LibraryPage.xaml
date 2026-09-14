@@ -19,6 +19,7 @@
     <Grid Padding="36,24,36,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -44,7 +45,26 @@
             </Button>
         </Grid>
 
-        <Grid Grid.Row="1" Margin="0,20,0,0">
+        <StackPanel
+            Grid.Row="1"
+            Margin="0,16,0,0"
+            Spacing="8">
+            <InfoBar
+                IsClosable="False"
+                IsOpen="True"
+                Message="{x:Bind ViewModel.SuccessNotice, Mode=OneWay}"
+                Severity="Success"
+                Visibility="{x:Bind ViewModel.SuccessNotice, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+            <InfoBar
+                IsClosable="False"
+                IsOpen="True"
+                Message="{x:Bind ViewModel.ErrorNotice, Mode=OneWay}"
+                Severity="Error"
+                Title="Import problem"
+                Visibility="{x:Bind ViewModel.ErrorNotice, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+        </StackPanel>
+
+        <Grid Grid.Row="2" Margin="0,16,0,0">
             <GridView
                 Padding="0"
                 IsItemClickEnabled="True"
@@ -70,6 +90,14 @@
                 Glyph="&#xE8B9;"
                 Title="Your library is empty"
                 Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+
+            <ProgressRing
+                Width="44"
+                Height="44"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
         </Grid>
     </Grid>
 </Page>

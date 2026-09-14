@@ -12,6 +12,7 @@ public sealed partial class DetailPage : Page
     {
         ViewModel = App.GetService<DetailViewModel>();
         InitializeComponent();
+        Loaded += OnLoaded;
     }
 
     public DetailViewModel ViewModel { get; }
@@ -22,6 +23,12 @@ public sealed partial class DetailPage : Page
         ViewModel.Load(e.Parameter as Wallpaper);
     }
 
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnLoaded;
+        await ViewModel.LoadMonitorsCommand.ExecuteAsync(null);
+    }
+
     private void OnSetAsWallpaperClick(object sender, RoutedEventArgs e) =>
         ViewModel.SetAsWallpaperCommand.Execute(null);
 
@@ -30,4 +37,10 @@ public sealed partial class DetailPage : Page
 
     private void OnOpenInExplorerClick(object sender, RoutedEventArgs e) =>
         ViewModel.OpenInExplorerCommand.Execute(null);
+
+    private void OnRemoveFromLibraryClick(object sender, RoutedEventArgs e) =>
+        ViewModel.RemoveFromLibraryCommand.Execute(null);
+
+    private void OnMonitorSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        ViewModel.SelectedMonitor = MonitorCombo.SelectedItem as MonitorInfo;
 }

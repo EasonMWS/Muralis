@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:Muralis.Core.Models"
     Background="Transparent"
     mc:Ignorable="d">
 
@@ -158,6 +159,51 @@
                         OffContent="Off"
                         OnContent="On" />
                 </Grid>
+            </Border>
+
+            <!--  Displays  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="Displays" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontSize="20"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Glyph="&#xE7F4;" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Connected displays" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.MonitorCountText, Mode=OneWay}" />
+                        </StackPanel>
+                    </Grid>
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Monitors}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:MonitorInfo">
+                                <Grid Margin="36,4,0,0" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind SummaryText}" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        MaxWidth="280"
+                                        Style="{StaticResource CardCaptionStyle}"
+                                        Text="{x:Bind Id}"
+                                        TextTrimming="CharacterEllipsis"
+                                        ToolTipService.ToolTip="{x:Bind Id}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </Border>
 
             <!--  Downloads  -->

@@ -57,7 +57,9 @@ public sealed class FilePickerService : IFilePickerService
             }
 
             WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowContext.Handle);
+            _logger.LogDebug("Showing the file picker dialog (owner hwnd: {Handle})", _windowContext.Handle);
             var files = await picker.PickMultipleFilesAsync().AsTask().ConfigureAwait(true);
+            _logger.LogDebug("File picker dialog closed");
             return files?.Select(file => file.Path).Where(path => !string.IsNullOrEmpty(path)).ToList() ?? [];
         }
         catch (Exception ex)

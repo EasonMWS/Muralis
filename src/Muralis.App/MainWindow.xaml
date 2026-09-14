@@ -37,9 +37,9 @@
             IsBackButtonVisible="Collapsed"
             IsPaneToggleButtonVisible="False"
             IsSettingsVisible="False"
+            ItemInvoked="OnNavigationItemInvoked"
             OpenPaneLength="248"
-            PaneDisplayMode="Left"
-            SelectionChanged="OnNavigationSelectionChanged">
+            PaneDisplayMode="Left">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Home" Tag="home">
                     <NavigationViewItem.Icon>

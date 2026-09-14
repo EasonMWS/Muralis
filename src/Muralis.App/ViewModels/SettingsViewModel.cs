@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -16,6 +17,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IThemeService _themeService;
     private readonly IFilePickerService _filePicker;
     private readonly IDialogService _dialogs;
+    private readonly IWallpaperService _wallpaperService;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _applyingSettings = true;
 
@@ -42,12 +44,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         IThemeService themeService,
         IFilePickerService filePicker,
         IDialogService dialogs,
+        IWallpaperService wallpaperService,
         ILogger<SettingsViewModel> logger)
     {
         _settingsService = settingsService;
         _themeService = themeService;
         _filePicker = filePicker;
         _dialogs = dialogs;
+        _wallpaperService = wallpaperService;
         _logger = logger;
 
         var settings = _settingsService.Current;
@@ -100,6 +104,35 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     public IReadOnlyList<WallpaperFitMode> FitModes { get; } = Enum.GetValues<WallpaperFitMode>();
+
+    public ObservableCollection<MonitorInfo> Monitors { get; } = [];
+
+    public string MonitorCountText => Monitors.Count switch
+    {
+        0 => "No displays detected",
+        1 => "1 display detected",
+        _ => $"{Monitors.Count} displays detected",
+    };
+
+    [RelayCommand]
+    private async Task RefreshMonitorsAsync()
+    {
+        try
+        {
+            var monitors = await _wallpaperService.GetMonitorsAsync();
+            Monitors.Clear();
+            foreach (var monitor in monitors)
+            {
+                Monitors.Add(monitor);
+            }
+
+            OnPropertyChanged(nameof(MonitorCountText));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not enumerate displays");
+        }
+    }
 
     public bool IsStartupSupported => false;
 

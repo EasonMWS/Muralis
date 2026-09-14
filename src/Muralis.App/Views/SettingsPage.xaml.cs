@@ -18,10 +18,11 @@ public sealed partial class SettingsPage : Page
 
     public SettingsViewModel ViewModel { get; }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
         ViewModel.RefreshCacheSizeCommand.Execute(null);
+        await ViewModel.RefreshMonitorsCommand.ExecuteAsync(null);
     }
 
     private void OnSystemThemeClick(object sender, RoutedEventArgs e) => ViewModel.SelectTheme(AppTheme.System);

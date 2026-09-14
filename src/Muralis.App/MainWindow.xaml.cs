@@ -11,7 +11,6 @@ public sealed partial class MainWindow : Window
 {
     private readonly INavigationService _navigation;
     private readonly ILogger<MainWindow> _logger;
-    private bool _syncingSelection;
 
     public MainWindow(
         INavigationService navigation,
@@ -32,18 +31,17 @@ public sealed partial class MainWindow : Window
 
         WindowHelper.ConfigureInitialPlacement(this);
 
-        // Selecting the first item triggers OnNavigationSelectionChanged, which navigates home.
         RootNavigationView.SelectedItem = RootNavigationView.MenuItems[0];
+        _navigation.NavigateTo(Routes.Home);
     }
 
-    private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    /// <summary>
+    /// ItemInvoked (unlike SelectionChanged) also fires when the already-selected item is
+    /// clicked again — for example to leave a detail page and return to the section.
+    /// </summary>
+    private void OnNavigationItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
-        if (_syncingSelection || args.SelectedItem is not NavigationViewItem { Tag: string key })
-        {
-            return;
-        }
-
-        if (!_navigation.NavigateTo(key))
+        if (args.InvokedItemContainer is NavigationViewItem { Tag: string key } && !_navigation.NavigateTo(key))
         {
             _logger.LogWarning("Navigation to '{Key}' was not possible", key);
         }
@@ -58,9 +56,7 @@ public sealed partial class MainWindow : Window
         var matchingItem = FindNavigationItem(e.PageKey);
         if (matchingItem is not null && !ReferenceEquals(RootNavigationView.SelectedItem, matchingItem))
         {
-            _syncingSelection = true;
             RootNavigationView.SelectedItem = matchingItem;
-            _syncingSelection = false;
         }
     }
 

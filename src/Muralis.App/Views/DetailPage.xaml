@@ -74,15 +74,51 @@
                     </StackPanel>
                 </Border>
 
+                <!--  Apply target, only meaningful with more than one display  -->
+                <Border
+                    Padding="16"
+                    Style="{StaticResource CardBorderStyle}"
+                    Visibility="{x:Bind ViewModel.HasMultipleMonitors, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Apply to" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Send this wallpaper to one display." />
+                        </StackPanel>
+                        <ComboBox
+                            x:Name="MonitorCombo"
+                            Grid.Column="1"
+                            MinWidth="170"
+                            VerticalAlignment="Center"
+                            DisplayMemberPath="SummaryText"
+                            ItemsSource="{x:Bind ViewModel.Monitors}"
+                            PlaceholderText="All displays"
+                            SelectionChanged="OnMonitorSelectionChanged" />
+                    </Grid>
+                </Border>
+
                 <StackPanel Spacing="10">
                     <Button
                         HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Set as desktop wallpaper"
                         Click="OnSetAsWallpaperClick"
+                        IsEnabled="{x:Bind ViewModel.CanApplyWallpaper, Mode=OneWay}"
                         Style="{StaticResource AccentButtonStyle}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon FontSize="16" Glyph="&#xE8B9;" />
-                            <TextBlock Text="Set as desktop wallpaper" />
+                            <ProgressRing
+                                Width="16"
+                                Height="16"
+                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                IsActive="{x:Bind ViewModel.IsApplying, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.IsApplying, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                            <FontIcon
+                                FontSize="16"
+                                Glyph="&#xE8B9;"
+                                Visibility="{x:Bind ViewModel.IsApplying, Mode=OneWay, Converter={StaticResource InverseBoolToVisibility}}" />
+                            <TextBlock Text="{x:Bind ViewModel.ApplyButtonText, Mode=OneWay}" />
                         </StackPanel>
                     </Button>
 
@@ -105,14 +141,32 @@
                             <TextBlock Text="Show file location" />
                         </StackPanel>
                     </Button>
+
+                    <Button
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Remove from library"
+                        Click="OnRemoveFromLibraryClick"
+                        Visibility="{x:Bind ViewModel.CanRemoveFromLibrary, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon FontSize="16" Glyph="&#xE74D;" />
+                            <TextBlock Text="Remove from library" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
 
                 <InfoBar
                     IsClosable="False"
                     IsOpen="True"
-                    Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                    Severity="Informational"
-                    Visibility="{x:Bind ViewModel.StatusMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+                    Message="{x:Bind ViewModel.SuccessNotice, Mode=OneWay}"
+                    Severity="Success"
+                    Visibility="{x:Bind ViewModel.SuccessNotice, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+                <InfoBar
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="{x:Bind ViewModel.ErrorNotice, Mode=OneWay}"
+                    Severity="Error"
+                    Title="Something went wrong"
+                    Visibility="{x:Bind ViewModel.ErrorNotice, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
             </StackPanel>
         </ScrollViewer>
     </Grid>

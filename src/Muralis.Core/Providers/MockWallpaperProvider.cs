@@ -77,7 +77,7 @@ public sealed class MockWallpaperProvider : IWallpaperProvider
                     _cache.Add(new Wallpaper
                     {
                         Id = WallpaperId.ForLocalFile(file),
-                        Title = Prettify(Path.GetFileNameWithoutExtension(file)),
+                        Title = FileNameHelper.ToTitle(file),
                         LocalPath = file,
                         Width = width,
                         Height = height,
@@ -129,9 +129,4 @@ public sealed class MockWallpaperProvider : IWallpaperProvider
         }
     }
 
-    private static string Prettify(string fileName)
-    {
-        var cleaned = fileName.Replace('_', ' ').Replace('-', ' ').Trim();
-        return cleaned.Length == 0 ? "Untitled" : cleaned;
-    }
 }
