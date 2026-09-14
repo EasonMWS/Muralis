@@ -18,11 +18,16 @@ public sealed class WindowsWallpaperService : IWallpaperService
     private const string DesktopRegistryPath = @"Control Panel\Desktop";
 
     private readonly IImageFormatService _imageFormatService;
+    private readonly ILocalizationService _localization;
     private readonly ILogger<WindowsWallpaperService> _logger;
 
-    public WindowsWallpaperService(IImageFormatService imageFormatService, ILogger<WindowsWallpaperService> logger)
+    public WindowsWallpaperService(
+        IImageFormatService imageFormatService,
+        ILocalizationService localization,
+        ILogger<WindowsWallpaperService> logger)
     {
         _imageFormatService = imageFormatService;
+        _localization = localization;
         _logger = logger;
     }
 
@@ -84,7 +89,7 @@ public sealed class WindowsWallpaperService : IWallpaperService
                 monitors.Add(new MonitorInfo
                 {
                     Id = devicePath,
-                    DisplayName = $"Display {index + 1}",
+                    DisplayName = _localization.Format("Display_Number", index + 1),
                     X = rect.Left,
                     Y = rect.Top,
                     Width = rect.Width,

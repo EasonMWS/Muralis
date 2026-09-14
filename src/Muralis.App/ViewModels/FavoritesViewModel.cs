@@ -8,7 +8,7 @@ using Muralis.Core.Models;
 
 namespace Muralis.App.ViewModels;
 
-public sealed partial class FavoritesViewModel : ObservableObject
+public sealed partial class FavoritesViewModel : ViewModelBase
 {
     private readonly INavigationService _navigation;
     private readonly ILocalLibrary _library;
@@ -17,7 +17,11 @@ public sealed partial class FavoritesViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
-    public FavoritesViewModel(INavigationService navigation, ILocalLibrary library)
+    public FavoritesViewModel(
+        INavigationService navigation,
+        ILocalLibrary library,
+        ILocalizationService localization)
+        : base(localization)
     {
         _navigation = navigation;
         _library = library;

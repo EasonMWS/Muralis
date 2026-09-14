@@ -29,18 +29,18 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Library" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="Your own images, ready to become wallpapers. Original files are never modified." />
+                <TextBlock Style="{StaticResource PageTitleStyle}" Text="{Binding [Library_Title], Source={StaticResource Loc}}" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="{Binding [Library_Subtitle], Source={StaticResource Loc}}" />
             </StackPanel>
             <Button
                 Grid.Column="1"
                 VerticalAlignment="Center"
-                AutomationProperties.Name="Import images"
+                AutomationProperties.Name="{Binding [Library_Import], Source={StaticResource Loc}}"
                 Click="OnImportClick"
                 Style="{StaticResource AccentButtonStyle}">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon FontSize="16" Glyph="&#xE710;" />
-                    <TextBlock Text="Import images" />
+                    <TextBlock Text="{Binding [Library_Import], Source={StaticResource Loc}}" />
                 </StackPanel>
             </Button>
         </Grid>
@@ -60,7 +60,7 @@
                 IsOpen="True"
                 Message="{x:Bind ViewModel.ErrorNotice, Mode=OneWay}"
                 Severity="Error"
-                Title="Import problem"
+                Title="{Binding [Library_Error_Title], Source={StaticResource Loc}}"
                 Visibility="{x:Bind ViewModel.ErrorNotice, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
         </StackPanel>
 
@@ -85,10 +85,10 @@
 
             <controls:EmptyState
                 ActionCommand="{x:Bind ViewModel.ImportCommand}"
-                ActionText="Import images"
-                Description="Add pictures from your PC — JPG, PNG or BMP anywhere on disk. Muralis keeps a reference to your file and never modifies the original."
+                ActionText="{Binding [Library_Import], Source={StaticResource Loc}}"
+                Description="{Binding [Library_Empty_Description], Source={StaticResource Loc}}"
                 Glyph="&#xE8B9;"
-                Title="Your library is empty"
+                Title="{Binding [Library_Empty_Title], Source={StaticResource Loc}}"
                 Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
 
             <ProgressRing

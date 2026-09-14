@@ -26,6 +26,7 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 - **Auto rotation** — shuffle favorites or a folder every 15 minutes to 24 hours
 - **Runs in the tray** — close to the notification area and keep rotating; optional run at sign-in
 - **Per-display targeting** — pick which monitor receives a wallpaper
+- **English & 简体中文** — the UI follows your Windows language, or pick one in Settings; switching applies instantly
 - **Native look & feel** — Mica, custom title bar, light/dark/system theme support
 
 ## Screenshots

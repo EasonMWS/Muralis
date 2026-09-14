@@ -28,7 +28,7 @@
 
                 <StackPanel>
                     <TextBlock Style="{StaticResource PageTitleStyle}" Text="{x:Bind ViewModel.Greeting}" />
-                    <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="Discover something beautiful for your desktop." />
+                    <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="{Binding [Home_Subtitle], Source={StaticResource Loc}}" />
                 </StackPanel>
 
                 <InfoBar
@@ -36,7 +36,7 @@
                     IsOpen="True"
                     Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                     Severity="Error"
-                    Title="Something went wrong"
+                    Title="{Binding [Common_Error_Title], Source={StaticResource Loc}}"
                     Visibility="{x:Bind ViewModel.ErrorMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
 
                 <!--  Featured wallpaper  -->
@@ -46,7 +46,7 @@
                     Visibility="{x:Bind ViewModel.Featured, Mode=OneWay, Converter={StaticResource NullToVisibility}}">
                     <Grid>
                         <Image
-                            Source="{x:Bind ViewModel.Featured.LocalPath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
+                            Source="{x:Bind ViewModel.Featured.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
                             Stretch="UniformToFill" />
                         <Border
                             Height="230"
@@ -71,7 +71,7 @@
                                 <TextBlock
                                     FontSize="12"
                                     Foreground="White"
-                                    Text="FEATURED TODAY" />
+                                    Text="{Binding [Home_FeaturedToday], Source={StaticResource Loc}}" />
                             </Border>
                             <TextBlock
                                 Foreground="White"
@@ -83,10 +83,11 @@
                                     VerticalAlignment="Center"
                                     FontSize="13"
                                     Foreground="#CCFFFFFF"
-                                    Text="{x:Bind ViewModel.Featured.ResolutionText, Mode=OneWay}" />
+                                    Text="{x:Bind ViewModel.Featured.ResolutionText, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.Featured.ResolutionText, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
                                 <Button
                                     Click="OnFeaturedDetailsClick"
-                                    Content="View details"
+                                    Content="{Binding [Home_ViewDetails], Source={StaticResource Loc}}"
                                     Style="{StaticResource AccentButtonStyle}" />
                             </StackPanel>
                         </StackPanel>
@@ -96,11 +97,11 @@
                 <!--  Recommended row  -->
                 <StackPanel Spacing="6">
                     <Grid>
-                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Recommended for you" />
+                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{Binding [Home_Recommended], Source={StaticResource Loc}}" />
                         <HyperlinkButton
                             HorizontalAlignment="Right"
                             Click="OnBrowseAllClick"
-                            Content="Browse all" />
+                            Content="{Binding [Home_BrowseAll], Source={StaticResource Loc}}" />
                     </Grid>
                     <ListView
                         Padding="0"
@@ -124,7 +125,7 @@
 
                 <!--  Recently used  -->
                 <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.HasRecent, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Recently used" />
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{Binding [Home_RecentlyUsed], Source={StaticResource Loc}}" />
                     <ListView
                         Padding="0"
                         IsItemClickEnabled="True"
@@ -181,8 +182,8 @@
                                 Grid.Column="1"
                                 VerticalAlignment="Center"
                                 Spacing="2">
-                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Favorites" />
-                                <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Keep the wallpapers you love in one place" />
+                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Home_QuickFavorites_Title], Source={StaticResource Loc}}" />
+                                <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Home_QuickFavorites_Description], Source={StaticResource Loc}}" />
                             </StackPanel>
                             <FontIcon
                                 Grid.Column="2"
@@ -223,8 +224,8 @@
                                 Grid.Column="1"
                                 VerticalAlignment="Center"
                                 Spacing="2">
-                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Local library" />
-                                <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Import and manage your own images" />
+                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Home_QuickLibrary_Title], Source={StaticResource Loc}}" />
+                                <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Home_QuickLibrary_Description], Source={StaticResource Loc}}" />
                             </StackPanel>
                             <FontIcon
                                 Grid.Column="2"

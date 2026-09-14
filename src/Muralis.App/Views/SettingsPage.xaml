@@ -16,8 +16,8 @@
             Spacing="10">
 
             <StackPanel Margin="0,0,0,8">
-                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Settings" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="Personalize how Muralis looks and behaves." />
+                <TextBlock Style="{StaticResource PageTitleStyle}" Text="{Binding [Settings_Title], Source={StaticResource Loc}}" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="{Binding [Settings_Subtitle], Source={StaticResource Loc}}" />
             </StackPanel>
 
             <InfoBar
@@ -31,14 +31,46 @@
                 IsOpen="True"
                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                 Severity="Error"
-                Title="Something went wrong"
+                Title="{Binding [Common_Error_Title], Source={StaticResource Loc}}"
                 Visibility="{x:Bind ViewModel.ErrorMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+
+            <!--  Language  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Settings_Section_Language], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE774;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Language_Title], Source={StaticResource Loc}}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_Language_Description], Source={StaticResource Loc}}" />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="LanguageCombo"
+                        Grid.Column="2"
+                        MinWidth="170"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding [Settings_Language_Title], Source={StaticResource Loc}}"
+                        DisplayMemberPath="DisplayName"
+                        SelectionChanged="OnLanguageSelectionChanged" />
+                </Grid>
+            </Border>
 
             <!--  Appearance  -->
             <TextBlock
                 Margin="0,14,0,4"
                 Style="{StaticResource SectionTitleStyle}"
-                Text="Appearance" />
+                Text="{Binding [Settings_Section_Appearance], Source={StaticResource Loc}}" />
             <Border Padding="16" Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
@@ -52,8 +84,8 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Glyph="&#xE790;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Theme" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Choose light, dark, or match the Windows setting." />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Theme_Title], Source={StaticResource Loc}}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_Theme_Description], Source={StaticResource Loc}}" />
                     </StackPanel>
                     <StackPanel
                         Grid.Column="2"
@@ -62,17 +94,17 @@
                         VerticalAlignment="Center">
                         <RadioButton
                             Click="OnSystemThemeClick"
-                            Content="System"
+                            Content="{Binding [Settings_Theme_System], Source={StaticResource Loc}}"
                             GroupName="ThemeGroup"
                             IsChecked="{x:Bind ViewModel.IsSystemTheme, Mode=OneWay}" />
                         <RadioButton
                             Click="OnLightThemeClick"
-                            Content="Light"
+                            Content="{Binding [Settings_Theme_Light], Source={StaticResource Loc}}"
                             GroupName="ThemeGroup"
                             IsChecked="{x:Bind ViewModel.IsLightTheme, Mode=OneWay}" />
                         <RadioButton
                             Click="OnDarkThemeClick"
-                            Content="Dark"
+                            Content="{Binding [Settings_Theme_Dark], Source={StaticResource Loc}}"
                             GroupName="ThemeGroup"
                             IsChecked="{x:Bind ViewModel.IsDarkTheme, Mode=OneWay}" />
                     </StackPanel>
@@ -83,7 +115,7 @@
             <TextBlock
                 Margin="0,14,0,4"
                 Style="{StaticResource SectionTitleStyle}"
-                Text="Wallpapers" />
+                Text="{Binding [Settings_Section_Wallpapers], Source={StaticResource Loc}}" />
             <Border Padding="16" Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
@@ -97,15 +129,15 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Glyph="&#xE91B;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Default style" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="How wallpapers are fitted to your desktop." />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_DefaultStyle_Title], Source={StaticResource Loc}}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_DefaultStyle_Description], Source={StaticResource Loc}}" />
                     </StackPanel>
                     <ComboBox
                         x:Name="FitModeCombo"
                         Grid.Column="2"
                         MinWidth="150"
                         VerticalAlignment="Center"
-                        ItemsSource="{x:Bind ViewModel.FitModes}"
+                        DisplayMemberPath="Label"
                         SelectionChanged="OnFitModeSelectionChanged" />
                 </Grid>
             </Border>
@@ -123,15 +155,15 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Glyph="&#xE7E8;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Start with Windows" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Launch Muralis automatically when you sign in." />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Startup_Title], Source={StaticResource Loc}}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_Startup_Description], Source={StaticResource Loc}}" />
                     </StackPanel>
                     <ToggleSwitch
                         Grid.Column="2"
                         VerticalAlignment="Center"
                         IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}"
-                        OffContent="Off"
-                        OnContent="On" />
+                        OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                        OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
                 </Grid>
             </Border>
 
@@ -150,16 +182,16 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Glyph="&#xE895;" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Auto rotation" />
-                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Shuffle wallpapers automatically while Muralis is running." />
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Rotation_Title], Source={StaticResource Loc}}" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_Rotation_Description], Source={StaticResource Loc}}" />
                         </StackPanel>
                         <ToggleSwitch
                             Grid.Column="2"
                             VerticalAlignment="Center"
-                            AutomationProperties.Name="Auto rotation"
+                            AutomationProperties.Name="{Binding [Settings_Rotation_Title], Source={StaticResource Loc}}"
                             IsOn="{x:Bind ViewModel.RotationEnabled, Mode=TwoWay}"
-                            OffContent="Off"
-                            OnContent="On" />
+                            OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                            OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
                     </Grid>
 
                     <ContentControl x:Name="RotationOptionsPanel" HorizontalContentAlignment="Stretch">
@@ -178,12 +210,12 @@
                             <TextBlock
                                 VerticalAlignment="Center"
                                 Style="{StaticResource CardCaptionStyle}"
-                                Text="Change every" />
+                                Text="{Binding [Settings_Rotation_Interval], Source={StaticResource Loc}}" />
                             <ComboBox
                                 x:Name="IntervalCombo"
                                 Grid.Column="1"
                                 MinWidth="190"
-                                AutomationProperties.Name="Rotation interval"
+                                AutomationProperties.Name="{Binding [Settings_Rotation_Interval], Source={StaticResource Loc}}"
                                 SelectionChanged="OnIntervalSelectionChanged" />
 
                             <TextBlock
@@ -191,14 +223,14 @@
                                 Margin="0,10,0,0"
                                 VerticalAlignment="Center"
                                 Style="{StaticResource CardCaptionStyle}"
-                                Text="Rotation source" />
+                                Text="{Binding [Settings_Rotation_Source], Source={StaticResource Loc}}" />
                             <ComboBox
                                 x:Name="RotationSourceCombo"
                                 Grid.Row="1"
                                 Grid.Column="1"
                                 Margin="0,10,0,0"
                                 MinWidth="190"
-                                AutomationProperties.Name="Rotation source"
+                                AutomationProperties.Name="{Binding [Settings_Rotation_Source], Source={StaticResource Loc}}"
                                 SelectionChanged="OnRotationSourceSelectionChanged" />
 
                             <TextBlock
@@ -212,23 +244,23 @@
                                 Grid.Row="2"
                                 Grid.Column="1"
                                 Margin="0,10,0,0"
-                                AutomationProperties.Name="Choose rotation folder"
+                                AutomationProperties.Name="{Binding [Settings_Rotation_Choose], Source={StaticResource Loc}}"
                                 Click="OnChooseRotationFolderClick"
-                                Content="Choose…" />
+                                Content="{Binding [Settings_Rotation_Choose], Source={StaticResource Loc}}" />
 
                             <TextBlock
                                 Grid.Row="3"
                                 Margin="0,10,0,0"
                                 VerticalAlignment="Center"
                                 Style="{StaticResource CardCaptionStyle}"
-                                Text="Apply the next wallpaper right away" />
+                                Text="{Binding [Settings_Rotation_ShuffleHint], Source={StaticResource Loc}}" />
                             <Button
                                 Grid.Row="3"
                                 Grid.Column="1"
                                 Margin="0,10,0,0"
-                                AutomationProperties.Name="Shuffle now"
+                                AutomationProperties.Name="{Binding [Settings_Rotation_ShuffleNow], Source={StaticResource Loc}}"
                                 Click="OnShuffleNowClick"
-                                Content="Shuffle now" />
+                                Content="{Binding [Settings_Rotation_ShuffleNow], Source={StaticResource Loc}}" />
                         </Grid>
                     </ContentControl>
                 </StackPanel>
@@ -247,16 +279,16 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Glyph="&#xE8A7;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Keep running in the tray" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Closing the window keeps Muralis (and rotation) available in the notification area." />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Tray_Title], Source={StaticResource Loc}}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_Tray_Description], Source={StaticResource Loc}}" />
                     </StackPanel>
                     <ToggleSwitch
                         Grid.Column="2"
                         VerticalAlignment="Center"
-                        AutomationProperties.Name="Keep running in the tray"
+                        AutomationProperties.Name="{Binding [Settings_Tray_Title], Source={StaticResource Loc}}"
                         IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}"
-                        OffContent="Off"
-                        OnContent="On" />
+                        OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                        OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
                 </Grid>
             </Border>
 
@@ -264,7 +296,7 @@
             <TextBlock
                 Margin="0,14,0,4"
                 Style="{StaticResource SectionTitleStyle}"
-                Text="Displays" />
+                Text="{Binding [Settings_Section_Displays], Source={StaticResource Loc}}" />
             <Border Padding="16" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <Grid ColumnSpacing="16">
@@ -278,7 +310,7 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Glyph="&#xE7F4;" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Connected displays" />
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Displays_Title], Source={StaticResource Loc}}" />
                             <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.MonitorCountText, Mode=OneWay}" />
                         </StackPanel>
                     </Grid>
@@ -309,7 +341,7 @@
             <TextBlock
                 Margin="0,14,0,4"
                 Style="{StaticResource SectionTitleStyle}"
-                Text="Downloads" />
+                Text="{Binding [Settings_Section_Downloads], Source={StaticResource Loc}}" />
             <Border Padding="16" Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
@@ -323,7 +355,7 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Glyph="&#xE896;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Download folder" />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_DownloadFolder_Title], Source={StaticResource Loc}}" />
                         <TextBlock
                             MaxWidth="380"
                             Style="{StaticResource CardCaptionStyle}"
@@ -336,8 +368,8 @@
                         Orientation="Horizontal"
                         Spacing="8"
                         VerticalAlignment="Center">
-                        <Button Click="OnOpenDownloadFolderClick" Content="Open" />
-                        <Button Click="OnChangeDownloadFolderClick" Content="Change…" />
+                        <Button Click="OnOpenDownloadFolderClick" Content="{Binding [Settings_Open], Source={StaticResource Loc}}" />
+                        <Button Click="OnChangeDownloadFolderClick" Content="{Binding [Settings_Change], Source={StaticResource Loc}}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -346,7 +378,7 @@
             <TextBlock
                 Margin="0,14,0,4"
                 Style="{StaticResource SectionTitleStyle}"
-                Text="Storage" />
+                Text="{Binding [Settings_Section_Storage], Source={StaticResource Loc}}" />
             <Border Padding="16" Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
@@ -360,7 +392,7 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Glyph="&#xE7B8;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Image cache" />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Cache_Title], Source={StaticResource Loc}}" />
                         <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.CacheSizeText, Mode=OneWay}" />
                     </StackPanel>
                     <StackPanel
@@ -368,8 +400,8 @@
                         Orientation="Horizontal"
                         Spacing="8"
                         VerticalAlignment="Center">
-                        <Button Click="OnRefreshCacheClick" Content="Refresh" />
-                        <Button Click="OnClearCacheClick" Content="Clear cache" />
+                        <Button Click="OnRefreshCacheClick" Content="{Binding [Settings_Refresh], Source={StaticResource Loc}}" />
+                        <Button Click="OnClearCacheClick" Content="{Binding [Settings_ClearCache], Source={StaticResource Loc}}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -378,7 +410,7 @@
             <TextBlock
                 Margin="0,14,0,4"
                 Style="{StaticResource SectionTitleStyle}"
-                Text="About" />
+                Text="{Binding [Settings_Section_About], Source={StaticResource Loc}}" />
             <Border Padding="20" Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
@@ -391,15 +423,12 @@
                         Height="48"
                         Background="{ThemeResource AccentFillColorTertiaryBrush}"
                         CornerRadius="10">
-                        <FontIcon
-                            FontSize="20"
-                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                            Glyph="&#xE8B9;" />
+                        <Image Source="Assets/AppIcon.png" Stretch="UniformToFill" />
                     </Border>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Muralis — Wallpaper Studio" />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_About_Name], Source={StaticResource Loc}}" />
                         <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.AppVersion, Mode=OneWay}" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="A modern, open-source wallpaper manager for Windows." />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_About_Description], Source={StaticResource Loc}}" />
                     </StackPanel>
                     <StackPanel
                         Grid.Column="2"
@@ -407,18 +436,18 @@
                         Spacing="6">
                         <HyperlinkButton
                             HorizontalAlignment="Left"
-                            Content="View on GitHub"
+                            Content="{Binding [Settings_About_GitHub], Source={StaticResource Loc}}"
                             NavigateUri="{x:Bind ViewModel.GitHubUrl}" />
                         <TextBlock
                             Margin="12,0,0,0"
                             Style="{StaticResource CardCaptionStyle}"
-                            Text="MIT License" />
+                            Text="{Binding [Settings_About_License], Source={StaticResource Loc}}" />
                         <Button
                             Margin="0,6,0,0"
                             HorizontalAlignment="Left"
-                            AutomationProperties.Name="Exit Muralis"
+                            AutomationProperties.Name="{Binding [Settings_Exit], Source={StaticResource Loc}}"
                             Click="OnExitClick"
-                            Content="Exit Muralis" />
+                            Content="{Binding [Settings_Exit], Source={StaticResource Loc}}" />
                     </StackPanel>
                 </Grid>
             </Border>

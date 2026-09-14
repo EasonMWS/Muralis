@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Muralis.App.Infrastructure;
 using Muralis.App.Services;
+using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
 
 namespace Muralis.App;
@@ -39,6 +40,13 @@ public partial class App : Application
 
             var logger = _host.Services.GetRequiredService<ILogger<App>>();
             logger.LogInformation("Muralis {Version} starting", ThisAssemblyVersion());
+
+            // Apply the saved display language before any XAML is parsed, then expose the
+            // service as "Loc" so views can bind text through it.
+            var settings = _host.Services.GetRequiredService<ISettingsService>();
+            var localization = _host.Services.GetRequiredService<LocalizationService>();
+            localization.Apply(settings.Current.Language);
+            Resources["Loc"] = localization;
 
             _mainWindow = _host.Services.GetRequiredService<MainWindow>();
             _mainWindow.Activate();
@@ -101,9 +109,10 @@ public partial class App : Application
         try
         {
             var dialogs = _host.Services.GetRequiredService<IDialogService>();
+            var localization = _host.Services.GetRequiredService<ILocalizationService>();
             await dialogs.ShowMessageAsync(
-                "Something went wrong",
-                $"Muralis hit an unexpected error and logged the details.\n\n{exception.Message}");
+                localization.Get("Crash_Title"),
+                localization.Format("Crash_Message", exception.Message));
         }
         catch (Exception dialogFailure)
         {

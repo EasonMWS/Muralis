@@ -9,13 +9,14 @@ using Muralis.Core.Models;
 
 namespace Muralis.App.ViewModels;
 
-public sealed partial class LibraryViewModel : ObservableObject
+public sealed partial class LibraryViewModel : ViewModelBase
 {
     private readonly INavigationService _navigation;
     private readonly IFilePickerService _filePicker;
     private readonly ILocalLibrary _library;
     private readonly ILogger<LibraryViewModel> _logger;
     private readonly DispatcherQueue _dispatcherQueue;
+    private (string Key, object?[] Args)? _notice;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -30,7 +31,9 @@ public sealed partial class LibraryViewModel : ObservableObject
         INavigationService navigation,
         IFilePickerService filePicker,
         ILocalLibrary library,
+        ILocalizationService localization,
         ILogger<LibraryViewModel> logger)
+        : base(localization)
     {
         _navigation = navigation;
         _filePicker = filePicker;
@@ -46,6 +49,28 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     public bool IsEmpty => !IsLoading && Items.Count == 0;
 
+    public override void OnLanguageChanged()
+    {
+        if (_notice is not { } notice)
+        {
+            // Pre-formatted notices cannot be re-translated; drop them rather than
+            // leaving text in the previous language on screen.
+            SuccessNotice = null;
+            ErrorNotice = null;
+            return;
+        }
+
+        var message = Loc.Format(notice.Key, notice.Args);
+        if (ErrorNotice is not null)
+        {
+            ErrorNotice = message;
+        }
+        else
+        {
+            SuccessNotice = message;
+        }
+    }
+
     [RelayCommand]
     private async Task ImportAsync()
     {
@@ -58,8 +83,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         }
 
         IsLoading = true;
-        SuccessNotice = null;
-        ErrorNotice = null;
+        ClearNotices();
 
         try
         {
@@ -69,32 +93,40 @@ public sealed partial class LibraryViewModel : ObservableObject
             var parts = new List<string>();
             if (result.Added > 0)
             {
-                parts.Add(result.Added == 1 ? "1 wallpaper added" : $"{result.Added} wallpapers added");
+                parts.Add(result.Added == 1
+                    ? Loc.Get("Library_Import_OneAdded")
+                    : Loc.Format("Library_Import_ManyAdded", result.Added));
             }
 
             if (result.Duplicates > 0)
             {
-                parts.Add($"{result.Duplicates} already in your library");
+                parts.Add(Loc.Format("Library_Import_Duplicates", result.Duplicates));
             }
 
             if (result.Failed > 0)
             {
-                parts.Add($"{result.Failed} could not be read");
+                parts.Add(Loc.Format("Library_Import_Failed", result.Failed));
             }
 
+            if (parts.Count == 0)
+            {
+                return;
+            }
+
+            var summary = string.Join(Loc.Get("Common_ListSeparator"), parts) + Loc.Get("Common_Notice_Suffix");
             if (result.Added == 0 && result.Failed > 0)
             {
-                ErrorNotice = string.Join(", ", parts) + ".";
+                ErrorNotice = summary;
             }
-            else if (parts.Count > 0)
+            else
             {
-                SuccessNotice = string.Join(", ", parts) + ".";
+                SuccessNotice = summary;
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Import failed");
-            ErrorNotice = "The import failed. See the log for details.";
+            SetError("Library_Error_ImportFailed");
         }
         finally
         {
@@ -112,6 +144,20 @@ public sealed partial class LibraryViewModel : ObservableObject
         {
             _navigation.NavigateTo(Routes.Detail, wallpaper);
         }
+    }
+
+    private void SetError(string key)
+    {
+        _notice = (key, []);
+        SuccessNotice = null;
+        ErrorNotice = Loc.Get(key);
+    }
+
+    private void ClearNotices()
+    {
+        _notice = null;
+        SuccessNotice = null;
+        ErrorNotice = null;
     }
 
     private void OnLibraryChanged(object? sender, EventArgs e)

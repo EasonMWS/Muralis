@@ -34,6 +34,9 @@ public sealed partial class MainWindow : Window
 
         windowContext.MainWindow = this;
 
+        ConfigureTitleBar();
+        ApplyWindowIcon();
+
         _navigation.Attach(RootFrame);
         _navigation.Navigated += OnNavigated;
 
@@ -43,6 +46,42 @@ public sealed partial class MainWindow : Window
 
         RootNavigationView.SelectedItem = RootNavigationView.MenuItems[0];
         _navigation.NavigateTo(Routes.Home);
+    }
+
+    /// <summary>
+    /// Replaces the system title bar with the WinUI <see cref="TitleBar"/> control.
+    /// Without this the system bar stays visible above the custom one, showing the
+    /// default Windows icon instead of the Muralis brand.
+    /// </summary>
+    private void ConfigureTitleBar()
+    {
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+    }
+
+    /// <summary>
+    /// Sets the window icon used by the taskbar, Alt+Tab and (when shown) the system
+    /// title bar. The icon inside the app's own title bar comes from the control.
+    /// </summary>
+    private void ApplyWindowIcon()
+    {
+        try
+        {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+            if (File.Exists(iconPath))
+            {
+                AppWindow.SetIcon(iconPath);
+            }
+            else
+            {
+                _logger.LogWarning("Window icon not found at {Path}", iconPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            // A missing window icon must never keep the app from starting.
+            _logger.LogWarning(ex, "Could not apply the window icon");
+        }
     }
 
     /// <summary>Quits the application even when close-to-tray is enabled (tray menu / settings).</summary>

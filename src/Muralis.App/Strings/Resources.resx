@@ -1,0 +1,595 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!--  Application  -->
+  <data name="App_Name" xml:space="preserve">
+    <value>Muralis</value>
+  </data>
+  <data name="App_Tagline" xml:space="preserve">
+    <value>Wallpaper Studio</value>
+  </data>
+  <data name="App_Description" xml:space="preserve">
+    <value>A modern, open-source wallpaper manager for Windows.</value>
+  </data>
+
+  <!--  Common  -->
+  <data name="Common_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Common_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Common_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Common_Error_Title" xml:space="preserve">
+    <value>Something went wrong</value>
+  </data>
+  <data name="Common_On" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="Common_Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Common_ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="Common_Notice_Suffix" xml:space="preserve">
+    <value>.</value>
+  </data>
+
+  <!--  Navigation  -->
+  <data name="Nav_Home" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Nav_Browse" xml:space="preserve">
+    <value>Browse</value>
+  </data>
+  <data name="Nav_Library" xml:space="preserve">
+    <value>Library</value>
+  </data>
+  <data name="Nav_Favorites" xml:space="preserve">
+    <value>Favorites</value>
+  </data>
+  <data name="Nav_Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+
+  <!--  Home  -->
+  <data name="Home_Subtitle" xml:space="preserve">
+    <value>Discover something beautiful for your desktop.</value>
+  </data>
+  <data name="Home_FeaturedToday" xml:space="preserve">
+    <value>FEATURED TODAY</value>
+  </data>
+  <data name="Home_ViewDetails" xml:space="preserve">
+    <value>View details</value>
+  </data>
+  <data name="Home_Recommended" xml:space="preserve">
+    <value>Recommended for you</value>
+  </data>
+  <data name="Home_BrowseAll" xml:space="preserve">
+    <value>Browse all</value>
+  </data>
+  <data name="Home_RecentlyUsed" xml:space="preserve">
+    <value>Recently used</value>
+  </data>
+  <data name="Home_QuickFavorites_Title" xml:space="preserve">
+    <value>Favorites</value>
+  </data>
+  <data name="Home_QuickFavorites_Description" xml:space="preserve">
+    <value>Keep the wallpapers you love in one place</value>
+  </data>
+  <data name="Home_QuickLibrary_Title" xml:space="preserve">
+    <value>Local library</value>
+  </data>
+  <data name="Home_QuickLibrary_Description" xml:space="preserve">
+    <value>Import and manage your own images</value>
+  </data>
+  <data name="Greeting_Morning" xml:space="preserve">
+    <value>Good morning</value>
+  </data>
+  <data name="Greeting_Afternoon" xml:space="preserve">
+    <value>Good afternoon</value>
+  </data>
+  <data name="Greeting_Evening" xml:space="preserve">
+    <value>Good evening</value>
+  </data>
+  <data name="Greeting_Night" xml:space="preserve">
+    <value>Good night</value>
+  </data>
+  <data name="Home_Error_FeedUnavailable" xml:space="preserve">
+    <value>Bing is unreachable right now — showing sample wallpapers instead.</value>
+  </data>
+  <data name="Home_Error_LoadFailed" xml:space="preserve">
+    <value>We couldn't load wallpapers just now. Please try again.</value>
+  </data>
+
+  <!--  Browse  -->
+  <data name="Browse_Title" xml:space="preserve">
+    <value>Browse</value>
+  </data>
+  <data name="Browse_ProviderFallback" xml:space="preserve">
+    <value>Wallpapers</value>
+  </data>
+  <data name="Browse_SearchPlaceholder" xml:space="preserve">
+    <value>Search wallpapers</value>
+  </data>
+  <data name="Browse_SourceTooltip" xml:space="preserve">
+    <value>Wallpaper source</value>
+  </data>
+  <data name="Browse_RefreshTooltip" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Browse_Empty_Title" xml:space="preserve">
+    <value>No wallpapers found</value>
+  </data>
+  <data name="Browse_Empty_Description" xml:space="preserve">
+    <value>Try a different search term — or clear the search to see everything again.</value>
+  </data>
+  <data name="Browse_Empty_Action" xml:space="preserve">
+    <value>Clear search</value>
+  </data>
+  <data name="Browse_Result_One" xml:space="preserve">
+    <value>1 wallpaper</value>
+  </data>
+  <data name="Browse_Result_Many" xml:space="preserve">
+    <value>{0} wallpapers</value>
+  </data>
+  <data name="Browse_Error_LoadFailed" xml:space="preserve">
+    <value>We couldn't load wallpapers. Check your connection and try again.</value>
+  </data>
+  <data name="Provider_bing" xml:space="preserve">
+    <value>Bing daily images</value>
+  </data>
+  <data name="Provider_mock" xml:space="preserve">
+    <value>Sample wallpapers</value>
+  </data>
+
+  <!--  Library  -->
+  <data name="Library_Title" xml:space="preserve">
+    <value>Library</value>
+  </data>
+  <data name="Library_Subtitle" xml:space="preserve">
+    <value>Your own images, ready to become wallpapers. Original files are never modified.</value>
+  </data>
+  <data name="Library_Import" xml:space="preserve">
+    <value>Import images</value>
+  </data>
+  <data name="Library_Empty_Title" xml:space="preserve">
+    <value>Your library is empty</value>
+  </data>
+  <data name="Library_Empty_Description" xml:space="preserve">
+    <value>Add pictures from your PC — JPG, PNG or BMP anywhere on disk. Muralis keeps a reference to your file and never modifies the original.</value>
+  </data>
+  <data name="Library_Error_Title" xml:space="preserve">
+    <value>Import problem</value>
+  </data>
+  <data name="Library_Error_ImportFailed" xml:space="preserve">
+    <value>The import failed. See the log for details.</value>
+  </data>
+  <data name="Library_Import_OneAdded" xml:space="preserve">
+    <value>1 wallpaper added</value>
+  </data>
+  <data name="Library_Import_ManyAdded" xml:space="preserve">
+    <value>{0} wallpapers added</value>
+  </data>
+  <data name="Library_Import_Duplicates" xml:space="preserve">
+    <value>{0} already in your library</value>
+  </data>
+  <data name="Library_Import_Failed" xml:space="preserve">
+    <value>{0} could not be read</value>
+  </data>
+
+  <!--  Favorites  -->
+  <data name="Favorites_Title" xml:space="preserve">
+    <value>Favorites</value>
+  </data>
+  <data name="Favorites_Subtitle" xml:space="preserve">
+    <value>The wallpapers you never want to lose.</value>
+  </data>
+  <data name="Favorites_Empty_Title" xml:space="preserve">
+    <value>No favorites yet</value>
+  </data>
+  <data name="Favorites_Empty_Description" xml:space="preserve">
+    <value>Tap the heart on any wallpaper and it will be waiting for you here, even after you restart Muralis.</value>
+  </data>
+  <data name="Favorites_Empty_Action" xml:space="preserve">
+    <value>Browse wallpapers</value>
+  </data>
+
+  <!--  Wallpaper detail  -->
+  <data name="Detail_AspectRatio" xml:space="preserve">
+    <value>Aspect ratio</value>
+  </data>
+  <data name="Detail_FileSize" xml:space="preserve">
+    <value>File size</value>
+  </data>
+  <data name="Detail_Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="Detail_ApplyTo_Title" xml:space="preserve">
+    <value>Apply to</value>
+  </data>
+  <data name="Detail_ApplyTo_Description" xml:space="preserve">
+    <value>Send this wallpaper to one display.</value>
+  </data>
+  <data name="Detail_AllDisplays" xml:space="preserve">
+    <value>All displays</value>
+  </data>
+  <data name="Detail_SetWallpaper" xml:space="preserve">
+    <value>Set as desktop wallpaper</value>
+  </data>
+  <data name="Detail_Applying" xml:space="preserve">
+    <value>Applying…</value>
+  </data>
+  <data name="Detail_AddFavorite" xml:space="preserve">
+    <value>Add to favorites</value>
+  </data>
+  <data name="Detail_RemoveFavorite" xml:space="preserve">
+    <value>Remove from favorites</value>
+  </data>
+  <data name="Detail_Download" xml:space="preserve">
+    <value>Download to PC</value>
+  </data>
+  <data name="Detail_ShowInExplorer" xml:space="preserve">
+    <value>Show file location</value>
+  </data>
+  <data name="Detail_RemoveFromLibrary" xml:space="preserve">
+    <value>Remove from library</value>
+  </data>
+  <data name="Detail_Source_Online" xml:space="preserve">
+    <value>Online</value>
+  </data>
+  <data name="Detail_Source_Local" xml:space="preserve">
+    <value>On this PC</value>
+  </data>
+  <data name="Detail_Error_NoLocalFile" xml:space="preserve">
+    <value>This wallpaper has no local file to apply yet.</value>
+  </data>
+  <data name="Detail_Error_ApplyFailed" xml:space="preserve">
+    <value>Could not update the desktop wallpaper. See the log for details.</value>
+  </data>
+  <data name="Detail_Error_NoDownloadLink" xml:space="preserve">
+    <value>This wallpaper has no download link.</value>
+  </data>
+  <data name="Detail_Error_DownloadFailed" xml:space="preserve">
+    <value>The download failed. Check your connection and try again.</value>
+  </data>
+  <data name="Detail_Error_FileMissing" xml:space="preserve">
+    <value>This file is not available on disk yet.</value>
+  </data>
+  <data name="Detail_Error_OpenInExplorer" xml:space="preserve">
+    <value>Could not open the file location.</value>
+  </data>
+  <data name="Detail_Error_FavoriteFailed" xml:space="preserve">
+    <value>Could not update favorites. See the log for details.</value>
+  </data>
+  <data name="Detail_Success_Applied" xml:space="preserve">
+    <value>Desktop wallpaper updated — {0} on {1}.</value>
+  </data>
+  <data name="Detail_Success_Downloaded" xml:space="preserve">
+    <value>Downloaded to {0}.</value>
+  </data>
+  <data name="Detail_Success_DownloadCancelled" xml:space="preserve">
+    <value>Download cancelled.</value>
+  </data>
+  <data name="Detail_Success_FavoriteAdded" xml:space="preserve">
+    <value>Added to favorites.</value>
+  </data>
+  <data name="Detail_Success_FavoriteRemoved" xml:space="preserve">
+    <value>Removed from favorites.</value>
+  </data>
+  <data name="Detail_Success_RemovedFromLibrary" xml:space="preserve">
+    <value>Removed from your library.</value>
+  </data>
+  <data name="Detail_ConfirmRemove_Title" xml:space="preserve">
+    <value>Remove from library</value>
+  </data>
+  <data name="Detail_ConfirmRemove_Message" xml:space="preserve">
+    <value>Remove "{0}" from Muralis? The original file stays on your disk.</value>
+  </data>
+  <data name="Detail_ConfirmRemove_Primary" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="Detail_Target_AllDisplays" xml:space="preserve">
+    <value>all displays</value>
+  </data>
+
+  <!--  Wallpaper fit modes  -->
+  <data name="Fit_Fill" xml:space="preserve">
+    <value>Fill</value>
+  </data>
+  <data name="Fit_Fit" xml:space="preserve">
+    <value>Fit</value>
+  </data>
+  <data name="Fit_Stretch" xml:space="preserve">
+    <value>Stretch</value>
+  </data>
+  <data name="Fit_Center" xml:space="preserve">
+    <value>Center</value>
+  </data>
+  <data name="Fit_Tile" xml:space="preserve">
+    <value>Tile</value>
+  </data>
+  <data name="Fit_Span" xml:space="preserve">
+    <value>Span</value>
+  </data>
+
+  <!--  Settings  -->
+  <data name="Settings_Title" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Settings_Subtitle" xml:space="preserve">
+    <value>Personalize how Muralis looks and behaves.</value>
+  </data>
+  <data name="Settings_Section_Appearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="Settings_Theme_Title" xml:space="preserve">
+    <value>Theme</value>
+  </data>
+  <data name="Settings_Theme_Description" xml:space="preserve">
+    <value>Choose light, dark, or match the Windows setting.</value>
+  </data>
+  <data name="Settings_Theme_System" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="Settings_Theme_Light" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="Settings_Theme_Dark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="Settings_Section_Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Settings_Language_Title" xml:space="preserve">
+    <value>Display language</value>
+  </data>
+  <data name="Settings_Language_Description" xml:space="preserve">
+    <value>Switch at any time — changes apply immediately.</value>
+  </data>
+  <data name="Settings_Language_FollowSystem" xml:space="preserve">
+    <value>Follow system</value>
+  </data>
+  <data name="Settings_Status_LanguageChanged" xml:space="preserve">
+    <value>Language updated.</value>
+  </data>
+  <data name="Settings_Section_Wallpapers" xml:space="preserve">
+    <value>Wallpapers</value>
+  </data>
+  <data name="Settings_DefaultStyle_Title" xml:space="preserve">
+    <value>Default style</value>
+  </data>
+  <data name="Settings_DefaultStyle_Description" xml:space="preserve">
+    <value>How wallpapers are fitted to your desktop.</value>
+  </data>
+  <data name="Settings_Startup_Title" xml:space="preserve">
+    <value>Start with Windows</value>
+  </data>
+  <data name="Settings_Startup_Description" xml:space="preserve">
+    <value>Launch Muralis automatically when you sign in.</value>
+  </data>
+  <data name="Settings_Rotation_Title" xml:space="preserve">
+    <value>Auto rotation</value>
+  </data>
+  <data name="Settings_Rotation_Description" xml:space="preserve">
+    <value>Shuffle wallpapers automatically while Muralis is running.</value>
+  </data>
+  <data name="Settings_Rotation_Interval" xml:space="preserve">
+    <value>Change every</value>
+  </data>
+  <data name="Settings_Rotation_Source" xml:space="preserve">
+    <value>Rotation source</value>
+  </data>
+  <data name="Settings_Rotation_SourceFavorites" xml:space="preserve">
+    <value>Use my favorites</value>
+  </data>
+  <data name="Settings_Rotation_SourceFolder" xml:space="preserve">
+    <value>Use a folder</value>
+  </data>
+  <data name="Settings_Rotation_Choose" xml:space="preserve">
+    <value>Choose…</value>
+  </data>
+  <data name="Settings_Rotation_ShuffleHint" xml:space="preserve">
+    <value>Apply the next wallpaper right away</value>
+  </data>
+  <data name="Settings_Rotation_ShuffleNow" xml:space="preserve">
+    <value>Shuffle now</value>
+  </data>
+  <data name="Settings_Rotation_StatusFavorites" xml:space="preserve">
+    <value>Uses your favorites as the source.</value>
+  </data>
+  <data name="Settings_Rotation_StatusChooseFolder" xml:space="preserve">
+    <value>Choose a folder to rotate through.</value>
+  </data>
+  <data name="Settings_Tray_Title" xml:space="preserve">
+    <value>Keep running in the tray</value>
+  </data>
+  <data name="Settings_Tray_Description" xml:space="preserve">
+    <value>Closing the window keeps Muralis (and rotation) available in the notification area.</value>
+  </data>
+  <data name="Settings_Section_Displays" xml:space="preserve">
+    <value>Displays</value>
+  </data>
+  <data name="Settings_Displays_Title" xml:space="preserve">
+    <value>Connected displays</value>
+  </data>
+  <data name="Settings_Displays_None" xml:space="preserve">
+    <value>No displays detected</value>
+  </data>
+  <data name="Settings_Displays_One" xml:space="preserve">
+    <value>1 display detected</value>
+  </data>
+  <data name="Settings_Displays_Many" xml:space="preserve">
+    <value>{0} displays detected</value>
+  </data>
+  <data name="Settings_Section_Downloads" xml:space="preserve">
+    <value>Downloads</value>
+  </data>
+  <data name="Settings_DownloadFolder_Title" xml:space="preserve">
+    <value>Download folder</value>
+  </data>
+  <data name="Settings_Open" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="Settings_Change" xml:space="preserve">
+    <value>Change…</value>
+  </data>
+  <data name="Settings_Section_Storage" xml:space="preserve">
+    <value>Storage</value>
+  </data>
+  <data name="Settings_Cache_Title" xml:space="preserve">
+    <value>Image cache</value>
+  </data>
+  <data name="Settings_Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Settings_ClearCache" xml:space="preserve">
+    <value>Clear cache</value>
+  </data>
+  <data name="Settings_Section_About" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="Settings_About_Name" xml:space="preserve">
+    <value>Muralis — Wallpaper Studio</value>
+  </data>
+  <data name="Settings_About_Version" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+  <data name="Settings_About_Description" xml:space="preserve">
+    <value>A modern, open-source wallpaper manager for Windows.</value>
+  </data>
+  <data name="Settings_About_GitHub" xml:space="preserve">
+    <value>View on GitHub</value>
+  </data>
+  <data name="Settings_About_License" xml:space="preserve">
+    <value>MIT License</value>
+  </data>
+  <data name="Settings_Exit" xml:space="preserve">
+    <value>Exit Muralis</value>
+  </data>
+  <data name="Settings_Status_Calculating" xml:space="preserve">
+    <value>Calculating…</value>
+  </data>
+  <data name="Settings_ConfirmClearCache_Title" xml:space="preserve">
+    <value>Clear cache</value>
+  </data>
+  <data name="Settings_ConfirmClearCache_Message" xml:space="preserve">
+    <value>Cached thumbnails and temporary files will be removed. Your wallpapers and settings are not affected.</value>
+  </data>
+  <data name="Settings_ConfirmClearCache_Primary" xml:space="preserve">
+    <value>Clear cache</value>
+  </data>
+  <data name="Settings_Status_IntervalUpdated" xml:space="preserve">
+    <value>Rotation interval updated.</value>
+  </data>
+  <data name="Settings_Status_CacheCleared" xml:space="preserve">
+    <value>Cache cleared. Current size: {0}.</value>
+  </data>
+  <data name="Settings_Status_CacheClearFailed" xml:space="preserve">
+    <value>Some cache files could not be removed. They may be in use.</value>
+  </data>
+  <data name="Settings_Status_DownloadFolderUpdated" xml:space="preserve">
+    <value>Download folder updated.</value>
+  </data>
+  <data name="Settings_Status_OpenFolderFailed" xml:space="preserve">
+    <value>Could not open the download folder.</value>
+  </data>
+  <data name="Settings_Status_RotationFolderUpdated" xml:space="preserve">
+    <value>Rotation folder updated.</value>
+  </data>
+  <data name="Settings_Status_ShuffleApplying" xml:space="preserve">
+    <value>Applying the next wallpaper…</value>
+  </data>
+  <data name="Settings_Status_ShuffleNone" xml:space="preserve">
+    <value>No wallpapers available to rotate through yet.</value>
+  </data>
+  <data name="Settings_Status_Shuffled" xml:space="preserve">
+    <value>Wallpaper changed to "{0}".</value>
+  </data>
+  <data name="Settings_Status_FitModeSet" xml:space="preserve">
+    <value>Default wallpaper style set to {0}.</value>
+  </data>
+  <data name="Settings_Status_StartupEnabled" xml:space="preserve">
+    <value>Muralis will start with Windows.</value>
+  </data>
+  <data name="Settings_Status_StartupDisabled" xml:space="preserve">
+    <value>Start with Windows disabled.</value>
+  </data>
+  <data name="Settings_Status_StartupFailed" xml:space="preserve">
+    <value>Could not change the startup setting.</value>
+  </data>
+  <data name="Settings_Status_TrayEnabled" xml:space="preserve">
+    <value>Muralis keeps running in the tray when the window is closed.</value>
+  </data>
+  <data name="Settings_Status_TrayDisabled" xml:space="preserve">
+    <value>Muralis exits when the window is closed.</value>
+  </data>
+  <data name="Settings_Status_RotationEnabled" xml:space="preserve">
+    <value>Auto rotation enabled.</value>
+  </data>
+  <data name="Settings_Status_RotationDisabled" xml:space="preserve">
+    <value>Auto rotation disabled.</value>
+  </data>
+
+  <!--  Rotation intervals  -->
+  <data name="Interval_15Minutes" xml:space="preserve">
+    <value>Every 15 minutes</value>
+  </data>
+  <data name="Interval_30Minutes" xml:space="preserve">
+    <value>Every 30 minutes</value>
+  </data>
+  <data name="Interval_1Hour" xml:space="preserve">
+    <value>Every hour</value>
+  </data>
+  <data name="Interval_6Hours" xml:space="preserve">
+    <value>Every 6 hours</value>
+  </data>
+  <data name="Interval_Daily" xml:space="preserve">
+    <value>Every day</value>
+  </data>
+
+  <!--  Tray  -->
+  <data name="Tray_Tooltip" xml:space="preserve">
+    <value>Muralis — Wallpaper Studio</value>
+  </data>
+  <data name="Tray_Show" xml:space="preserve">
+    <value>Show Muralis</value>
+  </data>
+  <data name="Tray_NextWallpaper" xml:space="preserve">
+    <value>Next wallpaper</value>
+  </data>
+  <data name="Tray_Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Tray_Exit" xml:space="preserve">
+    <value>Exit Muralis</value>
+  </data>
+
+  <!--  Misc  -->
+  <data name="Display_Number" xml:space="preserve">
+    <value>Display {0}</value>
+  </data>
+  <data name="Crash_Title" xml:space="preserve">
+    <value>Something went wrong</value>
+  </data>
+  <data name="Crash_Message" xml:space="preserve">
+    <value>Muralis hit an unexpected error and logged the details.
+
+{0}</value>
+  </data>
+</root>

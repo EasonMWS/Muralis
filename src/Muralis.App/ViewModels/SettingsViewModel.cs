@@ -11,6 +11,7 @@ using Muralis.Core.Models;
 
 namespace Muralis.App.ViewModels;
 
+/// <summary>A rotation interval paired with its localized label.</summary>
 public sealed class IntervalOption
 {
     public IntervalOption(RotationInterval value, string label)
@@ -24,8 +25,56 @@ public sealed class IntervalOption
     public string Label { get; }
 }
 
-public sealed partial class SettingsViewModel : ObservableObject
+/// <summary>A wallpaper fit mode paired with its localized label.</summary>
+public sealed class FitModeOption
 {
+    public FitModeOption(WallpaperFitMode mode, string label)
+    {
+        Mode = mode;
+        Label = label;
+    }
+
+    public WallpaperFitMode Mode { get; }
+
+    public string Label { get; }
+}
+
+/// <summary>A rotation source (favorites or a folder) paired with its localized label.</summary>
+public sealed class RotationSourceOption
+{
+    public RotationSourceOption(bool useFavorites, string label)
+    {
+        UseFavorites = useFavorites;
+        Label = label;
+    }
+
+    public bool UseFavorites { get; }
+
+    public string Label { get; }
+}
+
+public sealed partial class SettingsViewModel : ViewModelBase
+{
+    private static readonly RotationInterval[] IntervalOrder =
+    [
+        RotationInterval.Minutes15,
+        RotationInterval.Minutes30,
+        RotationInterval.Hours1,
+        RotationInterval.Hours6,
+        RotationInterval.Daily,
+    ];
+
+    private static readonly string[] IntervalKeys =
+    [
+        "Interval_15Minutes",
+        "Interval_30Minutes",
+        "Interval_1Hour",
+        "Interval_6Hours",
+        "Interval_Daily",
+    ];
+
+    private static readonly WallpaperFitMode[] FitModeOrder = Enum.GetValues<WallpaperFitMode>();
+
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly IFilePickerService _filePicker;
@@ -36,6 +85,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly WindowContext _windowContext;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _applyingSettings = true;
+    private (string Key, object?[] Args)? _status;
 
     [ObservableProperty]
     public partial string? StatusMessage { get; set; }
@@ -61,6 +111,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool RotationEnabled { get; set; }
 
+    [ObservableProperty]
+    public partial LanguageOption? SelectedLanguageOption { get; set; }
+
     public SettingsViewModel(
         ISettingsService settingsService,
         IThemeService themeService,
@@ -70,7 +123,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         IStartupService startupService,
         RotationService rotationService,
         WindowContext windowContext,
+        ILocalizationService localization,
         ILogger<SettingsViewModel> logger)
+        : base(localization)
     {
         _settingsService = settingsService;
         _themeService = themeService;
@@ -83,12 +138,18 @@ public sealed partial class SettingsViewModel : ObservableObject
         _logger = logger;
 
         var settings = _settingsService.Current;
-        CacheSizeText = "Calculating…";
+        CacheSizeText = Loc.Get("Settings_Status_Calculating");
         DownloadFolder = ResolveDownloadFolder(settings);
         DefaultFitMode = settings.DefaultFitMode;
         LaunchAtStartup = SafeReadStartupState(settings.LaunchAtStartup);
         CloseToTray = settings.CloseToTray;
         RotationEnabled = settings.Rotation.Enabled;
+
+        FitModes = BuildFitModes();
+        IntervalOptions = BuildIntervalOptions();
+        RotationSourceOptions = BuildRotationSourceOptions();
+        LanguageOptions = BuildLanguageOptions();
+        SelectedLanguageOption = FindLanguageOption(localization.Preference);
 
         _applyingSettings = false;
     }
@@ -133,16 +194,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public IReadOnlyList<WallpaperFitMode> FitModes { get; } = Enum.GetValues<WallpaperFitMode>();
+    public IReadOnlyList<FitModeOption> FitModes { get; private set; } = [];
 
-    public IReadOnlyList<IntervalOption> IntervalOptions { get; } =
-    [
-        new IntervalOption(RotationInterval.Minutes15, "Every 15 minutes"),
-        new IntervalOption(RotationInterval.Minutes30, "Every 30 minutes"),
-        new IntervalOption(RotationInterval.Hours1, "Every hour"),
-        new IntervalOption(RotationInterval.Hours6, "Every 6 hours"),
-        new IntervalOption(RotationInterval.Daily, "Every day"),
-    ];
+    public IReadOnlyList<IntervalOption> IntervalOptions { get; private set; } = [];
+
+    public IReadOnlyList<RotationSourceOption> RotationSourceOptions { get; private set; } = [];
+
+    public IReadOnlyList<LanguageOption> LanguageOptions { get; private set; } = [];
 
     public ObservableCollection<MonitorInfo> Monitors { get; } = [];
 
@@ -173,25 +231,66 @@ public sealed partial class SettingsViewModel : ObservableObject
             var rotation = _settingsService.Current.Rotation;
             if (rotation.UseFavorites)
             {
-                return "Uses your favorites as the source.";
+                return Loc.Get("Settings_Rotation_StatusFavorites");
             }
 
             return string.IsNullOrWhiteSpace(rotation.SourceFolder)
-                ? "Choose a folder to rotate through."
+                ? Loc.Get("Settings_Rotation_StatusChooseFolder")
                 : rotation.SourceFolder;
         }
     }
 
     public string MonitorCountText => Monitors.Count switch
     {
-        0 => "No displays detected",
-        1 => "1 display detected",
-        _ => $"{Monitors.Count} displays detected",
+        0 => Loc.Get("Settings_Displays_None"),
+        1 => Loc.Get("Settings_Displays_One"),
+        _ => Loc.Format("Settings_Displays_Many", Monitors.Count),
     };
 
-    public string AppVersion => $"Version {AppInfo.Version}";
+    public string AppVersion => Loc.Format("Settings_About_Version", AppInfo.Version);
 
     public string GitHubUrl => AppInfo.GitHubUrl;
+
+    public override void OnLanguageChanged()
+    {
+        // Option labels and derived texts are rebuilt in place so combo selections survive.
+        FitModes = BuildFitModes();
+        IntervalOptions = BuildIntervalOptions();
+        RotationSourceOptions = BuildRotationSourceOptions();
+        LanguageOptions = BuildLanguageOptions();
+
+        OnPropertyChanged(nameof(FitModes));
+        OnPropertyChanged(nameof(IntervalOptions));
+        OnPropertyChanged(nameof(RotationSourceOptions));
+        OnPropertyChanged(nameof(LanguageOptions));
+        OnPropertyChanged(nameof(RotationStatusText));
+        OnPropertyChanged(nameof(MonitorCountText));
+        OnPropertyChanged(nameof(AppVersion));
+
+        if (_status is { } status)
+        {
+            var message = Loc.Format(status.Key, status.Args);
+            StatusMessage = message;
+            OnPropertyChanged(nameof(SuccessMessage));
+            OnPropertyChanged(nameof(ErrorMessage));
+        }
+
+        // Display names ("Display 1") are localized when monitors are enumerated.
+        _ = RefreshMonitorsAsync();
+    }
+
+    /// <summary>Called by the settings page after it rebuilds its combo boxes.</summary>
+    public void SelectLanguage(LanguageOption option)
+    {
+        if (option is null || option.Preference == Loc.Preference)
+        {
+            return;
+        }
+
+        Loc.Apply(option.Preference);
+        _settingsService.Update(settings => settings.Language = option.Preference);
+        SetStatus("Settings_Status_LanguageChanged", isError: false);
+    }
 
     public void SetRotationInterval(RotationInterval interval)
     {
@@ -201,7 +300,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         _settingsService.Update(settings => settings.Rotation.Interval = interval);
-        SetStatus("Rotation interval updated.", isError: false);
+        SetStatus("Settings_Status_IntervalUpdated", isError: false);
     }
 
     [RelayCommand]
@@ -235,9 +334,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task ClearCacheAsync()
     {
         var confirmed = await _dialogs.ShowConfirmAsync(
-            "Clear cache",
-            "Cached thumbnails and temporary files will be removed. Your wallpapers and settings are not affected.",
-            "Clear cache");
+            Loc.Get("Settings_ConfirmClearCache_Title"),
+            Loc.Get("Settings_ConfirmClearCache_Message"),
+            Loc.Get("Settings_ConfirmClearCache_Primary"),
+            Loc.Get("Common_Cancel"));
 
         if (!confirmed)
         {
@@ -247,12 +347,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (DirectoryHelper.TryClearDirectory(AppPaths.CacheDirectory, out var error))
         {
             RefreshCacheSize();
-            SetStatus($"Cache cleared. Current size: {CacheSizeText}.", isError: false);
+            SetStatus("Settings_Status_CacheCleared", isError: false, CacheSizeText);
         }
         else
         {
             _logger.LogWarning("Cache cleanup failed: {Error}", error);
-            SetStatus("Some cache files could not be removed. They may be in use.", isError: true);
+            SetStatus("Settings_Status_CacheClearFailed", isError: true);
         }
     }
 
@@ -267,7 +367,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         _settingsService.Update(settings => settings.DownloadFolder = folder);
         DownloadFolder = folder;
-        SetStatus("Download folder updated.", isError: false);
+        SetStatus("Settings_Status_DownloadFolderUpdated", isError: false);
     }
 
     [RelayCommand]
@@ -282,7 +382,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not open {Folder}", folder);
-            SetStatus("Could not open the download folder.", isError: true);
+            SetStatus("Settings_Status_OpenFolderFailed", isError: true);
         }
     }
 
@@ -303,21 +403,21 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         OnPropertyChanged(nameof(UseFavoritesSource));
         OnPropertyChanged(nameof(RotationStatusText));
-        SetStatus("Rotation folder updated.", isError: false);
+        SetStatus("Settings_Status_RotationFolderUpdated", isError: false);
     }
 
     [RelayCommand]
     private async Task ShuffleNowAsync()
     {
-        SetStatus("Applying the next wallpaper…", isError: false);
+        SetStatus("Settings_Status_ShuffleApplying", isError: false);
         var applied = await _rotationService.ApplyNextAsync();
         if (applied is null)
         {
-            SetStatus("No wallpapers available to rotate through yet.", isError: true);
+            SetStatus("Settings_Status_ShuffleNone", isError: true);
             return;
         }
 
-        SetStatus($"Wallpaper changed to \"{applied.Title}\".", isError: false);
+        SetStatus("Settings_Status_Shuffled", isError: false, applied.Title);
     }
 
     [RelayCommand]
@@ -332,6 +432,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(IsDarkTheme));
     }
 
+    public string FitModeLabel(WallpaperFitMode mode) => Loc.Get(FitModeKeys.For(mode));
+
     partial void OnDefaultFitModeChanged(WallpaperFitMode value)
     {
         if (_applyingSettings)
@@ -340,7 +442,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         _settingsService.Update(settings => settings.DefaultFitMode = value);
-        SetStatus($"Default wallpaper style set to {value}.", isError: false);
+        SetStatus("Settings_Status_FitModeSet", isError: false, FitModeLabel(value));
     }
 
     partial void OnLaunchAtStartupChanged(bool value)
@@ -354,12 +456,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             _startupService.SetEnabled(value);
             _settingsService.Update(settings => settings.LaunchAtStartup = value);
-            SetStatus(value ? "Muralis will start with Windows." : "Start with Windows disabled.", isError: false);
+            SetStatus(value ? "Settings_Status_StartupEnabled" : "Settings_Status_StartupDisabled", isError: false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not update the startup registration");
-            SetStatus("Could not change the startup setting.", isError: true);
+            SetStatus("Settings_Status_StartupFailed", isError: true);
         }
     }
 
@@ -371,11 +473,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         _settingsService.Update(settings => settings.CloseToTray = value);
-        SetStatus(
-            value
-                ? "Muralis keeps running in the tray when the window is closed."
-                : "Muralis exits when the window is closed.",
-            isError: false);
+        SetStatus(value ? "Settings_Status_TrayEnabled" : "Settings_Status_TrayDisabled", isError: false);
     }
 
     partial void OnRotationEnabledChanged(bool value)
@@ -386,8 +484,37 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         _settingsService.Update(settings => settings.Rotation.Enabled = value);
-        SetStatus(value ? "Auto rotation enabled." : "Auto rotation disabled.", isError: false);
+        SetStatus(value ? "Settings_Status_RotationEnabled" : "Settings_Status_RotationDisabled", isError: false);
     }
+
+    partial void OnSelectedLanguageOptionChanged(LanguageOption? value)
+    {
+        if (_applyingSettings || value is null)
+        {
+            return;
+        }
+
+        SelectLanguage(value);
+    }
+
+    private IReadOnlyList<FitModeOption> BuildFitModes() =>
+        FitModeOrder.Select(mode => new FitModeOption(mode, Loc.Get(FitModeKeys.For(mode)))).ToList();
+
+    private IReadOnlyList<IntervalOption> BuildIntervalOptions() =>
+        IntervalOrder
+            .Select((interval, index) => new IntervalOption(interval, Loc.Get(IntervalKeys[index])))
+            .ToList();
+
+    private IReadOnlyList<RotationSourceOption> BuildRotationSourceOptions() =>
+    [
+        new RotationSourceOption(true, Loc.Get("Settings_Rotation_SourceFavorites")),
+        new RotationSourceOption(false, Loc.Get("Settings_Rotation_SourceFolder")),
+    ];
+
+    private IReadOnlyList<LanguageOption> BuildLanguageOptions() => Loc.Languages;
+
+    private LanguageOption FindLanguageOption(string preference) =>
+        LanguageOptions.FirstOrDefault(option => option.Preference == preference) ?? LanguageOptions[0];
 
     private bool SafeReadStartupState(bool fallback)
     {
@@ -405,9 +532,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     private static string ResolveDownloadFolder(AppSettings settings) =>
         string.IsNullOrWhiteSpace(settings.DownloadFolder) ? AppPaths.DefaultDownloadFolder : settings.DownloadFolder;
 
-    private void SetStatus(string message, bool isError)
+    private void SetStatus(string key, bool isError, params object?[] args)
     {
-        StatusMessage = message;
+        _status = (key, args);
+        StatusMessage = Loc.Format(key, args);
         StatusIsError = isError;
         OnPropertyChanged(nameof(SuccessMessage));
         OnPropertyChanged(nameof(ErrorMessage));

@@ -11,6 +11,12 @@ public sealed class AppSettings
 
     public AppTheme Theme { get; set; } = AppTheme.System;
 
+    /// <summary>
+    /// Display language as a BCP-47 code (e.g. <c>en-US</c>, <c>zh-CN</c>).
+    /// Empty means "follow the system language".
+    /// </summary>
+    public string Language { get; set; } = string.Empty;
+
     public WallpaperFitMode DefaultFitMode { get; set; } = WallpaperFitMode.Fill;
 
     /// <summary>

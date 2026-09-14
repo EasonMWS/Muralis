@@ -20,6 +20,7 @@ public sealed class TrayService : IDisposable
     private readonly WindowContext _windowContext;
     private readonly INavigationService _navigation;
     private readonly RotationService _rotation;
+    private readonly ILocalizationService _localization;
     private readonly ILogger<TrayService> _logger;
     private readonly TrayInterop.WindowProc _windowProc;
 
@@ -32,13 +33,17 @@ public sealed class TrayService : IDisposable
         WindowContext windowContext,
         INavigationService navigation,
         RotationService rotation,
+        ILocalizationService localization,
         ILogger<TrayService> logger)
     {
         _windowContext = windowContext;
         _navigation = navigation;
         _rotation = rotation;
+        _localization = localization;
         _logger = logger;
         _windowProc = OnWindowMessage;
+
+        _localization.LanguageChanged += (_, _) => UpdateTooltip();
 
         TryCreateTrayIcon();
     }
@@ -89,7 +94,7 @@ public sealed class TrayService : IDisposable
                 Flags = TrayInterop.NifMessage | TrayInterop.NifIcon | TrayInterop.NifTip,
                 CallbackMessage = TrayInterop.WmTrayCallback,
                 IconHandle = _iconHandle,
-                Tip = "Muralis — Wallpaper Studio",
+                Tip = _localization.Get("Tray_Tooltip"),
                 Info = string.Empty,
                 InfoTitle = string.Empty,
             };
@@ -166,11 +171,11 @@ public sealed class TrayService : IDisposable
 
         try
         {
-            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuShow, "Show Muralis");
-            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuNextWallpaper, "Next wallpaper");
-            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuSettings, "Settings");
+            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuShow, _localization.Get("Tray_Show"));
+            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuNextWallpaper, _localization.Get("Tray_NextWallpaper"));
+            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuSettings, _localization.Get("Tray_Settings"));
             TrayInterop.AppendMenuW(menu, TrayInterop.MfSeparator, 0, string.Empty);
-            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuExit, "Exit Muralis");
+            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuExit, _localization.Get("Tray_Exit"));
 
             // Required so the menu closes correctly when clicking elsewhere.
             TrayInterop.SetForegroundWindow(_messageWindow);
@@ -211,6 +216,35 @@ public sealed class TrayService : IDisposable
         finally
         {
             TrayInterop.DestroyMenu(menu);
+        }
+    }
+
+    /// <summary>Refreshes the hover tooltip after a display-language change.</summary>
+    private void UpdateTooltip()
+    {
+        if (_disposed || _messageWindow == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var data = new TrayInterop.NotifyIconData
+            {
+                Size = Marshal.SizeOf<TrayInterop.NotifyIconData>(),
+                WindowHandle = _messageWindow,
+                Id = 1,
+                Flags = TrayInterop.NifTip,
+                Tip = _localization.Get("Tray_Tooltip"),
+                Info = string.Empty,
+                InfoTitle = string.Empty,
+            };
+
+            TrayInterop.Shell_NotifyIcon(TrayInterop.NimModify, ref data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not update the tray tooltip");
         }
     }
 

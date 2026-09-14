@@ -9,13 +9,14 @@ using Muralis.Core.Providers;
 
 namespace Muralis.App.ViewModels;
 
-public sealed partial class BrowseViewModel : ObservableObject
+public sealed partial class BrowseViewModel : ViewModelBase
 {
     private readonly IImageCacheService _imageCache;
     private readonly INavigationService _navigation;
     private readonly ILogger<BrowseViewModel> _logger;
     private CancellationTokenSource? _searchDebounce;
     private readonly bool _isInitialized;
+    private string? _errorKey;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -27,39 +28,59 @@ public sealed partial class BrowseViewModel : ObservableObject
     public partial string SearchText { get; set; }
 
     [ObservableProperty]
-    public partial IWallpaperProvider? SelectedProvider { get; set; }
+    public partial ProviderOption? SelectedProvider { get; set; }
 
     public BrowseViewModel(
         BingWallpaperProvider bing,
         MockWallpaperProvider sample,
         INavigationService navigation,
         IImageCacheService imageCache,
+        ILocalizationService localization,
         ILogger<BrowseViewModel> logger)
+        : base(localization)
     {
         _navigation = navigation;
         _imageCache = imageCache;
         _logger = logger;
 
-        Providers = [bing, sample];
-        SelectedProvider = bing;
+        Providers = [new ProviderOption(bing, localization), new ProviderOption(sample, localization)];
+        SelectedProvider = Providers[0];
 
         SearchText = string.Empty;
         _isInitialized = true;
     }
 
-    public IReadOnlyList<IWallpaperProvider> Providers { get; }
+    public IReadOnlyList<ProviderOption> Providers { get; }
 
     public ObservableCollection<Wallpaper> Items { get; } = [];
 
-    public string ProviderName => SelectedProvider?.DisplayName ?? "Wallpapers";
+    public string ProviderName => SelectedProvider?.Name ?? Loc.Get("Browse_ProviderFallback");
 
-    public bool SupportsSearch => SelectedProvider?.SupportsSearch ?? false;
+    public bool SupportsSearch => SelectedProvider?.Provider.SupportsSearch ?? false;
 
     public bool IsEmpty => !IsLoading && ErrorMessage is null && Items.Count == 0;
 
-    public string ResultSummary => Items.Count == 1 ? "1 wallpaper" : $"{Items.Count} wallpapers";
+    public string ResultSummary => Items.Count == 1
+        ? Loc.Get("Browse_Result_One")
+        : Loc.Format("Browse_Result_Many", Items.Count);
 
     public bool IsInitialLoading => IsLoading && Items.Count == 0;
+
+    public override void OnLanguageChanged()
+    {
+        foreach (var provider in Providers)
+        {
+            provider.RefreshName();
+        }
+
+        if (_errorKey is not null)
+        {
+            ErrorMessage = Loc.Get(_errorKey);
+        }
+
+        OnPropertyChanged(nameof(ProviderName));
+        OnPropertyChanged(nameof(ResultSummary));
+    }
 
     [RelayCommand]
     private void ClearSearch() => SearchText = string.Empty;
@@ -87,7 +108,7 @@ public sealed partial class BrowseViewModel : ObservableObject
         }
     }
 
-    partial void OnSelectedProviderChanged(IWallpaperProvider? value)
+    partial void OnSelectedProviderChanged(ProviderOption? value)
     {
         OnPropertyChanged(nameof(ProviderName));
         OnPropertyChanged(nameof(SupportsSearch));
@@ -131,14 +152,15 @@ public sealed partial class BrowseViewModel : ObservableObject
             return;
         }
 
-        var provider = SelectedProvider;
-        if (provider is null)
+        var option = SelectedProvider;
+        if (option is null)
         {
             return;
         }
 
+        var provider = option.Provider;
         IsLoading = true;
-        ErrorMessage = null;
+        SetError(null);
         NotifyStateChanged();
 
         try
@@ -171,13 +193,20 @@ public sealed partial class BrowseViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load wallpapers from '{Provider}'", provider.Id);
-            ErrorMessage = "We couldn't load wallpapers. Check your connection and try again.";
+            SetError("Browse_Error_LoadFailed");
         }
         finally
         {
             IsLoading = false;
             NotifyStateChanged();
         }
+    }
+
+    /// <summary>Stores the resource key so the message can be re-resolved after a language change.</summary>
+    private void SetError(string? key)
+    {
+        _errorKey = key;
+        ErrorMessage = key is null ? null : Loc.Get(key);
     }
 
     private void NotifyStateChanged()

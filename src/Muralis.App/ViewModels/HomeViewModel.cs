@@ -10,7 +10,7 @@ using Muralis.Core.Providers;
 
 namespace Muralis.App.ViewModels;
 
-public sealed partial class HomeViewModel : ObservableObject
+public sealed partial class HomeViewModel : ViewModelBase
 {
     private readonly BingWallpaperProvider _onlineProvider;
     private readonly MockWallpaperProvider _sampleProvider;
@@ -19,6 +19,7 @@ public sealed partial class HomeViewModel : ObservableObject
     private readonly INavigationService _navigation;
     private readonly ILogger<HomeViewModel> _logger;
     private readonly DispatcherQueue _dispatcherQueue;
+    private string? _errorKey;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -35,7 +36,9 @@ public sealed partial class HomeViewModel : ObservableObject
         IImageCacheService imageCache,
         ILocalLibrary library,
         INavigationService navigation,
+        ILocalizationService localization,
         ILogger<HomeViewModel> logger)
+        : base(localization)
     {
         _onlineProvider = onlineProvider;
         _sampleProvider = sampleProvider;
@@ -54,15 +57,25 @@ public sealed partial class HomeViewModel : ObservableObject
 
     public bool HasRecent => RecentlyUsed.Count > 0;
 
-    public string Greeting => DateTime.Now.Hour switch
+    public string Greeting => Loc.Get(DateTime.Now.Hour switch
     {
-        < 5 => "Good night",
-        < 12 => "Good morning",
-        < 18 => "Good afternoon",
-        _ => "Good evening",
-    };
+        < 5 => "Greeting_Night",
+        < 12 => "Greeting_Morning",
+        < 18 => "Greeting_Afternoon",
+        _ => "Greeting_Evening",
+    });
 
     public bool IsInitialLoading => IsLoading && Recommended.Count == 0;
+
+    public override void OnLanguageChanged()
+    {
+        if (_errorKey is not null)
+        {
+            ErrorMessage = Loc.Get(_errorKey);
+        }
+
+        OnPropertyChanged(nameof(Greeting));
+    }
 
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(IsInitialLoading));
 
@@ -75,7 +88,7 @@ public sealed partial class HomeViewModel : ObservableObject
         }
 
         IsLoading = true;
-        ErrorMessage = null;
+        SetError(null);
 
         try
         {
@@ -93,7 +106,7 @@ public sealed partial class HomeViewModel : ObservableObject
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Bing feed unavailable; falling back to sample wallpapers");
-                ErrorMessage = "Bing is unreachable right now — showing sample wallpapers instead.";
+                SetError("Home_Error_FeedUnavailable");
                 items = await _sampleProvider
                     .GetWallpapersAsync(new WallpaperQuery { PageSize = 24 }, cancellationToken)
                     .ConfigureAwait(true);
@@ -120,7 +133,7 @@ public sealed partial class HomeViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load the home feed");
-            ErrorMessage = "We couldn't load wallpapers just now. Please try again.";
+            SetError("Home_Error_LoadFailed");
         }
         finally
         {
@@ -145,6 +158,13 @@ public sealed partial class HomeViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenLibrary() => _navigation.NavigateTo(Routes.Library);
+
+    /// <summary>Stores the resource key so the message can be re-resolved after a language change.</summary>
+    private void SetError(string? key)
+    {
+        _errorKey = key;
+        ErrorMessage = key is null ? null : Loc.Get(key);
+    }
 
     private void OnLibraryChanged(object? sender, EventArgs e)
     {

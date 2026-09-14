@@ -72,6 +72,8 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<IImageCacheService, ImageCacheService>();
 
         // Application services.
+        services.AddSingleton<LocalizationService>();
+        services.AddSingleton<ILocalizationService>(sp => sp.GetRequiredService<LocalizationService>());
         services.AddSingleton<WindowContext>();
         services.AddSingleton<INavigationService, NavigationService>();
         services.AddSingleton<IDialogService, DialogService>();

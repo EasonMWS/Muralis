@@ -5,10 +5,11 @@ namespace Muralis.Core.Helpers;
 /// <summary>Formatting helpers shared by views and view models.</summary>
 public static class DisplayFormat
 {
+    /// <summary>Formats a resolution like "3840 × 2400"; empty when the size is not known yet.</summary>
     public static string Resolution(int width, int height) =>
         width > 0 && height > 0
             ? string.Create(CultureInfo.InvariantCulture, $"{width} × {height}")
-            : "Unknown resolution";
+            : string.Empty;
 
     public static string AspectRatio(int width, int height)
     {

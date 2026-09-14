@@ -139,7 +139,7 @@ public sealed class Wallpaper : INotifyPropertyChanged
     /// <summary>Secondary line on cards: resolution when known, otherwise the source tag.</summary>
     public string MetaText => Width > 0 && Height > 0
         ? ResolutionText
-        : Tags.FirstOrDefault() ?? "Online";
+        : Tags.FirstOrDefault() ?? string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

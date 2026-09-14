@@ -7,6 +7,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Muralis.Core.Models"
+    xmlns:vm="using:Muralis.App.ViewModels"
     Background="Transparent"
     mc:Ignorable="d">
 
@@ -32,7 +33,7 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel>
-                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Browse" />
+                <TextBlock Style="{StaticResource PageTitleStyle}" Text="{Binding [Browse_Title], Source={StaticResource Loc}}" />
                 <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="{x:Bind ViewModel.ProviderName, Mode=OneWay}" />
             </StackPanel>
 
@@ -44,15 +45,20 @@
                 <ComboBox
                     x:Name="ProviderCombo"
                     MinWidth="160"
-                    DisplayMemberPath="DisplayName"
                     ItemsSource="{x:Bind ViewModel.Providers}"
                     SelectionChanged="OnProviderSelectionChanged"
-                    ToolTipService.ToolTip="Wallpaper source" />
+                    ToolTipService.ToolTip="{Binding [Browse_SourceTooltip], Source={StaticResource Loc}}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ProviderOption">
+                            <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
                 <AutoSuggestBox
                     Width="260"
                     VerticalAlignment="Center"
                     IsEnabled="{x:Bind ViewModel.SupportsSearch, Mode=OneWay}"
-                    PlaceholderText="Search wallpapers"
+                    PlaceholderText="{Binding [Browse_SearchPlaceholder], Source={StaticResource Loc}}"
                     QueryIcon="Find"
                     Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
@@ -61,7 +67,7 @@
                 Grid.Column="2"
                 VerticalAlignment="Center"
                 Click="OnRefreshClick"
-                ToolTipService.ToolTip="Refresh">
+                ToolTipService.ToolTip="{Binding [Browse_RefreshTooltip], Source={StaticResource Loc}}">
                 <FontIcon FontSize="14" Glyph="&#xE72C;" />
             </Button>
         </Grid>
@@ -88,10 +94,10 @@
 
             <controls:EmptyState
                 ActionCommand="{x:Bind ViewModel.ClearSearchCommand}"
-                ActionText="Clear search"
-                Description="Try a different search term — or clear the search to see everything again."
+                ActionText="{Binding [Browse_Empty_Action], Source={StaticResource Loc}}"
+                Description="{Binding [Browse_Empty_Description], Source={StaticResource Loc}}"
                 Glyph="&#xE721;"
-                Title="No wallpapers found"
+                Title="{Binding [Browse_Empty_Title], Source={StaticResource Loc}}"
                 Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
 
             <ProgressRing
@@ -109,7 +115,7 @@
                 IsOpen="True"
                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                 Severity="Error"
-                Title="Something went wrong"
+                Title="{Binding [Common_Error_Title], Source={StaticResource Loc}}"
                 Visibility="{x:Bind ViewModel.ErrorMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
         </Grid>
 

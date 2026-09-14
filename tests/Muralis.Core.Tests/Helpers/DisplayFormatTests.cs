@@ -29,8 +29,8 @@ public sealed class DisplayFormatTests
         Assert.Equal(expected, DisplayFormat.FileSize(bytes));
 
     [Fact]
-    public void Resolution_WithInvalidDimensions_ReturnsFallback() =>
-        Assert.Equal("Unknown resolution", DisplayFormat.Resolution(0, 0));
+    public void Resolution_WithInvalidDimensions_ReturnsEmpty() =>
+        Assert.Equal(string.Empty, DisplayFormat.Resolution(0, 0));
 
     [Fact]
     public void RelativeTime_FormatsRecentValues()

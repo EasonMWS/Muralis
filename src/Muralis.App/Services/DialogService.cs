@@ -6,9 +6,9 @@ namespace Muralis.App.Services;
 
 public interface IDialogService
 {
-    Task ShowMessageAsync(string title, string message, string closeButtonText = "OK");
+    Task ShowMessageAsync(string title, string message, string? closeButtonText = null);
 
-    Task<bool> ShowConfirmAsync(string title, string message, string primaryButtonText, string closeButtonText = "Cancel");
+    Task<bool> ShowConfirmAsync(string title, string message, string primaryButtonText, string? closeButtonText = null);
 
     Task ShowErrorAsync(string title, string message);
 }
@@ -16,30 +16,32 @@ public interface IDialogService
 public sealed class DialogService : IDialogService
 {
     private readonly WindowContext _windowContext;
+    private readonly ILocalizationService _localization;
     private readonly ILogger<DialogService> _logger;
 
-    public DialogService(WindowContext windowContext, ILogger<DialogService> logger)
+    public DialogService(WindowContext windowContext, ILocalizationService localization, ILogger<DialogService> logger)
     {
         _windowContext = windowContext;
+        _localization = localization;
         _logger = logger;
     }
 
-    public Task ShowMessageAsync(string title, string message, string closeButtonText = "OK") =>
+    public Task ShowMessageAsync(string title, string message, string? closeButtonText = null) =>
         ShowAsync(new ContentDialog
         {
             Title = title,
             Content = message,
-            CloseButtonText = closeButtonText,
+            CloseButtonText = closeButtonText ?? _localization.Get("Common_OK"),
         });
 
-    public async Task<bool> ShowConfirmAsync(string title, string message, string primaryButtonText, string closeButtonText = "Cancel")
+    public async Task<bool> ShowConfirmAsync(string title, string message, string primaryButtonText, string? closeButtonText = null)
     {
         var result = await ShowAsync(new ContentDialog
         {
             Title = title,
             Content = message,
             PrimaryButtonText = primaryButtonText,
-            CloseButtonText = closeButtonText,
+            CloseButtonText = closeButtonText ?? _localization.Get("Common_Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         });
 
@@ -47,7 +49,7 @@ public sealed class DialogService : IDialogService
     }
 
     public Task ShowErrorAsync(string title, string message) =>
-        ShowMessageAsync(title, message, "Close");
+        ShowMessageAsync(title, message, _localization.Get("Common_Close"));
 
     private async Task<ContentDialogResult> ShowAsync(ContentDialog dialog)
     {

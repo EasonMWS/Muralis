@@ -19,8 +19,8 @@
 
         <TitleBar
             x:Name="AppTitleBar"
-            Title="Muralis"
-            Subtitle="Wallpaper Studio"
+            Title="{Binding [App_Name], Source={StaticResource Loc}}"
+            Subtitle="{Binding [App_Tagline], Source={StaticResource Loc}}"
             IsBackButtonVisible="False"
             IsPaneToggleButtonVisible="True"
             BackRequested="OnTitleBarBackRequested"
@@ -41,29 +41,29 @@
             OpenPaneLength="248"
             PaneDisplayMode="Left">
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="Home" Tag="home">
+                <NavigationViewItem Content="{Binding [Nav_Home], Source={StaticResource Loc}}" Tag="home">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE80F;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Browse" Tag="browse">
+                <NavigationViewItem Content="{Binding [Nav_Browse], Source={StaticResource Loc}}" Tag="browse">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE774;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Library" Tag="library">
+                <NavigationViewItem Content="{Binding [Nav_Library], Source={StaticResource Loc}}" Tag="library">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8F1;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Favorites" Tag="favorites">
+                <NavigationViewItem Content="{Binding [Nav_Favorites], Source={StaticResource Loc}}" Tag="favorites">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE734;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
-                <NavigationViewItem Content="Settings" Tag="settings">
+                <NavigationViewItem Content="{Binding [Nav_Settings], Source={StaticResource Loc}}" Tag="settings">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE713;" />
                     </NavigationViewItem.Icon>

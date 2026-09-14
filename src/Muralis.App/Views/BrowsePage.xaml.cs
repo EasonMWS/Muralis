@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Muralis.App.ViewModels;
-using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
 
 namespace Muralis.App.Views;
@@ -33,9 +32,9 @@ public sealed partial class BrowsePage : Page
 
     private void OnProviderSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ProviderCombo.SelectedItem is IWallpaperProvider provider && !ReferenceEquals(provider, ViewModel.SelectedProvider))
+        if (ProviderCombo.SelectedItem is ProviderOption option && !ReferenceEquals(option, ViewModel.SelectedProvider))
         {
-            ViewModel.SelectedProvider = provider;
+            ViewModel.SelectedProvider = option;
         }
     }
 }

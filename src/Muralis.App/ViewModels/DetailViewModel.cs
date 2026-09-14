@@ -10,7 +10,7 @@ using Muralis.Core.Models;
 
 namespace Muralis.App.ViewModels;
 
-public sealed partial class DetailViewModel : ObservableObject
+public sealed partial class DetailViewModel : ViewModelBase
 {
     private const string FavoriteGlyphOutline = "\uEB51";
     private const string FavoriteGlyphFilled = "\uEB52";
@@ -23,6 +23,8 @@ public sealed partial class DetailViewModel : ObservableObject
     private readonly IImageCacheService _imageCache;
     private readonly ILogger<DetailViewModel> _logger;
     private CancellationTokenSource? _downloadCts;
+    private Notice? _successNotice;
+    private Notice? _errorNotice;
 
     [ObservableProperty]
     public partial Wallpaper? Wallpaper { get; set; }
@@ -55,7 +57,9 @@ public sealed partial class DetailViewModel : ObservableObject
         IDialogService dialogs,
         IDownloadService downloadService,
         IImageCacheService imageCache,
+        ILocalizationService localization,
         ILogger<DetailViewModel> logger)
+        : base(localization)
     {
         _wallpaperService = wallpaperService;
         _library = library;
@@ -79,13 +83,13 @@ public sealed partial class DetailViewModel : ObservableObject
     public bool CanRemoveFromLibrary =>
         Wallpaper is { Source: WallpaperSource.Local } && _library.Find(Wallpaper.Id) is not null;
 
-    public string ApplyButtonText => IsApplying ? "Applying…" : "Set as desktop wallpaper";
+    public string ApplyButtonText => Loc.Get(IsApplying ? "Detail_Applying" : "Detail_SetWallpaper");
 
-    public string FavoriteLabel => Wallpaper?.IsFavorite == true ? "Remove from favorites" : "Add to favorites";
+    public string FavoriteLabel => Loc.Get(Wallpaper?.IsFavorite == true ? "Detail_RemoveFavorite" : "Detail_AddFavorite");
 
     public string FavoriteGlyphText => Wallpaper?.IsFavorite == true ? FavoriteGlyphFilled : FavoriteGlyphOutline;
 
-    public string SourceText => Wallpaper?.Source == WallpaperSource.Online ? "Online" : "On this PC";
+    public string SourceText => Loc.Get(Wallpaper?.Source == WallpaperSource.Online ? "Detail_Source_Online" : "Detail_Source_Local");
 
     public bool CanDownload =>
         Wallpaper is { Source: WallpaperSource.Online, HasLocalFile: false }
@@ -94,12 +98,37 @@ public sealed partial class DetailViewModel : ObservableObject
 
     public bool CanShowInExplorer => Wallpaper?.HasLocalFile == true;
 
+    /// <summary>True when the info card has at least one fact to show; otherwise the card is hidden.</summary>
+    public bool HasTechnicalDetails =>
+        Wallpaper is { } wallpaper
+        && (!string.IsNullOrEmpty(wallpaper.AspectRatioText)
+            || !string.IsNullOrEmpty(wallpaper.FileSizeText)
+            || wallpaper.HasLocalFile);
+
+    public override void OnLanguageChanged()
+    {
+        if (_successNotice is { } success)
+        {
+            SuccessNotice = Loc.Format(success.Key, success.Args);
+        }
+
+        if (_errorNotice is { } error)
+        {
+            ErrorNotice = Loc.Format(error.Key, error.Args);
+        }
+
+        NotifyDerivedChanged();
+    }
+
+    /// <summary>A pending notice, kept as a resource key so it survives language changes.</summary>
+    private sealed record Notice(string Key, object?[] Args);
+
     public void Load(Wallpaper? wallpaper)
     {
         Wallpaper = wallpaper;
         SelectedMonitor = null;
-        SuccessNotice = null;
-        ErrorNotice = null;
+        SetSuccess(null);
+        SetError(null);
         DownloadProgress = 0;
         DownloadProgressText = string.Empty;
 
@@ -147,32 +176,36 @@ public sealed partial class DetailViewModel : ObservableObject
     {
         if (Wallpaper?.LocalPath is not { Length: > 0 } path)
         {
-            ErrorNotice = "This wallpaper has no local file to apply yet.";
+            SetError("Detail_Error_NoLocalFile");
             return;
         }
 
         IsApplying = true;
-        SuccessNotice = null;
-        ErrorNotice = null;
+        SetSuccess(null);
+        SetError(null);
 
         try
         {
             var fitMode = _settingsService.Current.DefaultFitMode;
-            var target = SelectedMonitor is null ? "all displays" : SelectedMonitor.DisplayName;
+            var target = SelectedMonitor is null
+                ? Loc.Get("Detail_Target_AllDisplays")
+                : SelectedMonitor.DisplayName;
 
             await _wallpaperService.SetWallpaperAsync(path, fitMode, SelectedMonitor?.Id);
             await _library.RecordUsageAsync(Wallpaper, target);
 
-            SuccessNotice = $"Desktop wallpaper updated — {fitMode} on {target}.";
+            SetSuccess("Detail_Success_Applied", Loc.Get(FitModeKeys.For(fitMode)), target);
         }
         catch (NotSupportedException ex)
         {
+            // Platform capability message; keep the original text from the service.
+            _errorNotice = null;
             ErrorNotice = ex.Message;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to set the desktop wallpaper");
-            ErrorNotice = "Could not update the desktop wallpaper. See the log for details.";
+            SetError("Detail_Error_ApplyFailed");
         }
         finally
         {
@@ -185,7 +218,7 @@ public sealed partial class DetailViewModel : ObservableObject
     {
         if (Wallpaper is not { } wallpaper || string.IsNullOrEmpty(wallpaper.RemoteUrl))
         {
-            ErrorNotice = "This wallpaper has no download link.";
+            SetError("Detail_Error_NoDownloadLink");
             return;
         }
 
@@ -195,8 +228,8 @@ public sealed partial class DetailViewModel : ObservableObject
 
         IsDownloading = true;
         DownloadProgress = 0;
-        SuccessNotice = null;
-        ErrorNotice = null;
+        SetSuccess(null);
+        SetError(null);
         NotifyDerivedChanged();
 
         try
@@ -220,16 +253,16 @@ public sealed partial class DetailViewModel : ObservableObject
             wallpaper.LocalPath = path;
             await _library.SaveAsync(wallpaper);
 
-            SuccessNotice = $"Downloaded to {folder}.";
+            SetSuccess("Detail_Success_Downloaded", folder);
         }
         catch (OperationCanceledException)
         {
-            SuccessNotice = "Download cancelled.";
+            SetSuccess("Detail_Success_DownloadCancelled");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Download failed for {Url}", wallpaper.RemoteUrl);
-            ErrorNotice = "The download failed. Check your connection and try again.";
+            SetError("Detail_Error_DownloadFailed");
         }
         finally
         {
@@ -257,9 +290,10 @@ public sealed partial class DetailViewModel : ObservableObject
         }
 
         var confirmed = await _dialogs.ShowConfirmAsync(
-            "Remove from library",
-            $"Remove \"{Wallpaper.Title}\" from Muralis? The original file stays on your disk.",
-            "Remove");
+            Loc.Get("Detail_ConfirmRemove_Title"),
+            Loc.Format("Detail_ConfirmRemove_Message", Wallpaper.Title),
+            Loc.Get("Detail_ConfirmRemove_Primary"),
+            Loc.Get("Common_Cancel"));
 
         if (!confirmed)
         {
@@ -267,8 +301,8 @@ public sealed partial class DetailViewModel : ObservableObject
         }
 
         await _library.RemoveAsync(Wallpaper.Id);
-        SuccessNotice = "Removed from your library.";
-        ErrorNotice = null;
+        SetSuccess("Detail_Success_RemovedFromLibrary");
+        SetError(null);
         NotifyDerivedChanged();
     }
 
@@ -283,13 +317,13 @@ public sealed partial class DetailViewModel : ObservableObject
         try
         {
             await _library.SetFavoriteAsync(Wallpaper, !Wallpaper.IsFavorite);
-            SuccessNotice = Wallpaper.IsFavorite ? "Added to favorites." : "Removed from favorites.";
-            ErrorNotice = null;
+            SetSuccess(Wallpaper.IsFavorite ? "Detail_Success_FavoriteAdded" : "Detail_Success_FavoriteRemoved");
+            SetError(null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update the favorite state");
-            ErrorNotice = "Could not update favorites. See the log for details.";
+            SetError("Detail_Error_FavoriteFailed");
         }
         finally
         {
@@ -303,7 +337,7 @@ public sealed partial class DetailViewModel : ObservableObject
         var path = Wallpaper?.LocalPath;
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
-            ErrorNotice = "This file is not available on disk yet.";
+            SetError("Detail_Error_FileMissing");
             return;
         }
 
@@ -314,8 +348,20 @@ public sealed partial class DetailViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not open Explorer for {Path}", path);
-            ErrorNotice = "Could not open the file location.";
+            SetError("Detail_Error_OpenInExplorer");
         }
+    }
+
+    private void SetSuccess(string? key, params object?[] args)
+    {
+        _successNotice = key is null ? null : new Notice(key, args);
+        SuccessNotice = key is null ? null : Loc.Format(key, args);
+    }
+
+    private void SetError(string? key, params object?[] args)
+    {
+        _errorNotice = key is null ? null : new Notice(key, args);
+        ErrorNotice = key is null ? null : Loc.Format(key, args);
     }
 
     private void NotifyDerivedChanged()
@@ -325,6 +371,7 @@ public sealed partial class DetailViewModel : ObservableObject
         OnPropertyChanged(nameof(CanRemoveFromLibrary));
         OnPropertyChanged(nameof(CanDownload));
         OnPropertyChanged(nameof(CanShowInExplorer));
+        OnPropertyChanged(nameof(HasTechnicalDetails));
         OnPropertyChanged(nameof(FavoriteLabel));
         OnPropertyChanged(nameof(FavoriteGlyphText));
         OnPropertyChanged(nameof(SourceText));

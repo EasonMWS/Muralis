@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Localization**
+
+- English and Simplified Chinese UI; a display-language setting with
+  "Follow system", "English" and "简体中文" that applies instantly, needs no restart
+  and persists across restarts
+- All user-facing text now comes from embedded resources (`Strings/Resources.resx`
+  plus one satellite assembly per language); view models refresh their text live
+  through a weakly-referenced language-change notification
+
+### Fixed
+
+- The window no longer shows the default Windows icon: the custom title bar replaces
+  the system one, and the Muralis icon is used by the taskbar, Alt+Tab and Explorer
+- The featured wallpaper on Home shows the cached thumbnail instead of a blank card
+  while the full image has not been downloaded yet
+- The details page no longer shows bare labels for wallpapers whose size or
+  location is not known yet
+
+### Changed
+
+- Formatting helpers return neutral values instead of English fallbacks
+  ("Unknown resolution", "Online") so no untranslated text can reach the UI
+
 ## [0.1.0] - 2026-09-14
 
 The first public release: a modern, native wallpaper manager for Windows 10 & 11.

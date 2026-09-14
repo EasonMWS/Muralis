@@ -16,6 +16,7 @@ internal static class TrayInterop
     internal const int WmDestroy = 0x0002;
 
     internal const uint NimAdd = 0x00000000;
+    internal const uint NimModify = 0x00000001;
     internal const uint NimDelete = 0x00000002;
     internal const uint NifMessage = 0x00000001;
     internal const uint NifIcon = 0x00000002;

@@ -45,24 +45,28 @@
                         <Border
                             Padding="10,4"
                             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            CornerRadius="12">
+                            CornerRadius="12"
+                            Visibility="{x:Bind ViewModel.Wallpaper.ResolutionText, Mode=OneWay, Converter={StaticResource NullToVisibility}}">
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.Wallpaper.ResolutionText, Mode=OneWay}" />
                         </Border>
                     </StackPanel>
                 </StackPanel>
 
-                <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Border
+                    Padding="16"
+                    Style="{StaticResource CardBorderStyle}"
+                    Visibility="{x:Bind ViewModel.HasTechnicalDetails, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                     <StackPanel Spacing="12">
-                        <Grid>
-                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Aspect ratio" />
+                        <Grid Visibility="{x:Bind ViewModel.Wallpaper.AspectRatioText, Mode=OneWay, Converter={StaticResource NullToVisibility}}">
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Detail_AspectRatio], Source={StaticResource Loc}}" />
                             <TextBlock HorizontalAlignment="Right" Text="{x:Bind ViewModel.Wallpaper.AspectRatioText, Mode=OneWay}" />
                         </Grid>
                         <Grid Visibility="{x:Bind ViewModel.Wallpaper.FileSizeText, Mode=OneWay, Converter={StaticResource NullToVisibility}}">
-                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="File size" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Detail_FileSize], Source={StaticResource Loc}}" />
                             <TextBlock HorizontalAlignment="Right" Text="{x:Bind ViewModel.Wallpaper.FileSizeText, Mode=OneWay}" />
                         </Grid>
-                        <Grid>
-                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Location" />
+                        <Grid Visibility="{x:Bind ViewModel.Wallpaper.LocalPath, Mode=OneWay, Converter={StaticResource NullToVisibility}}">
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Detail_Location], Source={StaticResource Loc}}" />
                             <TextBlock
                                 MaxWidth="220"
                                 HorizontalAlignment="Right"
@@ -85,8 +89,8 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Apply to" />
-                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Send this wallpaper to one display." />
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Detail_ApplyTo_Title], Source={StaticResource Loc}}" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Detail_ApplyTo_Description], Source={StaticResource Loc}}" />
                         </StackPanel>
                         <ComboBox
                             x:Name="MonitorCombo"
@@ -95,7 +99,7 @@
                             VerticalAlignment="Center"
                             DisplayMemberPath="SummaryText"
                             ItemsSource="{x:Bind ViewModel.Monitors}"
-                            PlaceholderText="All displays"
+                            PlaceholderText="{Binding [Detail_AllDisplays], Source={StaticResource Loc}}"
                             SelectionChanged="OnMonitorSelectionChanged" />
                     </Grid>
                 </Border>
@@ -103,7 +107,7 @@
                 <StackPanel Spacing="10">
                     <Button
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Set as desktop wallpaper"
+                        AutomationProperties.Name="{Binding [Detail_SetWallpaper], Source={StaticResource Loc}}"
                         Click="OnSetAsWallpaperClick"
                         IsEnabled="{x:Bind ViewModel.CanApplyWallpaper, Mode=OneWay}"
                         Style="{StaticResource AccentButtonStyle}">
@@ -134,12 +138,12 @@
 
                     <Button
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Download to PC"
+                        AutomationProperties.Name="{Binding [Detail_Download], Source={StaticResource Loc}}"
                         Click="OnDownloadClick"
                         Visibility="{x:Bind ViewModel.CanDownload, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <FontIcon FontSize="16" Glyph="&#xE896;" />
-                            <TextBlock Text="Download to PC" />
+                            <TextBlock Text="{Binding [Detail_Download], Source={StaticResource Loc}}" />
                         </StackPanel>
                     </Button>
 
@@ -151,32 +155,32 @@
                                 Text="{x:Bind ViewModel.DownloadProgressText, Mode=OneWay}" />
                             <Button
                                 HorizontalAlignment="Right"
-                                AutomationProperties.Name="Cancel download"
+                                AutomationProperties.Name="{Binding [Common_Cancel], Source={StaticResource Loc}}"
                                 Click="OnCancelDownloadClick"
-                                Content="Cancel"
+                                Content="{Binding [Common_Cancel], Source={StaticResource Loc}}"
                                 Padding="12,4" />
                         </Grid>
                     </StackPanel>
 
                     <Button
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Show file location"
+                        AutomationProperties.Name="{Binding [Detail_ShowInExplorer], Source={StaticResource Loc}}"
                         Click="OnOpenInExplorerClick"
                         Visibility="{x:Bind ViewModel.CanShowInExplorer, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <FontIcon FontSize="16" Glyph="&#xE7C5;" />
-                            <TextBlock Text="Show file location" />
+                            <TextBlock Text="{Binding [Detail_ShowInExplorer], Source={StaticResource Loc}}" />
                         </StackPanel>
                     </Button>
 
                     <Button
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Remove from library"
+                        AutomationProperties.Name="{Binding [Detail_RemoveFromLibrary], Source={StaticResource Loc}}"
                         Click="OnRemoveFromLibraryClick"
                         Visibility="{x:Bind ViewModel.CanRemoveFromLibrary, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <FontIcon FontSize="16" Glyph="&#xE74D;" />
-                            <TextBlock Text="Remove from library" />
+                            <TextBlock Text="{Binding [Detail_RemoveFromLibrary], Source={StaticResource Loc}}" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -192,7 +196,7 @@
                     IsOpen="True"
                     Message="{x:Bind ViewModel.ErrorNotice, Mode=OneWay}"
                     Severity="Error"
-                    Title="Something went wrong"
+                    Title="{Binding [Common_Error_Title], Source={StaticResource Loc}}"
                     Visibility="{x:Bind ViewModel.ErrorNotice, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
             </StackPanel>
         </ScrollViewer>

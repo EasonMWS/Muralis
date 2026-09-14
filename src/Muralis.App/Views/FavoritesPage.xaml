@@ -23,8 +23,8 @@
         </Grid.RowDefinitions>
 
         <StackPanel>
-            <TextBlock Style="{StaticResource PageTitleStyle}" Text="Favorites" />
-            <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="The wallpapers you never want to lose." />
+            <TextBlock Style="{StaticResource PageTitleStyle}" Text="{Binding [Favorites_Title], Source={StaticResource Loc}}" />
+            <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="{Binding [Favorites_Subtitle], Source={StaticResource Loc}}" />
         </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,20,0,0">
@@ -48,10 +48,10 @@
 
             <controls:EmptyState
                 ActionCommand="{x:Bind ViewModel.OpenBrowseCommand}"
-                ActionText="Browse wallpapers"
-                Description="Tap the heart on any wallpaper and it will be waiting for you here, even after you restart Muralis."
+                ActionText="{Binding [Favorites_Empty_Action], Source={StaticResource Loc}}"
+                Description="{Binding [Favorites_Empty_Description], Source={StaticResource Loc}}"
                 Glyph="&#xE734;"
-                Title="No favorites yet"
+                Title="{Binding [Favorites_Empty_Title], Source={StaticResource Loc}}"
                 Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
         </Grid>
     </Grid>
