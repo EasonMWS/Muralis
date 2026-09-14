@@ -73,6 +73,9 @@ public sealed class AppHost
         // Windows platform services.
         services.AddSingleton<IImageFormatService, ImageFormatService>();
         services.AddSingleton<IWallpaperService, WindowsWallpaperService>();
+        services.AddSingleton<IStartupService, StartupService>();
+        services.AddSingleton<RotationService>();
+        services.AddSingleton<TrayService>();
 
         // Shell and view models.
         services.AddSingleton<MainWindow>();

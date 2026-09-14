@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are saved to the configured folder and join the catalog with real dimensions (M4)
 - Thumbnail cache so online grids render instantly and work offline (M4)
 - Provider picker on the Browse page (Bing / sample wallpapers) (M4)
+- Auto rotation: shuffle favorites or a folder every 15 minutes to 24 hours, with a
+  "Shuffle now" action and live settings (M5)
+- Run at sign-in through the per-user registry (no package identity needed) (M5)
+- System tray icon (native Shell_NotifyIcon): show window, next wallpaper, settings,
+  exit; optional close-to-tray so rotation keeps running (M5)
+- App icon (window, taskbar and tray) and a custom title-bar icon (M5)
 
 ### Fixed
 

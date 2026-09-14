@@ -10,18 +10,26 @@ namespace Muralis.App;
 public sealed partial class MainWindow : Window
 {
     private readonly INavigationService _navigation;
+    private readonly IThemeService _themeService;
+    private readonly ISettingsService _settingsService;
+    private readonly TrayService _trayService;
     private readonly ILogger<MainWindow> _logger;
+    private bool _allowClose;
 
     public MainWindow(
         INavigationService navigation,
         IThemeService themeService,
         ISettingsService settingsService,
+        TrayService trayService,
         WindowContext windowContext,
         ILogger<MainWindow> logger)
     {
         InitializeComponent();
 
         _navigation = navigation;
+        _themeService = themeService;
+        _settingsService = settingsService;
+        _trayService = trayService;
         _logger = logger;
 
         windowContext.MainWindow = this;
@@ -31,8 +39,30 @@ public sealed partial class MainWindow : Window
 
         WindowHelper.ConfigureInitialPlacement(this);
 
+        AppWindow.Closing += OnWindowClosing;
+
         RootNavigationView.SelectedItem = RootNavigationView.MenuItems[0];
         _navigation.NavigateTo(Routes.Home);
+    }
+
+    /// <summary>Quits the application even when close-to-tray is enabled (tray menu / settings).</summary>
+    public void ExitApplication()
+    {
+        _allowClose = true;
+        Close();
+    }
+
+    private void OnWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (_allowClose || !_settingsService.Current.CloseToTray)
+        {
+            return;
+        }
+
+        // Keep running in the tray so rotation and quick access stay available.
+        args.Cancel = true;
+        _trayService.HideMainWindow();
+        _logger.LogInformation("Window hidden to the tray");
     }
 
     /// <summary>

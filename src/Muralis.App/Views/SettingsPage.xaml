@@ -124,16 +124,114 @@
                         Glyph="&#xE7E8;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Start with Windows" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Coming in a later milestone — Muralis will be able to launch at sign-in." />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Launch Muralis automatically when you sign in." />
                     </StackPanel>
                     <ToggleSwitch
                         Grid.Column="2"
                         VerticalAlignment="Center"
-                        IsEnabled="{x:Bind ViewModel.IsStartupSupported}"
                         IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}"
                         OffContent="Off"
                         OnContent="On" />
                 </Grid>
+            </Border>
+
+            <!--  Auto rotation  -->
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="14">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontSize="20"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Glyph="&#xE895;" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Auto rotation" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Shuffle wallpapers automatically while Muralis is running." />
+                        </StackPanel>
+                        <ToggleSwitch
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            AutomationProperties.Name="Auto rotation"
+                            IsOn="{x:Bind ViewModel.RotationEnabled, Mode=TwoWay}"
+                            OffContent="Off"
+                            OnContent="On" />
+                    </Grid>
+
+                    <ContentControl x:Name="RotationOptionsPanel" HorizontalContentAlignment="Stretch">
+                        <Grid ColumnSpacing="12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource CardCaptionStyle}"
+                                Text="Change every" />
+                            <ComboBox
+                                x:Name="IntervalCombo"
+                                Grid.Column="1"
+                                MinWidth="190"
+                                AutomationProperties.Name="Rotation interval"
+                                SelectionChanged="OnIntervalSelectionChanged" />
+
+                            <TextBlock
+                                Grid.Row="1"
+                                Margin="0,10,0,0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource CardCaptionStyle}"
+                                Text="Rotation source" />
+                            <ComboBox
+                                x:Name="RotationSourceCombo"
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                Margin="0,10,0,0"
+                                MinWidth="190"
+                                AutomationProperties.Name="Rotation source"
+                                SelectionChanged="OnRotationSourceSelectionChanged" />
+
+                            <TextBlock
+                                x:Name="RotationSummaryText"
+                                Grid.Row="2"
+                                Margin="0,10,0,0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource CardCaptionStyle}"
+                                TextTrimming="CharacterEllipsis" />
+                            <Button
+                                Grid.Row="2"
+                                Grid.Column="1"
+                                Margin="0,10,0,0"
+                                AutomationProperties.Name="Choose rotation folder"
+                                Click="OnChooseRotationFolderClick"
+                                Content="Choose…" />
+
+                            <TextBlock
+                                Grid.Row="3"
+                                Margin="0,10,0,0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource CardCaptionStyle}"
+                                Text="Apply the next wallpaper right away" />
+                            <Button
+                                Grid.Row="3"
+                                Grid.Column="1"
+                                Margin="0,10,0,0"
+                                AutomationProperties.Name="Shuffle now"
+                                Click="OnShuffleNowClick"
+                                Content="Shuffle now" />
+                        </Grid>
+                    </ContentControl>
+                </StackPanel>
             </Border>
 
             <Border Padding="16" Style="{StaticResource CardBorderStyle}">
@@ -147,15 +245,16 @@
                         VerticalAlignment="Center"
                         FontSize="20"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Glyph="&#xE895;" />
+                        Glyph="&#xE8A7;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Auto rotation" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Coming in a later milestone — shuffle wallpapers on a schedule." />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Keep running in the tray" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="Closing the window keeps Muralis (and rotation) available in the notification area." />
                     </StackPanel>
                     <ToggleSwitch
                         Grid.Column="2"
                         VerticalAlignment="Center"
-                        IsEnabled="{x:Bind ViewModel.IsRotationSupported}"
+                        AutomationProperties.Name="Keep running in the tray"
+                        IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}"
                         OffContent="Off"
                         OnContent="On" />
                 </Grid>
@@ -314,6 +413,12 @@
                             Margin="12,0,0,0"
                             Style="{StaticResource CardCaptionStyle}"
                             Text="MIT License" />
+                        <Button
+                            Margin="0,6,0,0"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.Name="Exit Muralis"
+                            Click="OnExitClick"
+                            Content="Exit Muralis" />
                     </StackPanel>
                 </Grid>
             </Border>

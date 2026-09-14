@@ -11,6 +11,19 @@ using Muralis.Core.Models;
 
 namespace Muralis.App.ViewModels;
 
+public sealed class IntervalOption
+{
+    public IntervalOption(RotationInterval value, string label)
+    {
+        Value = value;
+        Label = label;
+    }
+
+    public RotationInterval Value { get; }
+
+    public string Label { get; }
+}
+
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly ISettingsService _settingsService;
@@ -18,6 +31,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IFilePickerService _filePicker;
     private readonly IDialogService _dialogs;
     private readonly IWallpaperService _wallpaperService;
+    private readonly IStartupService _startupService;
+    private readonly RotationService _rotationService;
+    private readonly WindowContext _windowContext;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _applyingSettings = true;
 
@@ -39,12 +55,21 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool LaunchAtStartup { get; set; }
 
+    [ObservableProperty]
+    public partial bool CloseToTray { get; set; }
+
+    [ObservableProperty]
+    public partial bool RotationEnabled { get; set; }
+
     public SettingsViewModel(
         ISettingsService settingsService,
         IThemeService themeService,
         IFilePickerService filePicker,
         IDialogService dialogs,
         IWallpaperService wallpaperService,
+        IStartupService startupService,
+        RotationService rotationService,
+        WindowContext windowContext,
         ILogger<SettingsViewModel> logger)
     {
         _settingsService = settingsService;
@@ -52,13 +77,18 @@ public sealed partial class SettingsViewModel : ObservableObject
         _filePicker = filePicker;
         _dialogs = dialogs;
         _wallpaperService = wallpaperService;
+        _startupService = startupService;
+        _rotationService = rotationService;
+        _windowContext = windowContext;
         _logger = logger;
 
         var settings = _settingsService.Current;
         CacheSizeText = "Calculating…";
         DownloadFolder = ResolveDownloadFolder(settings);
         DefaultFitMode = settings.DefaultFitMode;
-        LaunchAtStartup = settings.LaunchAtStartup;
+        LaunchAtStartup = SafeReadStartupState(settings.LaunchAtStartup);
+        CloseToTray = settings.CloseToTray;
+        RotationEnabled = settings.Rotation.Enabled;
 
         _applyingSettings = false;
     }
@@ -105,7 +135,52 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public IReadOnlyList<WallpaperFitMode> FitModes { get; } = Enum.GetValues<WallpaperFitMode>();
 
+    public IReadOnlyList<IntervalOption> IntervalOptions { get; } =
+    [
+        new IntervalOption(RotationInterval.Minutes15, "Every 15 minutes"),
+        new IntervalOption(RotationInterval.Minutes30, "Every 30 minutes"),
+        new IntervalOption(RotationInterval.Hours1, "Every hour"),
+        new IntervalOption(RotationInterval.Hours6, "Every 6 hours"),
+        new IntervalOption(RotationInterval.Daily, "Every day"),
+    ];
+
     public ObservableCollection<MonitorInfo> Monitors { get; } = [];
+
+    public IntervalOption CurrentIntervalOption =>
+        IntervalOptions.FirstOrDefault(option => option.Value == _settingsService.Current.Rotation.Interval)
+        ?? IntervalOptions[1];
+
+    public bool UseFavoritesSource
+    {
+        get => _settingsService.Current.Rotation.UseFavorites;
+        set
+        {
+            if (value == _settingsService.Current.Rotation.UseFavorites)
+            {
+                return;
+            }
+
+            _settingsService.Update(settings => settings.Rotation.UseFavorites = value);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(RotationStatusText));
+        }
+    }
+
+    public string RotationStatusText
+    {
+        get
+        {
+            var rotation = _settingsService.Current.Rotation;
+            if (rotation.UseFavorites)
+            {
+                return "Uses your favorites as the source.";
+            }
+
+            return string.IsNullOrWhiteSpace(rotation.SourceFolder)
+                ? "Choose a folder to rotate through."
+                : rotation.SourceFolder;
+        }
+    }
 
     public string MonitorCountText => Monitors.Count switch
     {
@@ -113,6 +188,21 @@ public sealed partial class SettingsViewModel : ObservableObject
         1 => "1 display detected",
         _ => $"{Monitors.Count} displays detected",
     };
+
+    public string AppVersion => $"Version {AppInfo.Version}";
+
+    public string GitHubUrl => AppInfo.GitHubUrl;
+
+    public void SetRotationInterval(RotationInterval interval)
+    {
+        if (interval == _settingsService.Current.Rotation.Interval)
+        {
+            return;
+        }
+
+        _settingsService.Update(settings => settings.Rotation.Interval = interval);
+        SetStatus("Rotation interval updated.", isError: false);
+    }
 
     [RelayCommand]
     private async Task RefreshMonitorsAsync()
@@ -133,14 +223,6 @@ public sealed partial class SettingsViewModel : ObservableObject
             _logger.LogWarning(ex, "Could not enumerate displays");
         }
     }
-
-    public bool IsStartupSupported => false;
-
-    public bool IsRotationSupported => false;
-
-    public string AppVersion => $"Version {AppInfo.Version}";
-
-    public string GitHubUrl => AppInfo.GitHubUrl;
 
     [RelayCommand]
     private void RefreshCacheSize()
@@ -204,6 +286,43 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private async Task ChooseRotationFolderAsync()
+    {
+        var folder = await _filePicker.PickFolderAsync();
+        if (string.IsNullOrEmpty(folder))
+        {
+            return;
+        }
+
+        _settingsService.Update(settings =>
+        {
+            settings.Rotation.SourceFolder = folder;
+            settings.Rotation.UseFavorites = false;
+        });
+
+        OnPropertyChanged(nameof(UseFavoritesSource));
+        OnPropertyChanged(nameof(RotationStatusText));
+        SetStatus("Rotation folder updated.", isError: false);
+    }
+
+    [RelayCommand]
+    private async Task ShuffleNowAsync()
+    {
+        SetStatus("Applying the next wallpaper…", isError: false);
+        var applied = await _rotationService.ApplyNextAsync();
+        if (applied is null)
+        {
+            SetStatus("No wallpapers available to rotate through yet.", isError: true);
+            return;
+        }
+
+        SetStatus($"Wallpaper changed to \"{applied.Title}\".", isError: false);
+    }
+
+    [RelayCommand]
+    private void ExitApplication() => (_windowContext.MainWindow as MainWindow)?.ExitApplication();
+
     public void SelectTheme(AppTheme theme)
     {
         _settingsService.Update(settings => settings.Theme = theme);
@@ -231,7 +350,56 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        _settingsService.Update(settings => settings.LaunchAtStartup = value);
+        try
+        {
+            _startupService.SetEnabled(value);
+            _settingsService.Update(settings => settings.LaunchAtStartup = value);
+            SetStatus(value ? "Muralis will start with Windows." : "Start with Windows disabled.", isError: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not update the startup registration");
+            SetStatus("Could not change the startup setting.", isError: true);
+        }
+    }
+
+    partial void OnCloseToTrayChanged(bool value)
+    {
+        if (_applyingSettings)
+        {
+            return;
+        }
+
+        _settingsService.Update(settings => settings.CloseToTray = value);
+        SetStatus(
+            value
+                ? "Muralis keeps running in the tray when the window is closed."
+                : "Muralis exits when the window is closed.",
+            isError: false);
+    }
+
+    partial void OnRotationEnabledChanged(bool value)
+    {
+        if (_applyingSettings)
+        {
+            return;
+        }
+
+        _settingsService.Update(settings => settings.Rotation.Enabled = value);
+        SetStatus(value ? "Auto rotation enabled." : "Auto rotation disabled.", isError: false);
+    }
+
+    private bool SafeReadStartupState(bool fallback)
+    {
+        try
+        {
+            return _startupService.IsEnabled();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read the startup registration");
+            return fallback;
+        }
     }
 
     private static string ResolveDownloadFolder(AppSettings settings) =>

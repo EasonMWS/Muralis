@@ -21,5 +21,8 @@ public sealed class AppSettings
 
     public bool LaunchAtStartup { get; set; }
 
+    /// <summary>Keep the app (and rotation) alive in the tray when the window is closed.</summary>
+    public bool CloseToTray { get; set; } = true;
+
     public RotationSettings Rotation { get; set; } = new();
 }

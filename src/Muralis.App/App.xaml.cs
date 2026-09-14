@@ -41,6 +41,10 @@ public partial class App : Application
             _mainWindow.Activate();
 
             _host.Services.GetRequiredService<IThemeService>().ApplyFromSettings();
+
+            // The tray icon and rotation timer need the window to exist first.
+            _host.Services.GetRequiredService<TrayService>();
+            _host.Services.GetRequiredService<RotationService>().ApplySettings();
         }
         catch (Exception ex)
         {

@@ -19,8 +19,9 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 - **Local library** — import your own images and manage them without touching the original files
 - **Favorites** — keep the ones you love, persisted across restarts
 - **Downloads** — asynchronous downloads with progress, cancellation and conflict-safe file names
-- **Auto rotation** — shuffle your favorite wallpapers every 15 minutes to 24 hours (planned)
-- **Multi-monitor aware** — architecture ready for per-display wallpapers (planned)
+- **Auto rotation** — shuffle favorites or a folder every 15 minutes to 24 hours
+- **Runs in the tray** — close to the notification area and keep rotating; optional run at sign-in
+- **Per-display targeting** — pick which monitor receives a wallpaper
 - **Native look & feel** — Mica, custom title bar, light/dark/system theme support
 
 ## Screenshots
@@ -95,7 +96,7 @@ Muralis.Core.Tests   Unit tests for the core logic
 - [x] M2 — Local wallpapers: import, grid, details, set as desktop background
 - [ ] M3 — Persistence: favorites, history, settings (SQLite + JSON)
 - [ ] M4 — Online wallpapers: provider, downloads, image cache
-- [ ] M5 — Rotation, run-at-startup, system tray
+- [x] M5 — Rotation, run-at-startup, system tray
 - [ ] M6 — UI polish, performance, error & memory audits
 - [ ] M7 — Docs, CI, signed-off release build
 
