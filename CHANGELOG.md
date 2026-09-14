@@ -58,5 +58,5 @@ The first public release: a modern, native wallpaper manager for Windows 10 & 11
 - Dependency injection, Serilog rolling file logs, global exception handling
 - CI (build + test) and tag-driven release workflows on GitHub Actions
 
-[Unreleased]: https://github.com/muralis/muralis/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/muralis/muralis/releases/tag/v0.1.0
+[Unreleased]: https://github.com/EasonMWS/Muralis/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/EasonMWS/Muralis/releases/tag/v0.1.0

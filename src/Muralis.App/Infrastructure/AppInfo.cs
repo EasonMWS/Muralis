@@ -9,7 +9,7 @@ public static class AppInfo
 
     public const string Tagline = "Wallpaper Studio";
 
-    public const string GitHubUrl = "https://github.com/muralis/muralis";
+    public const string GitHubUrl = "https://github.com/EasonMWS/Muralis";
 
     public const string LicenseName = "MIT License";
 

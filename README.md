@@ -64,7 +64,7 @@ Prerequisites:
 - Windows 10/11 (Developer Mode is **not** required — Muralis ships unpackaged)
 
 ```bash
-git clone https://github.com/<your-org>/muralis.git
+git clone https://github.com/EasonMWS/Muralis.git
 cd muralis
 dotnet build Muralis.slnx -c Release
 dotnet run --project src/Muralis.App
