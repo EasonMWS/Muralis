@@ -80,7 +80,9 @@ path only.
 1. Implement `IWallpaperProvider` in `src/Muralis.Core/Providers/`:
    - `Id` (stable, lowercase) and `DisplayName` (English fallback);
    - `GetWallpapersAsync` for search/browse; set `SupportsSearch` if a search box makes
-     sense;
+     sense, and `SupportsCategories` if the source classifies its wallpapers with
+     `WallpaperCategory` (the Browse category picker stays disabled for sources that do
+     not, so the filter never silently empties the grid);
    - `GetFeaturedAsync` for the Home feed (optional — a sensible default is provided);
    - `GetWallpaperAsync` for details by id;
    - `RequiresApiKey` if the source cannot work without a key, and read it through the

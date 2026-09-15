@@ -105,6 +105,19 @@
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
+                                <ComboBox
+                                    x:Name="CategoryCombo"
+                                    HorizontalAlignment="Stretch"
+                                    Header="{Binding [Browse_Filter_Category], Source={StaticResource Loc}}"
+                                    IsEnabled="{x:Bind ViewModel.SupportsCategories, Mode=OneWay}"
+                                    ItemsSource="{x:Bind ViewModel.CategoryOptions}"
+                                    SelectedItem="{x:Bind ViewModel.SelectedCategory, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:CategoryOption">
+                                            <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                                 <Button
                                     x:Name="ResetFiltersButton"
                                     HorizontalAlignment="Stretch"

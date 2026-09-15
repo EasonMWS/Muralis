@@ -184,6 +184,21 @@
   <data name="Browse_Filter_Reset" xml:space="preserve">
     <value>重置筛选</value>
   </data>
+  <data name="Browse_Filter_Category" xml:space="preserve">
+    <value>分类</value>
+  </data>
+  <data name="Browse_Filter_CategoryAny" xml:space="preserve">
+    <value>任意分类</value>
+  </data>
+  <data name="Browse_Filter_CategoryGeneral" xml:space="preserve">
+    <value>常规</value>
+  </data>
+  <data name="Browse_Filter_CategoryAnime" xml:space="preserve">
+    <value>动漫</value>
+  </data>
+  <data name="Browse_Filter_CategoryPeople" xml:space="preserve">
+    <value>人物</value>
+  </data>
   <data name="Browse_Empty_FilterDescription" xml:space="preserve">
     <value>没有符合当前筛选条件的壁纸，试试放宽筛选条件。</value>
   </data>

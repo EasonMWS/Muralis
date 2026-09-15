@@ -8,15 +8,19 @@ public sealed class WallpaperFilterTests
     [Fact]
     public void IsActive_IsFalseForAnyAny()
     {
-        Assert.False(WallpaperFilter.IsActive(WallpaperOrientation.Any, WallpaperResolution.Any));
+        Assert.False(WallpaperFilter.IsActive(WallpaperOrientation.Any, WallpaperResolution.Any, WallpaperCategory.Any));
     }
 
     [Theory]
-    [InlineData(WallpaperOrientation.Landscape, WallpaperResolution.Any)]
-    [InlineData(WallpaperOrientation.Any, WallpaperResolution.QuadHd)]
-    public void IsActive_IsTrueWhenEitherFilterIsSet(WallpaperOrientation orientation, WallpaperResolution resolution)
+    [InlineData(WallpaperOrientation.Landscape, WallpaperResolution.Any, WallpaperCategory.Any)]
+    [InlineData(WallpaperOrientation.Any, WallpaperResolution.QuadHd, WallpaperCategory.Any)]
+    [InlineData(WallpaperOrientation.Any, WallpaperResolution.Any, WallpaperCategory.Anime)]
+    public void IsActive_IsTrueWhenEitherFilterIsSet(
+        WallpaperOrientation orientation,
+        WallpaperResolution resolution,
+        WallpaperCategory category)
     {
-        Assert.True(WallpaperFilter.IsActive(orientation, resolution));
+        Assert.True(WallpaperFilter.IsActive(orientation, resolution, category));
     }
 
     [Fact]
@@ -24,7 +28,8 @@ public sealed class WallpaperFilterTests
     {
         var wallpaper = new Wallpaper { Id = "x", Width = 0, Height = 0 };
 
-        Assert.True(WallpaperFilter.Matches(wallpaper, WallpaperOrientation.Portrait, WallpaperResolution.UltraHd));
+        Assert.True(WallpaperFilter.Matches(
+            wallpaper, WallpaperOrientation.Portrait, WallpaperResolution.UltraHd, WallpaperCategory.Any));
     }
 
     [Theory]
@@ -35,7 +40,8 @@ public sealed class WallpaperFilterTests
     {
         var wallpaper = new Wallpaper { Id = "x", Width = width, Height = height };
 
-        Assert.Equal(expected, WallpaperFilter.Matches(wallpaper, WallpaperOrientation.Landscape, WallpaperResolution.Any));
+        Assert.Equal(expected, WallpaperFilter.Matches(
+            wallpaper, WallpaperOrientation.Landscape, WallpaperResolution.Any, WallpaperCategory.Any));
     }
 
     [Theory]
@@ -50,7 +56,34 @@ public sealed class WallpaperFilterTests
     {
         var wallpaper = new Wallpaper { Id = "x", Width = width, Height = height };
 
-        Assert.Equal(expected, WallpaperFilter.Matches(wallpaper, WallpaperOrientation.Any, resolution));
+        Assert.Equal(expected, WallpaperFilter.Matches(
+            wallpaper, WallpaperOrientation.Any, resolution, WallpaperCategory.Any));
+    }
+
+    [Theory]
+    [InlineData(WallpaperCategory.Anime, WallpaperCategory.Anime, true)]
+    [InlineData(WallpaperCategory.Anime, WallpaperCategory.People, false)]
+    [InlineData(WallpaperCategory.Any, WallpaperCategory.Any, true)]
+    public void Matches_AppliesCategory(
+        WallpaperCategory wallpaperCategory,
+        WallpaperCategory selected,
+        bool expected)
+    {
+        var wallpaper = new Wallpaper { Id = "x", Width = 1920, Height = 1080, Category = wallpaperCategory };
+
+        Assert.Equal(expected, WallpaperFilter.Matches(
+            wallpaper, WallpaperOrientation.Any, WallpaperResolution.Any, selected));
+    }
+
+    [Fact]
+    public void Matches_DropsUnclassifiedWallpapersWhenACategoryIsSelected()
+    {
+        // A category is a positive attribute: "anime only" must not surface items whose
+        // source never classified them, unlike unknown dimensions which are kept.
+        var wallpaper = new Wallpaper { Id = "x", Width = 1920, Height = 1080, Category = WallpaperCategory.Any };
+
+        Assert.False(WallpaperFilter.Matches(
+            wallpaper, WallpaperOrientation.Any, WallpaperResolution.Any, WallpaperCategory.Anime));
     }
 
     [Fact]

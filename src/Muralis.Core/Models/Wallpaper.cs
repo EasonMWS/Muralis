@@ -123,6 +123,9 @@ public sealed class Wallpaper : INotifyPropertyChanged
 
     public WallpaperSource Source { get; set; } = WallpaperSource.Local;
 
+    /// <summary>Source-provided category, when the source classifies its items.</summary>
+    public WallpaperCategory Category { get; set; }
+
     public double AspectRatio => Height > 0 ? (double)Width / Height : 0d;
 
     public bool HasLocalFile => !string.IsNullOrEmpty(LocalPath);

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Muralis.Core.Abstractions;
 using Muralis.Core.Providers;
 using Muralis.Core.Tests.TestSupport;
 using Xunit;
@@ -44,6 +45,10 @@ public sealed class BingWallpaperProviderTests
         Assert.Equal(Muralis.Core.Models.WallpaperSource.Online, first.Source);
         Assert.Contains("Bing", first.Tags);
     }
+
+    [Fact]
+    public void CategoriesAreNotSupported() =>
+        Assert.False(((IWallpaperProvider)CreateProvider(FakeHttpMessageHandler.Json(SampleJson))).SupportsCategories);
 
     [Fact]
     public async Task GetWallpapersAsync_FallsBackToCopyrightWhenTitleIsMissing()

@@ -16,7 +16,7 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 ## Features
 
 - **Browse** — discover wallpapers in a responsive card grid with resolution, aspect ratio and tags
-- **Filters** — narrow results by orientation (landscape/portrait) and minimum resolution (Full HD, 2K, 4K); applied server-side where the source supports it
+- **Filters** — narrow results by orientation (landscape/portrait), minimum resolution (Full HD, 2K, 4K) and, for sources that classify their wallpapers, category (general/anime/people); applied server-side where the source supports it
 - **Tags** — label any wallpaper from its detail page, then filter the library by tag; tags are stored with the catalog and survive restarts
 - **Multiple sources** — Bing, Wallhaven and NASA APOD (plus the samples shipped with Windows): search all of them at once or one at a time, switch sources off, and choose which one fills the Home page
 - **Preview & apply** — open a wallpaper, then set it as your desktop background with one click

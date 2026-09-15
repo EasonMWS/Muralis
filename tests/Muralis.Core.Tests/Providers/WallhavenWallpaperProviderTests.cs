@@ -79,7 +79,12 @@ public sealed class WallhavenWallpaperProviderTests
         Assert.Equal(WallpaperSource.Online, first.Source);
         Assert.Contains("Wallhaven", first.Tags);
         Assert.Contains("General", first.Tags);
+        Assert.Equal(WallpaperCategory.General, first.Category);
+        Assert.Equal(WallpaperCategory.Anime, items[1].Category);
     }
+
+    [Fact]
+    public void CategoriesAreSupported() => Assert.True(CreateProvider(SearchJson).SupportsCategories);
 
     [Fact]
     public async Task GetWallpapersAsync_RequestsSafeContentOnly()
@@ -151,6 +156,21 @@ public sealed class WallhavenWallpaperProviderTests
         var url = handler.RequestedUrls.Single();
         Assert.DoesNotContain("ratios=", url);
         Assert.DoesNotContain("atleast=", url);
+    }
+
+    [Theory]
+    [InlineData(WallpaperCategory.General, "categories=100")]
+    [InlineData(WallpaperCategory.Anime, "categories=010")]
+    [InlineData(WallpaperCategory.People, "categories=001")]
+    [InlineData(WallpaperCategory.Any, "categories=111")]
+    public async Task GetWallpapersAsync_WithCategory_SendsTheMatchingMask(WallpaperCategory category, string expected)
+    {
+        var handler = CreateHandler(SearchJson);
+        var provider = CreateProvider(handler);
+
+        await provider.GetWallpapersAsync(new WallpaperQuery { SearchText = "mountains", Category = category });
+
+        Assert.Contains(expected, handler.RequestedUrls.Single());
     }
 
     [Fact]

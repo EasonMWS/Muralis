@@ -235,6 +235,25 @@ public sealed class WallpaperProviderManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchAsync_WithCategory_FiltersOutOtherAndUnclassifiedWallpapers()
+    {
+        var manager = CreateManager();
+        _bing.OnSearch = _ =>
+        [
+            Wallpaper("bing:anime", category: WallpaperCategory.Anime),
+            Wallpaper("bing:people", category: WallpaperCategory.People),
+            Wallpaper("bing:unclassified"),
+        ];
+
+        var result = await manager.SearchAsync(
+            new WallpaperQuery { Category = WallpaperCategory.Anime }, "bing", CancellationToken.None);
+
+        Assert.Equal(["bing:anime"], result.Items.Select(item => item.Id));
+        // The provider still receives the filter so a source that classifies its items can apply it server-side.
+        Assert.Equal(WallpaperCategory.Anime, _bing.SearchQueries.Single().Category);
+    }
+
+    [Fact]
     public async Task SearchAsync_OverlaysCatalogTags()
     {
         var manager = CreateManager();
@@ -309,7 +328,12 @@ public sealed class WallpaperProviderManagerTests : IDisposable
             _library,
             NullLogger<WallpaperProviderManager>.Instance);
 
-    private static Wallpaper Wallpaper(string id, int width = 0, int height = 0, string[]? tags = null) => new()
+    private static Wallpaper Wallpaper(
+        string id,
+        int width = 0,
+        int height = 0,
+        string[]? tags = null,
+        WallpaperCategory category = WallpaperCategory.Any) => new()
     {
         Id = id,
         Title = id,
@@ -318,5 +342,6 @@ public sealed class WallpaperProviderManagerTests : IDisposable
         Height = height,
         Tags = tags ?? [],
         Source = WallpaperSource.Online,
+        Category = category,
     };
 }

@@ -184,6 +184,21 @@
   <data name="Browse_Filter_Reset" xml:space="preserve">
     <value>Reset filters</value>
   </data>
+  <data name="Browse_Filter_Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Browse_Filter_CategoryAny" xml:space="preserve">
+    <value>Any category</value>
+  </data>
+  <data name="Browse_Filter_CategoryGeneral" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="Browse_Filter_CategoryAnime" xml:space="preserve">
+    <value>Anime</value>
+  </data>
+  <data name="Browse_Filter_CategoryPeople" xml:space="preserve">
+    <value>People</value>
+  </data>
   <data name="Browse_Empty_FilterDescription" xml:space="preserve">
     <value>No wallpapers match the current filters — try widening them.</value>
   </data>

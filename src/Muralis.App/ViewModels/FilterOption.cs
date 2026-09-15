@@ -48,3 +48,24 @@ public sealed class ResolutionOption : ObservableObject
 
     public void RefreshName() => OnPropertyChanged(nameof(Name));
 }
+
+/// <summary>A category choice in the Browse filter flyout.</summary>
+public sealed class CategoryOption : ObservableObject
+{
+    private readonly ILocalizationService _localization;
+
+    public CategoryOption(WallpaperCategory value, string resourceKey, ILocalizationService localization)
+    {
+        Value = value;
+        ResourceKey = resourceKey;
+        _localization = localization;
+    }
+
+    public WallpaperCategory Value { get; }
+
+    public string ResourceKey { get; }
+
+    public string Name => _localization.Get(ResourceKey);
+
+    public void RefreshName() => OnPropertyChanged(nameof(Name));
+}

@@ -53,6 +53,10 @@ public sealed class ApodWallpaperProviderTests
     public void SearchIsNotSupported() => Assert.False(CreateProvider(FeaturedJson).SupportsSearch);
 
     [Fact]
+    public void CategoriesAreNotSupported() =>
+        Assert.False(((IWallpaperProvider)CreateProvider(FeaturedJson)).SupportsCategories);
+
+    [Fact]
     public async Task GetFeaturedAsync_MapsTodaysImage()
     {
         var provider = CreateProvider(FeaturedJson);

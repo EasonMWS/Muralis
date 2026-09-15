@@ -42,6 +42,9 @@ public sealed partial class BrowseViewModel : ViewModelBase
     [ObservableProperty]
     public partial ResolutionOption SelectedResolution { get; set; }
 
+    [ObservableProperty]
+    public partial CategoryOption SelectedCategory { get; set; }
+
     public BrowseViewModel(
         WallpaperProviderManager providers,
         INavigationService navigation,
@@ -64,11 +67,17 @@ public sealed partial class BrowseViewModel : ViewModelBase
         ResolutionOptions.Add(new ResolutionOption(WallpaperResolution.QuadHd, "Browse_Filter_ResolutionQuadHd", localization));
         ResolutionOptions.Add(new ResolutionOption(WallpaperResolution.UltraHd, "Browse_Filter_ResolutionUltraHd", localization));
 
+        CategoryOptions.Add(new CategoryOption(WallpaperCategory.Any, "Browse_Filter_CategoryAny", localization));
+        CategoryOptions.Add(new CategoryOption(WallpaperCategory.General, "Browse_Filter_CategoryGeneral", localization));
+        CategoryOptions.Add(new CategoryOption(WallpaperCategory.Anime, "Browse_Filter_CategoryAnime", localization));
+        CategoryOptions.Add(new CategoryOption(WallpaperCategory.People, "Browse_Filter_CategoryPeople", localization));
+
         _suppressReload = true;
         try
         {
             SelectedOrientation = OrientationOptions[0];
             SelectedResolution = ResolutionOptions[0];
+            SelectedCategory = CategoryOptions[0];
         }
         finally
         {
@@ -89,6 +98,8 @@ public sealed partial class BrowseViewModel : ViewModelBase
 
     public ObservableCollection<ResolutionOption> ResolutionOptions { get; } = [];
 
+    public ObservableCollection<CategoryOption> CategoryOptions { get; } = [];
+
     public ObservableCollection<Wallpaper> Items { get; } = [];
 
     public bool HasAvailableSources => _providers.EnabledProviders.Count > 0;
@@ -99,6 +110,11 @@ public sealed partial class BrowseViewModel : ViewModelBase
         ? provider.SupportsSearch
         : _providers.EnabledProviders.Any(candidate => candidate.SupportsSearch);
 
+    /// <summary>False when the selected source cannot classify its wallpapers, which disables the category picker.</summary>
+    public bool SupportsCategories => SelectedSource?.Provider is { } provider
+        ? provider.SupportsCategories
+        : _providers.EnabledProviders.Any(candidate => candidate.SupportsCategories);
+
     public bool IsEmpty => !IsLoading && ErrorMessage is null && Items.Count == 0;
 
     public string ResultSummary => Items.Count == 1
@@ -107,8 +123,12 @@ public sealed partial class BrowseViewModel : ViewModelBase
 
     public bool IsInitialLoading => IsLoading && Items.Count == 0;
 
-    /// <summary>True when the orientation/resolution filters narrow the results.</summary>
-    public bool IsFilterActive => WallpaperFilter.IsActive(SelectedOrientation.Value, SelectedResolution.Value);
+    /// <summary>True when the orientation/resolution/category filters narrow the results.</summary>
+    public bool IsFilterActive =>
+        WallpaperFilter.IsActive(
+            SelectedOrientation.Value,
+            SelectedResolution.Value,
+            SupportsCategories ? SelectedCategory.Value : WallpaperCategory.Any);
 
     public InfoBarSeverity ErrorSeverity => _errorIsWarning ? InfoBarSeverity.Warning : InfoBarSeverity.Error;
 
@@ -139,6 +159,11 @@ public sealed partial class BrowseViewModel : ViewModelBase
         }
 
         foreach (var option in ResolutionOptions)
+        {
+            option.RefreshName();
+        }
+
+        foreach (var option in CategoryOptions)
         {
             option.RefreshName();
         }
@@ -201,6 +226,7 @@ public sealed partial class BrowseViewModel : ViewModelBase
         {
             SelectedOrientation = OrientationOptions[0];
             SelectedResolution = ResolutionOptions[0];
+            SelectedCategory = CategoryOptions[0];
         }
         finally
         {
@@ -236,8 +262,7 @@ public sealed partial class BrowseViewModel : ViewModelBase
 
     partial void OnSelectedSourceChanged(SourceOption? value)
     {
-        OnPropertyChanged(nameof(ProviderName));
-        OnPropertyChanged(nameof(SupportsSearch));
+        NotifyStateChanged();
 
         if (_isInitialized && !_suppressReload)
         {
@@ -248,6 +273,8 @@ public sealed partial class BrowseViewModel : ViewModelBase
     partial void OnSelectedOrientationChanged(OrientationOption value) => FilterChanged();
 
     partial void OnSelectedResolutionChanged(ResolutionOption value) => FilterChanged();
+
+    partial void OnSelectedCategoryChanged(CategoryOption value) => FilterChanged();
 
     private void FilterChanged()
     {
@@ -346,6 +373,7 @@ public sealed partial class BrowseViewModel : ViewModelBase
                         PageSize = 60,
                         Orientation = SelectedOrientation.Value,
                         MinimumResolution = SelectedResolution.Value,
+                        Category = SupportsCategories ? SelectedCategory.Value : WallpaperCategory.Any,
                     },
                     scope?.Provider?.Id,
                     linkedToken)
@@ -430,6 +458,7 @@ public sealed partial class BrowseViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasAvailableSources));
         OnPropertyChanged(nameof(ProviderName));
         OnPropertyChanged(nameof(SupportsSearch));
+        OnPropertyChanged(nameof(SupportsCategories));
         OnPropertyChanged(nameof(IsFilterActive));
     }
 }

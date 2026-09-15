@@ -18,9 +18,6 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
     private const string SearchEndpoint = "https://wallhaven.cc/api/v1/search";
     private const string DetailEndpoint = "https://wallhaven.cc/api/v1/w/";
 
-    /// <summary>General + anime + people categories.</summary>
-    private const string Categories = "111";
-
     /// <summary>SFW only. Muralis never requests sketchy or NSFW content.</summary>
     private const string Purity = "100";
 
@@ -47,6 +44,8 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
 
     public bool SupportsSearch => true;
 
+    public bool SupportsCategories => true;
+
     public async Task<IReadOnlyList<Wallpaper>> GetWallpapersAsync(
         WallpaperQuery query,
         CancellationToken cancellationToken = default)
@@ -57,7 +56,8 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
             page: query.Page,
             topRange: null,
             orientation: query.Orientation,
-            minimumResolution: query.MinimumResolution);
+            minimumResolution: query.MinimumResolution,
+            category: query.Category);
 
         var response = await FetchSearchAsync(url, SearchCacheLifetime, cancellationToken).ConfigureAwait(false);
         return MapItems(response).Take(query.PageSize).ToList();
@@ -103,11 +103,12 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
         int page,
         string? topRange,
         WallpaperOrientation orientation = WallpaperOrientation.Any,
-        WallpaperResolution minimumResolution = WallpaperResolution.Any)
+        WallpaperResolution minimumResolution = WallpaperResolution.Any,
+        WallpaperCategory category = WallpaperCategory.Any)
     {
         var query = new List<string>
         {
-            "categories=" + Categories,
+            "categories=" + CategoryMask(category),
             "purity=" + Purity,
             "sorting=" + Uri.EscapeDataString(sorting),
             "page=" + Math.Max(1, page).ToString(CultureInfo.InvariantCulture),
@@ -149,6 +150,23 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
         return string.IsNullOrWhiteSpace(apiKey) ? string.Empty : "?apikey=" + Uri.EscapeDataString(apiKey);
     }
 
+    /// <summary>Wallhaven's three-bit category mask: general, anime, people.</summary>
+    private static string CategoryMask(WallpaperCategory category) => category switch
+    {
+        WallpaperCategory.General => "100",
+        WallpaperCategory.Anime => "010",
+        WallpaperCategory.People => "001",
+        _ => "111",
+    };
+
+    private static WallpaperCategory ParseCategory(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "general" => WallpaperCategory.General,
+        "anime" => WallpaperCategory.Anime,
+        "people" => WallpaperCategory.People,
+        _ => WallpaperCategory.Any,
+    };
+
     private IEnumerable<Wallpaper> MapItems(WallhavenSearchResponse response)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -184,6 +202,7 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
             CreatedAt = ParseCreatedAt(item.CreatedAt),
             Tags = BuildTags(item),
             Source = WallpaperSource.Online,
+            Category = ParseCategory(item.Category),
         };
     }
 

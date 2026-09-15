@@ -18,20 +18,46 @@ public enum WallpaperResolution
 }
 
 /// <summary>
+/// The kind of wallpaper a source classifies an item as (Wallhaven: general, anime, people).
+/// On a query, <see cref="Any"/> means no narrowing; on a wallpaper, it means the source
+/// does not classify the item.
+/// </summary>
+public enum WallpaperCategory
+{
+    Any,
+    General,
+    Anime,
+    People,
+}
+
+/// <summary>
 /// Filters that providers may apply server-side. Providers without native filter support
 /// are handled client-side by <see cref="Matches"/> — items whose dimensions are unknown
 /// (some APIs only report them on download) are kept rather than dropped by guesswork.
+/// A category is different: it is a positive attribute, so an unclassified item never
+/// matches a category filter.
 /// </summary>
 public static class WallpaperFilter
 {
-    public static bool IsActive(WallpaperOrientation orientation, WallpaperResolution resolution) =>
-        orientation != WallpaperOrientation.Any || resolution != WallpaperResolution.Any;
+    public static bool IsActive(
+        WallpaperOrientation orientation,
+        WallpaperResolution resolution,
+        WallpaperCategory category) =>
+        orientation != WallpaperOrientation.Any
+        || resolution != WallpaperResolution.Any
+        || category != WallpaperCategory.Any;
 
     public static bool Matches(
         Wallpaper wallpaper,
         WallpaperOrientation orientation,
-        WallpaperResolution resolution)
+        WallpaperResolution resolution,
+        WallpaperCategory category)
     {
+        if (category != WallpaperCategory.Any && wallpaper.Category != category)
+        {
+            return false;
+        }
+
         if (wallpaper.Width <= 0 || wallpaper.Height <= 0)
         {
             return true;

@@ -18,6 +18,9 @@ public interface IWallpaperProvider
 
     bool SupportsSearch { get; }
 
+    /// <summary>True when the provider classifies its wallpapers (see <see cref="WallpaperCategory"/>).</summary>
+    bool SupportsCategories => false;
+
     /// <summary>True when the provider is unusable until the user configures an API key.</summary>
     bool RequiresApiKey => false;
 
@@ -54,4 +57,7 @@ public sealed record WallpaperQuery
 
     /// <summary>Smallest long-edge class to return; see <see cref="WallpaperResolution"/>.</summary>
     public WallpaperResolution MinimumResolution { get; init; } = WallpaperResolution.Any;
+
+    /// <summary>Kind of wallpaper to return, for sources that classify their items.</summary>
+    public WallpaperCategory Category { get; init; } = WallpaperCategory.Any;
 }

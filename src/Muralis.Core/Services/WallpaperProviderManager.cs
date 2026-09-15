@@ -181,10 +181,10 @@ public sealed class WallpaperProviderManager
 
         // Providers that cannot filter server-side (or return unknown dimensions) still honour
         // the user's choice: anything that clearly does not match is dropped here.
-        if (WallpaperFilter.IsActive(query.Orientation, query.MinimumResolution))
+        if (WallpaperFilter.IsActive(query.Orientation, query.MinimumResolution, query.Category))
         {
             items = items
-                .Where(item => WallpaperFilter.Matches(item, query.Orientation, query.MinimumResolution))
+                .Where(item => WallpaperFilter.Matches(item, query.Orientation, query.MinimumResolution, query.Category))
                 .ToList();
         }
 
