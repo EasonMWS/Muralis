@@ -16,9 +16,11 @@ internal static class NativeMethods
     internal const uint SwpNoActivate = 0x0010;
     internal const uint SwpShowWindow = 0x0040;
 
+    internal const uint WmNull = 0x0000;
     internal const uint WmDestroy = 0x0002;
     internal const uint WmClose = 0x0010;
     internal const uint WmEraseBackground = 0x0014;
+    internal const uint WmDisplayChange = 0x007E;
     internal const uint WmTimer = 0x0113;
     internal const uint WmStopHost = 0x8000 + 1;
     internal const uint WmShellRestarted = 0x8000 + 2;
@@ -91,6 +93,16 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern ushort RegisterClassW(ref WindowClass windowClass);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool UnregisterClassW(string className, nint instance);
+
+    /// <summary>Returns a system-wide message id for a name, or 0 if the call fails.</summary>
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern uint RegisterWindowMessageW(string messageName);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool PostMessageW(nint hWnd, uint message, nint wParam, nint lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern nint CreateWindowExW(

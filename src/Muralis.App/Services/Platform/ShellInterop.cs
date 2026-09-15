@@ -3,33 +3,23 @@ using System.Runtime.InteropServices;
 namespace Muralis.App.Services.Platform;
 
 /// <summary>
-/// Shell-level broadcasts and foreground activation helpers shared by the single-instance guard
-/// and the shell lifecycle watcher. Registered messages are resolved lazily and cached; Windows
-/// assigns the same id to the same name across all processes of a session.
+/// Foreground activation helpers shared by the single-instance guard and the activation window.
+/// Registered messages are resolved lazily and cached; Windows assigns the same id to the same
+/// name across all processes of a session. Explorer lifecycle messages are handled by the
+/// desktop layer's shell event source.
 /// </summary>
 internal static class ShellInterop
 {
-    /// <summary>Broadcast by Explorer once the taskbar (and the notification area) exists again.</summary>
-    internal const string TaskbarCreatedMessageName = "TaskbarCreated";
-
     /// <summary>Private message a second launch broadcasts to wake the running instance.</summary>
     internal const string ActivationMessageName = "Muralis.ActivateMainWindow.v1";
-
-    internal const uint WsPopup = 0x80000000;
 
     internal static readonly nint HwndBroadcast = new(0xFFFF);
 
     /// <summary>Passed to <see cref="AllowSetForegroundWindow"/> to grant every process the right.</summary>
     internal const uint AsfwAny = 0xFFFFFFFF;
 
-    private static readonly Lazy<uint> TaskbarCreatedId =
-        new(() => RegisterWindowMessageW(TaskbarCreatedMessageName));
-
     private static readonly Lazy<uint> ActivationId =
         new(() => RegisterWindowMessageW(ActivationMessageName));
-
-    /// <summary>Message id of <see cref="TaskbarCreatedMessageName"/>, or 0 when registration failed.</summary>
-    internal static uint TaskbarCreated => TaskbarCreatedId.Value;
 
     /// <summary>Message id of <see cref="ActivationMessageName"/>, or 0 when registration failed.</summary>
     internal static uint ActivationRequested => ActivationId.Value;

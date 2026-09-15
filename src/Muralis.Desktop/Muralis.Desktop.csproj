@@ -18,4 +18,9 @@
     <ProjectReference Include="..\Muralis.Core\Muralis.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets the tests cover internal pieces such as the shell message router. -->
+    <InternalsVisibleTo Include="Muralis.Desktop.Tests" />
+  </ItemGroup>
+
 </Project>

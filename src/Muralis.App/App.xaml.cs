@@ -7,6 +7,7 @@ using Muralis.App.Services.Platform;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
 using Muralis.Core.Models;
+using Muralis.Desktop.Shell;
 using Serilog;
 
 namespace Muralis.App;
@@ -83,11 +84,11 @@ public partial class App : Application
             _host.Services.GetRequiredService<TrayService>();
             _host.Services.GetRequiredService<RotationService>().ApplySettings();
 
-            // Explorer can restart at any time; the watcher turns that announcement into events,
-            // so the tray icon reappears and a running video wallpaper re-mounts on the new desktop.
-            var shellWatcher = _host.Services.GetRequiredService<ShellLifecycleWatcher>();
+            // Explorer can restart at any time; the shell event source turns that announcement into
+            // events, so the tray icon reappears and a running video wallpaper re-mounts on the new desktop.
+            var shellEvents = _host.Services.GetRequiredService<ShellEventSource>();
             var videoWallpaper = _host.Services.GetRequiredService<IVideoWallpaperService>();
-            shellWatcher.ShellRestarted += (_, _) => videoWallpaper.NotifyShellRestarted();
+            shellEvents.ShellRestarted += (_, _) => videoWallpaper.NotifyShellRestarted();
 
             // Bringing the video wallpaper back is off the startup path: the desktop host owns
             // its own thread, and a missing or broken file must not delay the window.

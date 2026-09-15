@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Muralis.App.Infrastructure;
 using Muralis.App.Services.Platform;
+using Muralis.Desktop.Shell;
 
 namespace Muralis.App.Services;
 
@@ -34,7 +35,7 @@ public sealed class TrayService : IDisposable
         INavigationService navigation,
         RotationService rotation,
         ILocalizationService localization,
-        ShellLifecycleWatcher shellWatcher,
+        ShellEventSource shellEvents,
         ILogger<TrayService> logger)
     {
         _windowContext = windowContext;
@@ -48,7 +49,7 @@ public sealed class TrayService : IDisposable
 
         // Explorer restarts drop every notification icon; the shell announcement is the
         // documented signal to put ours back.
-        shellWatcher.ShellRestarted += (_, _) => ReAddTrayIcon();
+        shellEvents.ShellRestarted += (_, _) => ReAddTrayIcon();
 
         TryCreateTrayIcon();
     }

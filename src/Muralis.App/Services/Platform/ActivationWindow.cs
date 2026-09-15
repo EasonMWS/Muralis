@@ -4,52 +4,45 @@ using Microsoft.Extensions.Logging;
 namespace Muralis.App.Services.Platform;
 
 /// <summary>
-/// Hidden top-level window that watches the shell lifecycle. Explorer announces every restart by
-/// broadcasting <c>TaskbarCreated</c>; the same window also receives the private activation
-/// broadcast a second launch of Muralis sends. Services subscribe to the events instead of digging
-/// into shell internals, which keeps the logic in one place when the desktop host moves to its own
-/// process (Architecture V2).
+/// Hidden top-level window that receives the private broadcast a second launch sends. It does not
+/// watch the shell lifecycle - Explorer restarts come from the desktop layer's shell event source -
+/// its only job is turning the broadcast into <see cref="ActivationRequested"/> so the running
+/// window can come forward.
 /// </summary>
-public sealed class ShellLifecycleWatcher : IDisposable
+public sealed class ActivationWindow : IDisposable
 {
-    private readonly ILogger<ShellLifecycleWatcher> _logger;
+    private const uint WsPopup = 0x80000000;
+
+    private readonly ILogger<ActivationWindow> _logger;
     private readonly TrayInterop.WindowProc _windowProc;
-    private readonly uint _taskbarCreatedMessage;
     private readonly uint _activationMessage;
     private nint _window;
     private string? _className;
     private bool _disposed;
 
-    /// <summary>Explorer restarted: the taskbar, notification area and desktop worker were recreated.</summary>
-    public event EventHandler? ShellRestarted;
-
     /// <summary>A second launch asked this instance to show itself.</summary>
     public event EventHandler? ActivationRequested;
 
-    public ShellLifecycleWatcher(ILogger<ShellLifecycleWatcher> logger)
+    public ActivationWindow(ILogger<ActivationWindow> logger)
     {
         _logger = logger;
         _windowProc = OnWindowMessage;
 
-        _taskbarCreatedMessage = ShellInterop.TaskbarCreated;
         _activationMessage = ShellInterop.ActivationRequested;
-        if (_taskbarCreatedMessage == 0 || _activationMessage == 0)
+        if (_activationMessage == 0)
         {
-            _logger.LogWarning(
-                "The shell messages could not be registered (TaskbarCreated: {Taskbar}, activation: {Activation})",
-                _taskbarCreatedMessage,
-                _activationMessage);
+            _logger.LogWarning("The activation message could not be registered");
         }
 
-        CreateWatcherWindow();
+        CreateWindow();
     }
 
-    private void CreateWatcherWindow()
+    private void CreateWindow()
     {
         try
         {
             var instance = ShellInterop.GetModuleHandleW(null);
-            _className = "MuralisShellWatcher_" + Guid.NewGuid().ToString("N");
+            _className = "MuralisActivationWindow_" + Guid.NewGuid().ToString("N");
 
             var windowClass = new TrayInterop.WindowClass
             {
@@ -66,7 +59,7 @@ public sealed class ShellLifecycleWatcher : IDisposable
             // A real top-level window, never shown. Message-only windows do not receive
             // broadcast messages, which is the whole point of this window.
             _window = TrayInterop.CreateWindowExW(
-                0, _className, "Muralis shell watcher", ShellInterop.WsPopup, 0, 0, 0, 0,
+                0, _className, "Muralis activation", WsPopup, 0, 0, 0, 0,
                 nint.Zero, nint.Zero, instance, nint.Zero);
 
             if (_window == 0)
@@ -76,29 +69,19 @@ public sealed class ShellLifecycleWatcher : IDisposable
         }
         catch (Exception ex)
         {
-            // Without the watcher the app still runs; it only loses shell recovery.
-            _logger.LogError(ex, "Could not create the shell lifecycle watcher");
+            // Without this window the app still runs; a second launch then only shows a message.
+            _logger.LogError(ex, "Could not create the activation window");
             Cleanup();
         }
     }
 
     private nint OnWindowMessage(nint hWnd, uint message, nint wParam, nint lParam)
     {
-        if (!_disposed && message != 0)
+        if (!_disposed && message != 0 && message == _activationMessage)
         {
-            if (message == _taskbarCreatedMessage)
-            {
-                _logger.LogInformation("Explorer restarted; notifying shell-dependent services");
-                Raise(ShellRestarted, nameof(ShellRestarted));
-                return 0;
-            }
-
-            if (message == _activationMessage)
-            {
-                _logger.LogInformation("A second launch asked this instance to show itself");
-                Raise(ActivationRequested, nameof(ActivationRequested));
-                return 0;
-            }
+            _logger.LogInformation("A second launch asked this instance to show itself");
+            RaiseActivation();
+            return 0;
         }
 
         if (message == TrayInterop.WmDestroy)
@@ -110,9 +93,10 @@ public sealed class ShellLifecycleWatcher : IDisposable
         return TrayInterop.DefWindowProcW(hWnd, message, wParam, lParam);
     }
 
-    /// <summary>One failing subscriber must not keep the others (tray, video wallpaper) from reacting.</summary>
-    private void Raise(EventHandler? handler, string eventName)
+    /// <summary>One failing subscriber must not take the message loop down with it.</summary>
+    private void RaiseActivation()
     {
+        var handler = ActivationRequested;
         if (handler is null)
         {
             return;
@@ -126,7 +110,7 @@ public sealed class ShellLifecycleWatcher : IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "A subscriber of {Event} failed", eventName);
+                _logger.LogError(ex, "A subscriber of {Event} failed", nameof(ActivationRequested));
             }
         }
     }

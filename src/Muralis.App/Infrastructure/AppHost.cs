@@ -11,6 +11,7 @@ using Muralis.Core.Providers;
 using Muralis.Core.Repositories;
 using Muralis.Core.Services;
 using Muralis.Desktop;
+using Muralis.Desktop.Shell;
 
 namespace Muralis.App.Infrastructure;
 
@@ -151,13 +152,14 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IFilePickerService, FilePickerService>();
+        services.AddSingleton<ActivationWindow>();
 
         // Windows platform services.
         services.AddSingleton<IImageFormatService, ImageFormatService>();
         services.AddSingleton<IWallpaperService, WindowsWallpaperService>();
         services.AddSingleton<IStartupService, StartupService>();
         services.AddSingleton<IVideoWallpaperService, DesktopVideoWallpaperService>();
-        services.AddSingleton<ShellLifecycleWatcher>();
+        services.AddSingleton<ShellEventSource>();
         services.AddSingleton<RotationService>();
         services.AddSingleton<TrayService>();
 

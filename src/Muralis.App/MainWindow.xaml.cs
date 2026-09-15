@@ -25,7 +25,7 @@ public sealed partial class MainWindow : Window
         ISettingsService settingsService,
         IDownloadQueue downloadQueue,
         TrayService trayService,
-        ShellLifecycleWatcher shellWatcher,
+        ActivationWindow activationWindow,
         WindowContext windowContext,
         ILogger<MainWindow> logger)
     {
@@ -39,7 +39,7 @@ public sealed partial class MainWindow : Window
         _logger = logger;
 
         windowContext.MainWindow = this;
-        shellWatcher.ActivationRequested += (_, _) => BringToForeground();
+        activationWindow.ActivationRequested += (_, _) => BringToForeground();
 
         ConfigureTitleBar();
         ApplyWindowIcon();
