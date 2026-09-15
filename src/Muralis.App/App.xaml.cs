@@ -84,13 +84,12 @@ public partial class App : Application
             _host.Services.GetRequiredService<TrayService>();
             _host.Services.GetRequiredService<RotationService>().ApplySettings();
 
-            // Explorer can restart at any time; the shell event source turns that announcement into
-            // events, so the tray icon reappears and a running video wallpaper re-mounts on the new desktop.
-            var shellEvents = _host.Services.GetRequiredService<ShellEventSource>();
-            var videoWallpaper = _host.Services.GetRequiredService<IVideoWallpaperService>();
-            shellEvents.ShellRestarted += (_, _) => videoWallpaper.NotifyShellRestarted();
+            // Explorer can restart at any time; the shell event source turns that into events.
+            // TrayService listens for its icon, and the single DesktopShell instance created here
+            // listens to re-mount desktop surfaces on the new WorkerW. No one else responds to it.
+            _host.Services.GetRequiredService<IDesktopShell>();
 
-            // Bringing the video wallpaper back is off the startup path: the desktop host owns
+            // Bringing the video wallpaper back is off the startup path: the desktop shell owns
             // its own thread, and a missing or broken file must not delay the window.
             _ = RestoreVideoWallpaperAsync(logger);
 

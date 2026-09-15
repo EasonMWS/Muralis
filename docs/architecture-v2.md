@@ -771,6 +771,21 @@ interface IDesktopBackdropService
 
 Canvas、Widget、Dock、Media、Scene 实现、配置拆分、多显示器渲染（只做枚举统一与模型）、任何 UI 变化、静态壁纸 COM 迁移。
 
+### 14.5 Phase 1D 落地记录：临时兼容路径与 Phase 1E / 1F 删除计划
+
+Phase 1D（DesktopShell & Win32SurfaceHost）落地后的事实：**旧恢复代码没有被保留** —— `DesktopHostSession` 已不含 shell 线程、WorkerW 查找、建窗、定位与重挂载逻辑；Explorer 重启的唯一响应者是 `DesktopShell`（消费 `ShellEventSource`），因此不存在「DesktopShell 与旧会话两边同时重挂同一个 HWND」的风险。Window class 名 `MuralisDesktopHostWindow` 保持不变。
+
+仍存在的唯一临时兼容路径与删除方式：
+
+| 兼容物 | 现状 | Phase 1E / 1F 删除方式 |
+| --- | --- | --- |
+| `IVideoWallpaperService`（Core 契约） | App 与动态壁纸页仍经它启动 / 停止 / 订阅状态 | 1E：页面与启动恢复改接 shell-facing 的 backdrop 服务（§11.2 `IDesktopBackdropService` 的最小落地实现），随后不再有生产引用 |
+| `DesktopVideoWallpaperService`（Desktop 适配器） | 纯转发（`AddSurfaceAsync` / `RemoveSurfaceAsync` + 状态事件），无窗口 / WorkerW / 重挂载逻辑 | 1F：行为平移到 backdrop 服务后整体删除，并从 `AppHost` 移除注册 |
+| `IVideoWallpaperService.NotifyShellRestarted()` | 保留为记录日志的空操作 | 1F：随接口删除；重启语义已由 `IDesktopShell.ShellRestarted` 承担 |
+| `DesktopHostSession`（类名与位置） | 视频内容（`ISurfaceContent`）；1D 故意不删、不更名 | 1E / 1F：如需按蓝图改名为 `VideoSurfaceContent`，在同一步内完成引用替换（纯改名，零行为变化） |
+
+删除后的门禁：全仓不再出现 `IVideoWallpaperService`；Desktop hosting 的窗口 / 桌面层 / 重挂载在任意时刻只有 `DesktopShell` + `Win32SurfaceHost` 一个 owner。
+
 ---
 
 ## 15. 已裁决事项与兼容承诺

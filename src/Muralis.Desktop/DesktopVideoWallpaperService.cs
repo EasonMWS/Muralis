@@ -1,26 +1,50 @@
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
+using Muralis.Desktop.Shell;
+using Muralis.Desktop.Surfaces;
 
 namespace Muralis.Desktop;
 
 /// <summary>
-/// Plays a video on the desktop behind the icons. Each start puts a fresh host window on the
-/// desktop; stopping removes it and reveals the static wallpaper again, which is never modified.
+/// Plays a video on the desktop behind the icons. Each start registers one backdrop surface with
+/// the desktop shell; stopping removes it and reveals the static wallpaper again, which is never
+/// modified.
 /// </summary>
 /// <remarks>
 /// The video is scaled to fit the display while keeping its aspect ratio - what the media player's
 /// frame server can do - so a clip whose aspect ratio differs from the display is letterboxed.
+/// <para>
+/// Temporary compatibility bridge (Phase 1D): the App and the dynamic wallpaper page still resolve
+/// the session-era <see cref="IVideoWallpaperService"/>, and this class keeps that contract on top
+/// of <see cref="IDesktopShell"/>. It is a pure adapter - no thread, no window, no WorkerW lookup
+/// and no re-mounting live here - so the shell stays the only owner of the desktop layer.
+/// </para>
+/// <para>
+/// Removal (Phase 1E / 1F): the App moves start/stop/status to the shell-facing backdrop service
+/// (the <see cref="IDesktopBackdropService"/> draft), then this class, its registration in
+/// <c>AppHost</c> and the no-op <see cref="NotifyShellRestarted"/> are deleted together with the
+/// <see cref="IVideoWallpaperService"/> seam. Until then keep this class free of desktop-layer
+/// logic: anything that creates, finds or re-mounts windows belongs in <see cref="DesktopShell"/>.
+/// </para>
 /// </remarks>
 public sealed class DesktopVideoWallpaperService : IVideoWallpaperService
 {
+    private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
+
     private readonly ILogger<DesktopVideoWallpaperService> _logger;
+    private readonly IDesktopShell _shell;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
     private DesktopHostSession? _session;
+    private IDesktopSurface? _surface;
     private VideoWallpaperStatus _status = VideoWallpaperStatus.Stopped;
 
-    public DesktopVideoWallpaperService(ILogger<DesktopVideoWallpaperService> logger) => _logger = logger;
+    public DesktopVideoWallpaperService(ILogger<DesktopVideoWallpaperService> logger, IDesktopShell shell)
+    {
+        _logger = logger;
+        _shell = shell;
+    }
 
     public VideoWallpaperStatus Status => Volatile.Read(ref _status);
 
@@ -50,20 +74,64 @@ public sealed class DesktopVideoWallpaperService : IVideoWallpaperService
             await StopSessionAsync().ConfigureAwait(false);
 
             _logger.LogInformation("Starting video wallpaper {Path} (muted: {Muted})", fullPath, muted);
+
+            var primary = _shell.Monitors.Primary;
+            if (primary is null)
+            {
+                var missing = new VideoWallpaperStatus(
+                    VideoWallpaperState.Failed,
+                    fullPath,
+                    "No display was found to place the video wallpaper on.");
+                Publish(missing);
+                return missing;
+            }
+
             var session = new DesktopHostSession(fullPath, muted, _logger);
             session.StatusChanged += OnSessionStatusChanged;
             _session = session;
             Publish(new VideoWallpaperStatus(VideoWallpaperState.Starting, fullPath));
 
-            var status = await session.StartAsync(cancellationToken).ConfigureAwait(false);
-            Publish(status);
+            try
+            {
+                _surface = await _shell
+                    .AddSurfaceAsync(new SurfaceRequest(session, MonitorRef.From(primary)), cancellationToken)
+                    .ConfigureAwait(false);
 
-            if (status.State == VideoWallpaperState.Failed)
+                var status = await session.Started.WaitAsync(StartTimeout, cancellationToken).ConfigureAwait(false);
+                Publish(status);
+
+                if (status.State == VideoWallpaperState.Failed)
+                {
+                    // The file or its codec is unusable: the desktop must fall back to the static
+                    // wallpaper instead of showing an empty window.
+                    await StopSessionAsync().ConfigureAwait(false);
+                }
+
+                return status;
+            }
+            catch (OperationCanceledException)
             {
                 await StopSessionAsync().ConfigureAwait(false);
+                throw;
             }
-
-            return status;
+            catch (TimeoutException)
+            {
+                await StopSessionAsync().ConfigureAwait(false);
+                var timedOut = new VideoWallpaperStatus(
+                    VideoWallpaperState.Failed,
+                    fullPath,
+                    "The desktop host did not start in time.");
+                Publish(timedOut);
+                return timedOut;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "The video wallpaper could not be shown");
+                await StopSessionAsync().ConfigureAwait(false);
+                var failed = new VideoWallpaperStatus(VideoWallpaperState.Failed, fullPath, ex.Message);
+                Publish(failed);
+                return failed;
+            }
         }
         finally
         {
@@ -91,29 +159,32 @@ public sealed class DesktopVideoWallpaperService : IVideoWallpaperService
         }
     }
 
-    public void NotifyShellRestarted()
-    {
-        var session = Volatile.Read(ref _session);
-        if (session is null)
-        {
-            return;
-        }
-
-        _logger.LogInformation("Explorer restarted; asking the desktop host to re-mount");
-        session.NotifyShellRestarted();
-    }
+    /// <summary>
+    /// Kept for the session-era interface. Explorer-restart recovery now belongs to the desktop
+    /// shell, which watches the shell events and re-mounts the surfaces on its own, so there is
+    /// nothing left to forward.
+    /// </summary>
+    public void NotifyShellRestarted() =>
+        _logger.LogInformation("Explorer restarted; the desktop shell re-mounts desktop content on its own");
 
     private async Task StopSessionAsync()
     {
         var session = _session;
+        var surface = _surface;
         if (session is null)
         {
             return;
         }
 
         _session = null;
+        _surface = null;
         session.StatusChanged -= OnSessionStatusChanged;
-        await session.StopAsync().ConfigureAwait(false);
+
+        if (surface is not null)
+        {
+            // Removes the mount and releases the media player and the swap chain behind it.
+            await _shell.RemoveSurfaceAsync(surface, CancellationToken.None).ConfigureAwait(false);
+        }
     }
 
     private void OnSessionStatusChanged(object? sender, VideoWallpaperStatus status) => Publish(status);
