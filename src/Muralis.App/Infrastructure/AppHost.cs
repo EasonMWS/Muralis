@@ -99,19 +99,30 @@ public sealed class AppHost : IDisposable
         // browsing does not re-hit rate-limited APIs.
         services.AddSingleton<IMetadataCache, MetadataCache>();
         services.AddSingleton<IProviderConfiguration, ProviderConfiguration>();
-        services.AddSingleton(sp => new HttpClient(
-            new HttpRetryHandler(
-                sp.GetRequiredService<ILogger<HttpRetryHandler>>(),
-                new MetadataCacheHandler(
-                    sp.GetRequiredService<IMetadataCache>(),
-                    sp.GetRequiredService<ILogger<MetadataCacheHandler>>(),
-                    new HttpClientHandler())))
+        services.AddSingleton(sp =>
         {
-            Timeout = TimeSpan.FromSeconds(90),
+            var httpClient = new HttpClient(
+                new HttpRetryHandler(
+                    sp.GetRequiredService<ILogger<HttpRetryHandler>>(),
+                    new MetadataCacheHandler(
+                        sp.GetRequiredService<IMetadataCache>(),
+                        sp.GetRequiredService<ILogger<MetadataCacheHandler>>(),
+                        new HttpClientHandler())))
+            {
+                Timeout = TimeSpan.FromSeconds(90),
+            };
+
+            // Identifies the app to the APIs it calls; GitHub rejects requests without it.
+            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"{AppInfo.DisplayName}/{AppInfo.Version} (+{AppInfo.GitHubUrl})");
+            return httpClient;
         });
 
         // Core services (platform-agnostic).
         services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<IUpdateChecker>(sp => new UpdateChecker(
+            sp.GetRequiredService<HttpClient>(),
+            AppInfo.LatestReleaseApiUrl,
+            sp.GetRequiredService<ILogger<UpdateChecker>>()));
 
         // Wallpaper sources, in the order the UI lists them.
         services.AddSingleton<BingWallpaperProvider>();

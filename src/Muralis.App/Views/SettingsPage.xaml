@@ -499,44 +499,77 @@
                 Style="{StaticResource SectionTitleStyle}"
                 Text="{Binding [Settings_Section_About], Source={StaticResource Loc}}" />
             <Border Padding="20" Style="{StaticResource CardBorderStyle}">
-                <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Border
-                        Width="48"
-                        Height="48"
-                        Background="{ThemeResource AccentFillColorTertiaryBrush}"
-                        CornerRadius="10">
-                        <Image Source="Assets/AppIcon.png" Stretch="UniformToFill" />
-                    </Border>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_About_Name], Source={StaticResource Loc}}" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.AppVersion, Mode=OneWay}" />
-                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_About_Description], Source={StaticResource Loc}}" />
-                    </StackPanel>
-                    <StackPanel
-                        Grid.Column="2"
-                        VerticalAlignment="Center"
-                        Spacing="6">
-                        <HyperlinkButton
-                            HorizontalAlignment="Left"
-                            Content="{Binding [Settings_About_GitHub], Source={StaticResource Loc}}"
-                            NavigateUri="{x:Bind ViewModel.GitHubUrl}" />
-                        <TextBlock
-                            Margin="12,0,0,0"
-                            Style="{StaticResource CardCaptionStyle}"
-                            Text="{Binding [Settings_About_License], Source={StaticResource Loc}}" />
-                        <Button
-                            Margin="0,6,0,0"
-                            HorizontalAlignment="Left"
-                            AutomationProperties.Name="{Binding [Settings_Exit], Source={StaticResource Loc}}"
-                            Click="OnExitClick"
-                            Content="{Binding [Settings_Exit], Source={StaticResource Loc}}" />
-                    </StackPanel>
-                </Grid>
+                <StackPanel Spacing="16">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Width="48"
+                            Height="48"
+                            Background="{ThemeResource AccentFillColorTertiaryBrush}"
+                            CornerRadius="10">
+                            <Image Source="Assets/AppIcon.png" Stretch="UniformToFill" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_About_Name], Source={StaticResource Loc}}" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.AppVersion, Mode=OneWay}" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Settings_About_Description], Source={StaticResource Loc}}" />
+                        </StackPanel>
+                        <StackPanel
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Spacing="6">
+                            <HyperlinkButton
+                                HorizontalAlignment="Left"
+                                Content="{Binding [Settings_About_GitHub], Source={StaticResource Loc}}"
+                                NavigateUri="{x:Bind ViewModel.GitHubUrl}" />
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                Style="{StaticResource CardCaptionStyle}"
+                                Text="{Binding [Settings_About_License], Source={StaticResource Loc}}" />
+                            <Button
+                                Margin="0,6,0,0"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="{Binding [Settings_Exit], Source={StaticResource Loc}}"
+                                Click="OnExitClick"
+                                Content="{Binding [Settings_Exit], Source={StaticResource Loc}}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontSize="20"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Glyph="&#xE72C;" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Update_Title], Source={StaticResource Loc}}" />
+                            <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind ViewModel.UpdateStatusText, Mode=OneWay}" />
+                        </StackPanel>
+                        <StackPanel
+                            Grid.Column="2"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Center">
+                            <HyperlinkButton
+                                Content="{Binding [Settings_Update_Open], Source={StaticResource Loc}}"
+                                NavigateUri="{x:Bind ViewModel.UpdateReleaseUrl, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.UpdateAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                            <Button
+                                AutomationProperties.Name="{Binding [Settings_Update_Check], Source={StaticResource Loc}}"
+                                Click="OnCheckForUpdatesClick"
+                                Content="{Binding [Settings_Update_Check], Source={StaticResource Loc}}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
             </Border>
         </StackPanel>
     </ScrollViewer>

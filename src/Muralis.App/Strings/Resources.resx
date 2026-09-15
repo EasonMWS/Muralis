@@ -682,6 +682,33 @@
   <data name="Settings_Exit" xml:space="preserve">
     <value>Exit Muralis</value>
   </data>
+  <data name="Settings_Update_Title" xml:space="preserve">
+    <value>Updates</value>
+  </data>
+  <data name="Settings_Update_Idle" xml:space="preserve">
+    <value>Get the newest version information from GitHub.</value>
+  </data>
+  <data name="Settings_Update_Check" xml:space="preserve">
+    <value>Check for updates</value>
+  </data>
+  <data name="Settings_Update_Checking" xml:space="preserve">
+    <value>Checking for updates…</value>
+  </data>
+  <data name="Settings_Update_UpToDate" xml:space="preserve">
+    <value>You are up to date ({0}).</value>
+  </data>
+  <data name="Settings_Update_Available" xml:space="preserve">
+    <value>Version {0} is available.</value>
+  </data>
+  <data name="Settings_Update_None" xml:space="preserve">
+    <value>No releases have been published yet.</value>
+  </data>
+  <data name="Settings_Update_Failed" xml:space="preserve">
+    <value>The update check failed. Please try again later.</value>
+  </data>
+  <data name="Settings_Update_Open" xml:space="preserve">
+    <value>View release</value>
+  </data>
   <data name="Settings_Status_Calculating" xml:space="preserve">
     <value>Calculating…</value>
   </data>

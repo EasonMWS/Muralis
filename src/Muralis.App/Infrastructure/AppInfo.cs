@@ -9,10 +9,19 @@ public static class AppInfo
 
     public const string Tagline = "Wallpaper Studio";
 
-    public const string GitHubUrl = "https://github.com/EasonMWS/Muralis";
+    public const string GitHubOwner = "EasonMWS";
+
+    public const string GitHubRepo = "Muralis";
+
+    public const string GitHubUrl = $"https://github.com/{GitHubOwner}/{GitHubRepo}";
+
+    public const string GitHubReleasesUrl = $"{GitHubUrl}/releases";
+
+    /// <summary>Endpoint the update check queries for the newest published release.</summary>
+    public const string LatestReleaseApiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases/latest";
 
     /// <summary>How to enable sources and configure API keys.</summary>
-    public const string ProvidersDocUrl = "https://github.com/EasonMWS/Muralis/blob/main/docs/providers.md";
+    public const string ProvidersDocUrl = $"{GitHubUrl}/blob/main/docs/providers.md";
 
     public const string LicenseName = "MIT License";
 

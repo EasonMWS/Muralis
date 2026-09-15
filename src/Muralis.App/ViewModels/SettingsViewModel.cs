@@ -84,10 +84,13 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly IStartupService _startupService;
     private readonly RotationService _rotationService;
     private readonly WallpaperProviderManager _providers;
+    private readonly IUpdateChecker _updateChecker;
     private readonly WindowContext _windowContext;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _applyingSettings = true;
     private (string Key, object?[] Args)? _status;
+    private (string Key, object?[] Args)? _updateStatus;
+    private string _releaseUrl = AppInfo.GitHubReleasesUrl;
 
     [ObservableProperty]
     public partial string? StatusMessage { get; set; }
@@ -114,6 +117,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
     public partial bool RotationEnabled { get; set; }
 
     [ObservableProperty]
+    public partial string UpdateStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool UpdateAvailable { get; set; }
+
+    [ObservableProperty]
     public partial LanguageOption? SelectedLanguageOption { get; set; }
 
     public SettingsViewModel(
@@ -125,6 +134,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         IStartupService startupService,
         RotationService rotationService,
         WallpaperProviderManager providers,
+        IUpdateChecker updateChecker,
         WindowContext windowContext,
         ILocalizationService localization,
         ILogger<SettingsViewModel> logger)
@@ -138,6 +148,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _startupService = startupService;
         _rotationService = rotationService;
         _providers = providers;
+        _updateChecker = updateChecker;
         _windowContext = windowContext;
         _logger = logger;
 
@@ -145,6 +156,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
         var settings = _settingsService.Current;
         CacheSizeText = Loc.Get("Settings_Status_Calculating");
+        SetUpdateStatus("Settings_Update_Idle");
         DownloadFolder = ResolveDownloadFolder(settings);
         DefaultFitMode = settings.DefaultFitMode;
         LaunchAtStartup = SafeReadStartupState(settings.LaunchAtStartup);
@@ -283,6 +295,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     public string GitHubUrl => AppInfo.GitHubUrl;
 
+    /// <summary>Where "view release" points; already the releases page before any check ran.</summary>
+    public string UpdateReleaseUrl => _releaseUrl;
+
     public override void OnLanguageChanged()
     {
         // Option labels and derived texts are rebuilt in place so combo selections survive.
@@ -311,6 +326,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
             StatusMessage = message;
             OnPropertyChanged(nameof(SuccessMessage));
             OnPropertyChanged(nameof(ErrorMessage));
+        }
+
+        if (_updateStatus is { } updateStatus)
+        {
+            UpdateStatusText = Loc.Format(updateStatus.Key, updateStatus.Args);
         }
 
         // Display names ("Display 1") are localized when monitors are enumerated.
@@ -456,6 +476,40 @@ public sealed partial class SettingsViewModel : ViewModelBase
         }
 
         SetStatus("Settings_Status_Shuffled", isError: false, applied.Title);
+    }
+
+    [RelayCommand]
+    private async Task CheckForUpdatesAsync()
+    {
+        SetUpdateStatus("Settings_Update_Checking");
+
+        try
+        {
+            var result = await _updateChecker.CheckAsync(AppInfo.Version);
+            if (result is null)
+            {
+                UpdateAvailable = false;
+                SetUpdateStatus("Settings_Update_None");
+            }
+            else if (result.IsUpdateAvailable)
+            {
+                UpdateAvailable = true;
+                _releaseUrl = result.ReleaseUrl ?? AppInfo.GitHubReleasesUrl;
+                OnPropertyChanged(nameof(UpdateReleaseUrl));
+                SetUpdateStatus("Settings_Update_Available", result.LatestVersion);
+            }
+            else
+            {
+                UpdateAvailable = false;
+                SetUpdateStatus("Settings_Update_UpToDate", result.LatestVersion);
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateAvailable = false;
+            _logger.LogWarning(ex, "The update check failed");
+            SetUpdateStatus("Settings_Update_Failed");
+        }
     }
 
     [RelayCommand]
@@ -616,5 +670,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
         StatusIsError = isError;
         OnPropertyChanged(nameof(SuccessMessage));
         OnPropertyChanged(nameof(ErrorMessage));
+    }
+
+    private void SetUpdateStatus(string key, params object?[] args)
+    {
+        _updateStatus = (key, args);
+        UpdateStatusText = Loc.Format(key, args);
     }
 }

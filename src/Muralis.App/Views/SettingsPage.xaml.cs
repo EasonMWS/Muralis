@@ -197,4 +197,7 @@ public sealed partial class SettingsPage : Page
 
     private void OnClearCacheClick(object sender, RoutedEventArgs e) =>
         ViewModel.ClearCacheCommand.Execute(null);
+
+    private void OnCheckForUpdatesClick(object sender, RoutedEventArgs e) =>
+        ViewModel.CheckForUpdatesCommand.Execute(null);
 }
