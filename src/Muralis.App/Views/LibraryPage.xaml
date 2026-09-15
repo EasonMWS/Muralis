@@ -7,6 +7,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Muralis.Core.Models"
+    xmlns:vm="using:Muralis.App.ViewModels"
     Background="Transparent"
     mc:Ignorable="d">
 
@@ -27,13 +28,29 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock Style="{StaticResource PageTitleStyle}" Text="{Binding [Library_Title], Source={StaticResource Loc}}" />
                 <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="{Binding [Library_Subtitle], Source={StaticResource Loc}}" />
             </StackPanel>
-            <Button
+            <ComboBox
+                x:Name="TagFilterCombo"
                 Grid.Column="1"
+                MinWidth="180"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="{Binding [Library_FilterTag_Tooltip], Source={StaticResource Loc}}"
+                ItemsSource="{x:Bind ViewModel.TagOptions}"
+                SelectedItem="{x:Bind ViewModel.SelectedTag, Mode=TwoWay}"
+                Visibility="{x:Bind ViewModel.HasTagOptions, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:TagFilterOption">
+                        <TextBlock Text="{x:Bind Name}" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button
+                Grid.Column="2"
                 VerticalAlignment="Center"
                 AutomationProperties.Name="{Binding [Library_Import], Source={StaticResource Loc}}"
                 Click="OnImportClick"

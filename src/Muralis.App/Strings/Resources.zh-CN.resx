@@ -264,6 +264,12 @@
   <data name="Library_Import_Failed" xml:space="preserve">
     <value>{0} 张无法读取</value>
   </data>
+  <data name="Library_FilterTag_All" xml:space="preserve">
+    <value>所有标签</value>
+  </data>
+  <data name="Library_FilterTag_Tooltip" xml:space="preserve">
+    <value>按标签筛选</value>
+  </data>
 
   <!--  Favorites  -->
   <data name="Favorites_Title" xml:space="preserve">
@@ -378,6 +384,27 @@
   </data>
   <data name="Detail_Target_AllDisplays" xml:space="preserve">
     <value>所有显示器</value>
+  </data>
+  <data name="Detail_Tags" xml:space="preserve">
+    <value>标签</value>
+  </data>
+  <data name="Detail_Tags_EmptyHint" xml:space="preserve">
+    <value>还没有标签 — 在下方添加一个，方便整理这张壁纸。</value>
+  </data>
+  <data name="Detail_TagPlaceholder" xml:space="preserve">
+    <value>添加标签</value>
+  </data>
+  <data name="Detail_AddTag" xml:space="preserve">
+    <value>添加</value>
+  </data>
+  <data name="Detail_RemoveTag" xml:space="preserve">
+    <value>移除标签</value>
+  </data>
+  <data name="Detail_Error_TagLimit" xml:space="preserve">
+    <value>这张壁纸的标签数量已达上限。</value>
+  </data>
+  <data name="Detail_Error_TagsFailed" xml:space="preserve">
+    <value>标签保存失败，详情请查看日志。</value>
   </data>
 
   <!--  Wallpaper fit modes  -->

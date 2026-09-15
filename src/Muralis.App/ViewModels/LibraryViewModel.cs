@@ -17,9 +17,13 @@ public sealed partial class LibraryViewModel : ViewModelBase
     private readonly ILogger<LibraryViewModel> _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private (string Key, object?[] Args)? _notice;
+    private bool _syncingTags;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
+
+    [ObservableProperty]
+    public partial TagFilterOption? SelectedTag { get; set; }
 
     [ObservableProperty]
     public partial string? SuccessNotice { get; set; }
@@ -47,28 +51,37 @@ public sealed partial class LibraryViewModel : ViewModelBase
 
     public ObservableCollection<Wallpaper> Items { get; } = [];
 
+    /// <summary>The "all tags" entry followed by every tag in use, sorted.</summary>
+    public ObservableCollection<TagFilterOption> TagOptions { get; } = [];
+
     public bool IsEmpty => !IsLoading && Items.Count == 0;
+
+    /// <summary>True when at least one wallpaper carries a tag, so the filter has something to offer.</summary>
+    public bool HasTagOptions => TagOptions.Count > 1;
 
     public override void OnLanguageChanged()
     {
-        if (_notice is not { } notice)
+        if (_notice is { } notice)
+        {
+            var message = Loc.Format(notice.Key, notice.Args);
+            if (ErrorNotice is not null)
+            {
+                ErrorNotice = message;
+            }
+            else
+            {
+                SuccessNotice = message;
+            }
+        }
+        else
         {
             // Pre-formatted notices cannot be re-translated; drop them rather than
             // leaving text in the previous language on screen.
             SuccessNotice = null;
             ErrorNotice = null;
-            return;
         }
 
-        var message = Loc.Format(notice.Key, notice.Args);
-        if (ErrorNotice is not null)
-        {
-            ErrorNotice = message;
-        }
-        else
-        {
-            SuccessNotice = message;
-        }
+        RebuildTagOptions();
     }
 
     [RelayCommand]
@@ -181,12 +194,63 @@ public sealed partial class LibraryViewModel : ViewModelBase
 
     private void RefreshItems()
     {
+        RebuildTagOptions();
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var tag = SelectedTag?.Tag;
         Items.Clear();
         foreach (var item in _library.Items)
         {
-            Items.Add(item);
+            if (tag is null || WallpaperTags.Contains(item.Tags, tag))
+            {
+                Items.Add(item);
+            }
         }
 
         OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    private void RebuildTagOptions()
+    {
+        var selected = SelectedTag?.Tag;
+        var tags = _library.Items
+            .SelectMany(item => item.Tags)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        _syncingTags = true;
+        try
+        {
+            TagOptions.Clear();
+            TagOptions.Add(new TagFilterOption(null, Loc.Get("Library_FilterTag_All")));
+            foreach (var tag in tags)
+            {
+                TagOptions.Add(new TagFilterOption(tag, tag));
+            }
+
+            // Re-selecting fires OnSelectedTagChanged; the guard keeps this from
+            // re-filtering before the new option list has settled.
+            SelectedTag = TagOptions.FirstOrDefault(option =>
+                    string.Equals(option.Tag, selected, StringComparison.OrdinalIgnoreCase))
+                ?? TagOptions[0];
+        }
+        finally
+        {
+            _syncingTags = false;
+        }
+
+        OnPropertyChanged(nameof(HasTagOptions));
+    }
+
+    partial void OnSelectedTagChanged(TagFilterOption? value)
+    {
+        if (!_syncingTags)
+        {
+            ApplyFilter();
+        }
     }
 }

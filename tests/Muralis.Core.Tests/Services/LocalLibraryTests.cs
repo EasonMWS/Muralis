@@ -112,6 +112,50 @@ public sealed class LocalLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task SetFavorite_RefreshesAnAlreadyCatalogedWallpaper()
+    {
+        await _library.InitializeAsync();
+        var path = CreateImage("second-session.png");
+        await _library.ImportAsync([path]);
+        var imported = Assert.Single(_library.Items);
+
+        // A second session reloads the catalog, and the UI then hands over a fresh object
+        // for the same wallpaper (as provider results do in Browse).
+        var reopened = CreateLibrary(_databasePath);
+        await reopened.InitializeAsync();
+        var fresh = new Muralis.Core.Models.Wallpaper
+        {
+            Id = imported.Id,
+            Title = imported.Title,
+            LocalPath = imported.LocalPath,
+            Source = Muralis.Core.Models.WallpaperSource.Local,
+        };
+
+        await reopened.SetFavoriteAsync(fresh, true);
+
+        Assert.True(reopened.Find(imported.Id)!.IsFavorite);
+        Assert.Equal(imported.Id, Assert.Single(reopened.Favorites).Id);
+    }
+
+    [Fact]
+    public async Task Save_TagEditsPersistAcrossInstances()
+    {
+        await _library.InitializeAsync();
+        var path = CreateImage("tagged.png");
+        await _library.ImportAsync([path]);
+        var item = Assert.Single(_library.Items);
+
+        item.Tags = ["Nature", "4K"];
+        await _library.SaveAsync(item);
+
+        var reopened = CreateLibrary(_databasePath);
+        await reopened.InitializeAsync();
+
+        var stored = Assert.Single(reopened.Items);
+        Assert.Equal(["Nature", "4K"], stored.Tags);
+    }
+
+    [Fact]
     public async Task FavoritingAnExternalWallpaper_AddsItToTheCatalog()
     {
         await _library.InitializeAsync();

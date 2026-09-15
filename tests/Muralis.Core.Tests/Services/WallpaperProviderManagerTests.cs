@@ -235,6 +235,35 @@ public sealed class WallpaperProviderManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchAsync_OverlaysCatalogTags()
+    {
+        var manager = CreateManager();
+        _bing.OnSearch = _ => [Wallpaper("bing:1", tags: ["Bing", "Daily"])];
+        _library.Add(new Wallpaper
+        {
+            Id = "bing:1",
+            Title = "Known",
+            Tags = ["Nature", "4K"],
+        });
+
+        var result = await manager.SearchAsync(new WallpaperQuery(), "bing", CancellationToken.None);
+
+        // The catalog's tags (provider tags plus user edits) win over a fresh response.
+        Assert.Equal(["Nature", "4K"], Assert.Single(result.Items).Tags);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithoutCatalogRecord_KeepsProviderTags()
+    {
+        var manager = CreateManager();
+        _bing.OnSearch = _ => [Wallpaper("bing:1", tags: ["Bing", "Daily"])];
+
+        var result = await manager.SearchAsync(new WallpaperQuery(), "bing", CancellationToken.None);
+
+        Assert.Equal(["Bing", "Daily"], Assert.Single(result.Items).Tags);
+    }
+
+    [Fact]
     public async Task GetFeaturedAsync_UsesTheDefaultSource()
     {
         var manager = CreateManager();
@@ -280,13 +309,14 @@ public sealed class WallpaperProviderManagerTests : IDisposable
             _library,
             NullLogger<WallpaperProviderManager>.Instance);
 
-    private static Wallpaper Wallpaper(string id, int width = 0, int height = 0) => new()
+    private static Wallpaper Wallpaper(string id, int width = 0, int height = 0, string[]? tags = null) => new()
     {
         Id = id,
         Title = id,
         RemoteUrl = "https://example.test/" + id,
         Width = width,
         Height = height,
+        Tags = tags ?? [],
         Source = WallpaperSource.Online,
     };
 }

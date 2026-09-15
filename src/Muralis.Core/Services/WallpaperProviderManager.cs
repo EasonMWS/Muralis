@@ -345,6 +345,14 @@ public sealed class WallpaperProviderManager
             }
 
             item.IsFavorite = known.IsFavorite;
+
+            // The catalog is authoritative for tags: user edits (and the provider tags
+            // recorded when the entry was created) survive a fresh provider response.
+            if (known.Tags.Count > 0)
+            {
+                item.Tags = known.Tags;
+            }
+
             if (known.HasLocalFile)
             {
                 item.LocalPath = known.LocalPath;

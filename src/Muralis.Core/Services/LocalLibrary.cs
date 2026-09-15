@@ -201,7 +201,15 @@ public sealed class LocalLibrary : ILocalLibrary
     {
         lock (_gate)
         {
-            if (_cache.All(item => !string.Equals(item.Id, wallpaper.Id, StringComparison.Ordinal)))
+            // Replace any stale entry: callers hand over a fresh object for the same id
+            // (provider results, a second session's reload), and the catalog must reflect
+            // the state that was just written instead of keeping the older instance.
+            var index = _cache.FindIndex(item => string.Equals(item.Id, wallpaper.Id, StringComparison.Ordinal));
+            if (index >= 0)
+            {
+                _cache[index] = wallpaper;
+            }
+            else
             {
                 _cache.Add(wallpaper);
             }

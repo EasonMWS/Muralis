@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Muralis.App.ViewModels"
     Background="Transparent"
     mc:Ignorable="d">
 
@@ -74,6 +75,75 @@
                                 Text="{x:Bind ViewModel.Wallpaper.LocalPath, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis"
                                 ToolTipService.ToolTip="{x:Bind ViewModel.Wallpaper.LocalPath, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Spacing="10">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Detail_Tags], Source={StaticResource Loc}}" />
+
+                        <ScrollViewer
+                            HorizontalScrollBarVisibility="Auto"
+                            HorizontalScrollMode="Auto"
+                            VerticalScrollBarVisibility="Disabled"
+                            VerticalScrollMode="Disabled">
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.Tags}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:TagChip">
+                                        <Border
+                                            Padding="10,4"
+                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                            CornerRadius="12">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <TextBlock
+                                                    MaxWidth="140"
+                                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                                    Text="{x:Bind Name}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <Button
+                                                    Padding="2"
+                                                    AutomationProperties.Name="{x:Bind RemoveLabel}"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Command="{x:Bind RemoveCommand}"
+                                                    ToolTipService.ToolTip="{x:Bind RemoveLabel}">
+                                                    <FontIcon FontSize="10" Glyph="&#xE711;" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <TextBlock
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{Binding [Detail_Tags_EmptyHint], Source={StaticResource Loc}}"
+                            Visibility="{x:Bind ViewModel.HasTags, Mode=OneWay, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="TagBox"
+                                AutomationProperties.Name="{Binding [Detail_TagPlaceholder], Source={StaticResource Loc}}"
+                                IsEnabled="{x:Bind ViewModel.CanAddTag, Mode=OneWay}"
+                                MaxLength="{x:Bind ViewModel.MaxTagLength}"
+                                PlaceholderText="{Binding [Detail_TagPlaceholder], Source={StaticResource Loc}}"
+                                Text="{x:Bind ViewModel.NewTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button
+                                Grid.Column="1"
+                                AutomationProperties.Name="{Binding [Detail_AddTag], Source={StaticResource Loc}}"
+                                Command="{x:Bind ViewModel.AddTagCommand}"
+                                Content="{Binding [Detail_AddTag], Source={StaticResource Loc}}" />
                         </Grid>
                     </StackPanel>
                 </Border>

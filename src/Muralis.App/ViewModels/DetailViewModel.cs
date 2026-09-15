@@ -52,6 +52,9 @@ public sealed partial class DetailViewModel : ViewModelBase
     [ObservableProperty]
     public partial string DownloadProgressText { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    public partial string NewTag { get; set; } = string.Empty;
+
     public DetailViewModel(
         IWallpaperService wallpaperService,
         ILocalLibrary library,
@@ -78,7 +81,15 @@ public sealed partial class DetailViewModel : ViewModelBase
 
     public ObservableCollection<MonitorInfo> Monitors { get; } = [];
 
+    public ObservableCollection<TagChip> Tags { get; } = [];
+
     public bool HasWallpaper => Wallpaper is not null;
+
+    public bool HasTags => Tags.Count > 0;
+
+    public bool CanAddTag => Wallpaper is not null && Tags.Count < WallpaperTags.MaxTagsPerWallpaper;
+
+    public int MaxTagLength => WallpaperTags.MaxTagLength;
 
     public bool CanApplyWallpaper => !IsApplying && Wallpaper?.HasLocalFile == true;
 
@@ -121,6 +132,7 @@ public sealed partial class DetailViewModel : ViewModelBase
             ErrorNotice = Loc.Format(error.Key, error.Args);
         }
 
+        RebuildTags();
         NotifyDerivedChanged();
     }
 
@@ -143,7 +155,12 @@ public sealed partial class DetailViewModel : ViewModelBase
         }
     }
 
-    partial void OnWallpaperChanged(Wallpaper? value) => NotifyDerivedChanged();
+    partial void OnWallpaperChanged(Wallpaper? value)
+    {
+        NewTag = string.Empty;
+        RebuildTags();
+        NotifyDerivedChanged();
+    }
 
     partial void OnIsApplyingChanged(bool value)
     {
@@ -285,6 +302,87 @@ public sealed partial class DetailViewModel : ViewModelBase
 
     [RelayCommand]
     private void CancelDownload() => _downloadCts?.Cancel();
+
+    /// <summary>Adds the text in the tag box to the wallpaper, skipping duplicates and empty input.</summary>
+    [RelayCommand]
+    private async Task AddTagAsync()
+    {
+        if (Wallpaper is not { } wallpaper)
+        {
+            return;
+        }
+
+        var tag = WallpaperTags.Normalize(NewTag);
+        NewTag = string.Empty;
+        if (tag is null || WallpaperTags.Contains(wallpaper.Tags, tag))
+        {
+            return;
+        }
+
+        if (Tags.Count >= WallpaperTags.MaxTagsPerWallpaper)
+        {
+            SetError("Detail_Error_TagLimit");
+            return;
+        }
+
+        var updated = wallpaper.Tags.ToList();
+        updated.Add(tag);
+        wallpaper.Tags = updated;
+        await SaveTagsAsync(wallpaper);
+    }
+
+    private async Task RemoveTagAsync(string tag)
+    {
+        if (Wallpaper is not { } wallpaper)
+        {
+            return;
+        }
+
+        var updated = wallpaper.Tags.ToList();
+        if (!WallpaperTags.Remove(updated, tag))
+        {
+            return;
+        }
+
+        wallpaper.Tags = updated;
+        await SaveTagsAsync(wallpaper);
+    }
+
+    /// <summary>
+    /// Persists tag edits through the catalog. Like favoriting, this adds a record for an
+    /// online wallpaper so the tags survive restarts.
+    /// </summary>
+    private async Task SaveTagsAsync(Wallpaper wallpaper)
+    {
+        try
+        {
+            await _library.SaveAsync(wallpaper);
+            SetError(null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save tags for {Id}", wallpaper.Id);
+            SetError("Detail_Error_TagsFailed");
+        }
+
+        RebuildTags();
+    }
+
+    private void RebuildTags()
+    {
+        Tags.Clear();
+        if (Wallpaper is { } wallpaper)
+        {
+            var removeLabel = Loc.Get("Detail_RemoveTag");
+            foreach (var tag in wallpaper.Tags)
+            {
+                Tags.Add(new TagChip(tag, removeLabel, value => _ = RemoveTagAsync(value)));
+            }
+        }
+
+        OnPropertyChanged(nameof(HasTags));
+        OnPropertyChanged(nameof(CanAddTag));
+    }
 
     private string ResolveDownloadFolder()
     {
