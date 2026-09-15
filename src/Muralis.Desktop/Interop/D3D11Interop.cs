@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Muralis.DesktopHost.Interop;
+namespace Muralis.Desktop.Interop;
 
 /// <summary>
 /// The minimum DXGI/D3D11 interop needed to give the media player a surface to draw into and to

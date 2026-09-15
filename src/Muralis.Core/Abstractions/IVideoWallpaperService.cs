@@ -4,7 +4,7 @@ namespace Muralis.Core.Abstractions;
 
 /// <summary>
 /// Plays a video file as an animated desktop background, behind the desktop icons. Implemented
-/// per platform in the app layer (<c>Muralis.DesktopHost</c>) so view models never touch native APIs.
+/// per platform in the app layer (<c>Muralis.Desktop</c>) so view models never touch native APIs.
 /// </summary>
 public interface IVideoWallpaperService
 {

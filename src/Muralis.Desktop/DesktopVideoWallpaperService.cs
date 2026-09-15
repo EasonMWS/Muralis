@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Models;
 
-namespace Muralis.DesktopHost;
+namespace Muralis.Desktop;
 
 /// <summary>
 /// Plays a video on the desktop behind the icons. Each start puts a fresh host window on the

@@ -10,7 +10,7 @@ using Muralis.Core.Networking;
 using Muralis.Core.Providers;
 using Muralis.Core.Repositories;
 using Muralis.Core.Services;
-using Muralis.DesktopHost;
+using Muralis.Desktop;
 
 namespace Muralis.App.Infrastructure;
 

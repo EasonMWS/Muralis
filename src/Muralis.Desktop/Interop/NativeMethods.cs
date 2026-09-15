@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Muralis.DesktopHost.Interop;
+namespace Muralis.Desktop.Interop;
 
 /// <summary>
 /// The Win32 surface the desktop host needs: window creation, the desktop worker lookup and

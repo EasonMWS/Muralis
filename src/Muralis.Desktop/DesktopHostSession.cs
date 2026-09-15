@@ -1,13 +1,13 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Models;
-using Muralis.DesktopHost.Interop;
+using Muralis.Desktop.Interop;
 using Windows.Graphics.DirectX.Direct3D11;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using WinRT;
 
-namespace Muralis.DesktopHost;
+namespace Muralis.Desktop;
 
 /// <summary>
 /// One run of the desktop video host: a Win32 window parented to the desktop worker, a swap chain

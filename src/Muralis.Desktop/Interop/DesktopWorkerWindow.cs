@@ -1,4 +1,4 @@
-namespace Muralis.DesktopHost.Interop;
+namespace Muralis.Desktop.Interop;
 
 /// <summary>
 /// Finds the desktop window the wallpaper is drawn in: the layer directly below the desktop icons.
