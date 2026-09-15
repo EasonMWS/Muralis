@@ -27,6 +27,9 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(AppTheme.System, service.Current.Theme);
         Assert.Equal(WallpaperFitMode.Fill, service.Current.DefaultFitMode);
         Assert.False(service.Current.Rotation.Enabled);
+        Assert.False(service.Current.VideoWallpaper.Enabled);
+        Assert.Equal(string.Empty, service.Current.VideoWallpaper.VideoPath);
+        Assert.True(service.Current.VideoWallpaper.Muted);
     }
 
     [Fact]
@@ -42,6 +45,9 @@ public sealed class SettingsServiceTests : IDisposable
             settings.LaunchAtStartup = true;
             settings.Rotation.Enabled = true;
             settings.Rotation.Interval = RotationInterval.Hours6;
+            settings.VideoWallpaper.Enabled = true;
+            settings.VideoWallpaper.VideoPath = @"C:\videos\aurora.mp4";
+            settings.VideoWallpaper.Muted = false;
         });
 
         // Update saves in the background; give the detached save a moment to complete.
@@ -55,6 +61,9 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.True(reloaded.Current.LaunchAtStartup);
         Assert.True(reloaded.Current.Rotation.Enabled);
         Assert.Equal(RotationInterval.Hours6, reloaded.Current.Rotation.Interval);
+        Assert.True(reloaded.Current.VideoWallpaper.Enabled);
+        Assert.Equal(@"C:\videos\aurora.mp4", reloaded.Current.VideoWallpaper.VideoPath);
+        Assert.False(reloaded.Current.VideoWallpaper.Muted);
     }
 
     [Fact]

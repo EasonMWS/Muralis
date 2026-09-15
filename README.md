@@ -27,6 +27,9 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 - **Favorites** — keep the ones you love, persisted across restarts
 - **Downloads** — a download queue with progress, cancellation, automatic retries with growing backoff and manual retry; it keeps running while you keep browsing, and a badge on the navigation entry shows the active count
 - **Auto rotation** — shuffle favorites or a folder every 15 minutes to 24 hours
+- **Dynamic wallpaper** — play a video on the desktop behind the icons: it loops, can be muted, and
+  comes back automatically on the next launch if you leave it switched on. Your static wallpaper is
+  never modified, so removing the video brings it straight back
 - **Runs in the tray** — close to the notification area and keep rotating; optional run at sign-in
 - **Per-display targeting** — pick which monitor receives a wallpaper
 - **English & 简体中文** — the UI follows your Windows language, or pick one in Settings; switching applies instantly
@@ -113,6 +116,7 @@ Muralis follows a layered MVVM design with a clean separation between UI and log
 ```
 Muralis.App    WinUI 3 shell — Views, ViewModels, controls, Windows platform services
 Muralis.Core   Platform-agnostic domain — models, abstractions, services, providers, repositories
+Muralis.DesktopHost   Win32 host that renders a video into the desktop's wallpaper layer
 Muralis.Core.Tests   Unit tests for the core logic
 ```
 
@@ -124,6 +128,9 @@ Muralis.Core.Tests   Unit tests for the core logic
   `SystemParametersInfo` and the `IDesktopWallpaper` COM interface
 - **Providers** — `IWallpaperProvider` abstraction so new sources (Bing, Unsplash,
   Wallhaven, custom) can be plugged in without touching the app
+- **Video wallpaper** — `IVideoWallpaperService` abstraction; `Muralis.DesktopHost` points a Win32
+  window at the shell's wallpaper worker (the window right behind the icons), draws into a DXGI
+  swap chain and feeds it from a media player in frame-server mode, on its own thread
 
 ## Roadmap
 
@@ -137,8 +144,7 @@ Muralis.Core.Tests   Unit tests for the core logic
 
 ### Later
 
-- Video wallpapers, web wallpapers and a plugin API
-- Localization (the UI ships in English for now)
+- Web wallpapers and a plugin API
 - Microsoft Store (MSIX) packaging
 
 ## Contributing

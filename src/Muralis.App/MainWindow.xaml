@@ -69,6 +69,11 @@
                         <InfoBadge x:Name="DownloadsBadge" Value="0" Visibility="Collapsed" />
                     </NavigationViewItem.InfoBadge>
                 </NavigationViewItem>
+                <NavigationViewItem Content="{Binding [Nav_Dynamic], Source={StaticResource Loc}}" Tag="dynamic">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE714;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
                 <NavigationViewItem Content="{Binding [Nav_Settings], Source={StaticResource Loc}}" Tag="settings">

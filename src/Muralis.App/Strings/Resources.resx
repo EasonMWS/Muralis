@@ -790,6 +790,98 @@
     <value>Every day</value>
   </data>
 
+  <!--  Dynamic wallpaper  -->
+  <data name="Nav_Dynamic" xml:space="preserve">
+    <value>Dynamic wallpaper</value>
+  </data>
+  <data name="Dynamic_Title" xml:space="preserve">
+    <value>Dynamic wallpaper</value>
+  </data>
+  <data name="Dynamic_Subtitle" xml:space="preserve">
+    <value>Play a video behind your desktop icons.</value>
+  </data>
+  <data name="Dynamic_Section_Video" xml:space="preserve">
+    <value>Video</value>
+  </data>
+  <data name="Dynamic_Video_Title" xml:space="preserve">
+    <value>Video file</value>
+  </data>
+  <data name="Dynamic_Video_Description" xml:space="preserve">
+    <value>The clip is scaled to fit the display and letterboxed; your static wallpaper stays underneath.</value>
+  </data>
+  <data name="Dynamic_ChooseVideo" xml:space="preserve">
+    <value>Choose video…</value>
+  </data>
+  <data name="Dynamic_NoVideo" xml:space="preserve">
+    <value>No video chosen yet</value>
+  </data>
+  <data name="Dynamic_Section_Playback" xml:space="preserve">
+    <value>Playback</value>
+  </data>
+  <data name="Dynamic_Playback_Title" xml:space="preserve">
+    <value>Desktop playback</value>
+  </data>
+  <data name="Dynamic_Play" xml:space="preserve">
+    <value>Play on desktop</value>
+  </data>
+  <data name="Dynamic_Stop" xml:space="preserve">
+    <value>Remove from desktop</value>
+  </data>
+  <data name="Dynamic_Section_Options" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="Dynamic_Mute_Title" xml:space="preserve">
+    <value>Mute</value>
+  </data>
+  <data name="Dynamic_Mute_Description" xml:space="preserve">
+    <value>Play the video without sound.</value>
+  </data>
+  <data name="Dynamic_StartWithApp_Title" xml:space="preserve">
+    <value>Start with Muralis</value>
+  </data>
+  <data name="Dynamic_StartWithApp_Description" xml:space="preserve">
+    <value>Put the video back on the desktop the next time Muralis starts.</value>
+  </data>
+  <data name="Dynamic_Section_Notes" xml:space="preserve">
+    <value>Good to know</value>
+  </data>
+  <data name="Dynamic_Notes_Description" xml:space="preserve">
+    <value>The video plays on the primary display while Muralis is running, drawn behind the icons. Your static wallpaper is never modified, so removing the video brings the original background straight back.</value>
+  </data>
+  <data name="Dynamic_State_Starting" xml:space="preserve">
+    <value>Starting the video…</value>
+  </data>
+  <data name="Dynamic_State_Playing" xml:space="preserve">
+    <value>Playing on the desktop</value>
+  </data>
+  <data name="Dynamic_State_Stopped" xml:space="preserve">
+    <value>Not playing on the desktop</value>
+  </data>
+  <data name="Dynamic_State_Failed" xml:space="preserve">
+    <value>Could not play the video: {0}</value>
+  </data>
+  <data name="Dynamic_Status_VideoSelected" xml:space="preserve">
+    <value>Video selected: {0}</value>
+  </data>
+  <data name="Dynamic_Status_ChooseFirst" xml:space="preserve">
+    <value>Choose a video first.</value>
+  </data>
+  <data name="Dynamic_Status_FileMissing" xml:space="preserve">
+    <value>That file is gone. Choose another video.</value>
+  </data>
+  <data name="Dynamic_Status_StartFailed" xml:space="preserve">
+    <value>The video could not be started: {0}</value>
+  </data>
+  <data name="Dynamic_Status_StopFailed" xml:space="preserve">
+    <value>The video could not be removed: {0}</value>
+  </data>
+  <data name="Dynamic_Status_StartupOn" xml:space="preserve">
+    <value>The video will play on the desktop the next time Muralis starts.</value>
+  </data>
+  <data name="Dynamic_Status_StartupOff" xml:space="preserve">
+    <value>The video will not be restored the next time Muralis starts.</value>
+  </data>
+
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">
     <value>Muralis — Wallpaper Studio</value>

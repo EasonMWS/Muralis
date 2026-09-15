@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Muralis.Core\Muralis.Core.csproj" />
+    <ProjectReference Include="..\Muralis.DesktopHost\Muralis.DesktopHost.csproj" />
   </ItemGroup>
 
   <!--

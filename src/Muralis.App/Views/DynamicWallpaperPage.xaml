@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muralis.App.Views.DynamicWallpaperPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="Transparent"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="36,24,36,40" VerticalScrollBarVisibility="Auto">
+        <StackPanel
+            MaxWidth="880"
+            HorizontalAlignment="Left"
+            Spacing="10">
+
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock Style="{StaticResource PageTitleStyle}" Text="{Binding [Dynamic_Title], Source={StaticResource Loc}}" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="{Binding [Dynamic_Subtitle], Source={StaticResource Loc}}" />
+            </StackPanel>
+
+            <InfoBar
+                IsClosable="False"
+                IsOpen="True"
+                Message="{x:Bind ViewModel.SuccessMessage, Mode=OneWay}"
+                Severity="Success"
+                Visibility="{x:Bind ViewModel.SuccessMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+            <InfoBar
+                IsClosable="False"
+                IsOpen="True"
+                Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                Severity="Error"
+                Title="{Binding [Common_Error_Title], Source={StaticResource Loc}}"
+                Visibility="{x:Bind ViewModel.ErrorMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+
+            <!--  Video  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Dynamic_Section_Video], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE714;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_Video_Title], Source={StaticResource Loc}}" />
+                        <TextBlock
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{Binding [Dynamic_Video_Description], Source={StaticResource Loc}}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.VideoFileName, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Button
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Command="{x:Bind ViewModel.ChooseVideoCommand}"
+                        Content="{Binding [Dynamic_ChooseVideo], Source={StaticResource Loc}}" />
+                </Grid>
+            </Border>
+
+            <!--  Playback  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Dynamic_Section_Playback], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE768;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_Playback_Title], Source={StaticResource Loc}}" />
+                        <TextBlock
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{x:Bind ViewModel.StateText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                        <Button
+                            Command="{x:Bind ViewModel.PlayCommand}"
+                            Content="{Binding [Dynamic_Play], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanPlay, Mode=OneWay}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                        <Button
+                            Command="{x:Bind ViewModel.StopCommand}"
+                            Content="{Binding [Dynamic_Stop], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanStop, Mode=OneWay}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!--  Options  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Dynamic_Section_Options], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE74F;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_Mute_Title], Source={StaticResource Loc}}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Dynamic_Mute_Description], Source={StaticResource Loc}}" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding [Dynamic_Mute_Title], Source={StaticResource Loc}}"
+                        IsOn="{x:Bind ViewModel.Muted, Mode=TwoWay}"
+                        OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                        OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
+                </Grid>
+            </Border>
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE7E8;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_StartWithApp_Title], Source={StaticResource Loc}}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{Binding [Dynamic_StartWithApp_Description], Source={StaticResource Loc}}" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding [Dynamic_StartWithApp_Title], Source={StaticResource Loc}}"
+                        IsOn="{x:Bind ViewModel.StartWithApp, Mode=TwoWay}"
+                        OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                        OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
+                </Grid>
+            </Border>
+
+            <!--  Notes  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Dynamic_Section_Notes], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE946;" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource CardCaptionStyle}"
+                        Text="{Binding [Dynamic_Notes_Description], Source={StaticResource Loc}}"
+                        TextWrapping="Wrap" />
+                </Grid>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

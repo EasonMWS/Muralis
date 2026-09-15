@@ -10,6 +10,7 @@ using Muralis.Core.Networking;
 using Muralis.Core.Providers;
 using Muralis.Core.Repositories;
 using Muralis.Core.Services;
+using Muralis.DesktopHost;
 
 namespace Muralis.App.Infrastructure;
 
@@ -155,6 +156,7 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<IImageFormatService, ImageFormatService>();
         services.AddSingleton<IWallpaperService, WindowsWallpaperService>();
         services.AddSingleton<IStartupService, StartupService>();
+        services.AddSingleton<IVideoWallpaperService, DesktopVideoWallpaperService>();
         services.AddSingleton<RotationService>();
         services.AddSingleton<TrayService>();
 
@@ -166,6 +168,7 @@ public sealed class AppHost : IDisposable
         services.AddTransient<LibraryViewModel>();
         services.AddTransient<FavoritesViewModel>();
         services.AddTransient<DownloadsViewModel>();
+        services.AddTransient<DynamicWallpaperViewModel>();
         services.AddTransient<SettingsViewModel>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions

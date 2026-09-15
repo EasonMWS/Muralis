@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Muralis.App/Muralis.App.csproj" />
     <Project Path="src/Muralis.Core/Muralis.Core.csproj" />
+    <Project Path="src/Muralis.DesktopHost/Muralis.DesktopHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Muralis.Core.Tests/Muralis.Core.Tests.csproj" />

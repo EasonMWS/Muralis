@@ -34,4 +34,7 @@ public sealed class AppSettings
     public bool CloseToTray { get; set; } = true;
 
     public RotationSettings Rotation { get; set; } = new();
+
+    /// <summary>The video shown behind the desktop icons, and whether to bring it back on launch.</summary>
+    public VideoWallpaperSettings VideoWallpaper { get; set; } = new();
 }

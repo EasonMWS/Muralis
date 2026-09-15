@@ -790,6 +790,98 @@
     <value>每天</value>
   </data>
 
+  <!--  Dynamic wallpaper  -->
+  <data name="Nav_Dynamic" xml:space="preserve">
+    <value>动态壁纸</value>
+  </data>
+  <data name="Dynamic_Title" xml:space="preserve">
+    <value>动态壁纸</value>
+  </data>
+  <data name="Dynamic_Subtitle" xml:space="preserve">
+    <value>在桌面图标后面播放视频。</value>
+  </data>
+  <data name="Dynamic_Section_Video" xml:space="preserve">
+    <value>视频</value>
+  </data>
+  <data name="Dynamic_Video_Title" xml:space="preserve">
+    <value>视频文件</value>
+  </data>
+  <data name="Dynamic_Video_Description" xml:space="preserve">
+    <value>视频会按比例缩放以适配显示器并留有黑边，静态壁纸保持在最底层。</value>
+  </data>
+  <data name="Dynamic_ChooseVideo" xml:space="preserve">
+    <value>选择视频…</value>
+  </data>
+  <data name="Dynamic_NoVideo" xml:space="preserve">
+    <value>尚未选择视频</value>
+  </data>
+  <data name="Dynamic_Section_Playback" xml:space="preserve">
+    <value>播放</value>
+  </data>
+  <data name="Dynamic_Playback_Title" xml:space="preserve">
+    <value>桌面播放</value>
+  </data>
+  <data name="Dynamic_Play" xml:space="preserve">
+    <value>在桌面播放</value>
+  </data>
+  <data name="Dynamic_Stop" xml:space="preserve">
+    <value>从桌面移除</value>
+  </data>
+  <data name="Dynamic_Section_Options" xml:space="preserve">
+    <value>选项</value>
+  </data>
+  <data name="Dynamic_Mute_Title" xml:space="preserve">
+    <value>静音</value>
+  </data>
+  <data name="Dynamic_Mute_Description" xml:space="preserve">
+    <value>播放视频时不发出声音。</value>
+  </data>
+  <data name="Dynamic_StartWithApp_Title" xml:space="preserve">
+    <value>随 Muralis 启动</value>
+  </data>
+  <data name="Dynamic_StartWithApp_Description" xml:space="preserve">
+    <value>下次启动 Muralis 时自动把视频放回桌面。</value>
+  </data>
+  <data name="Dynamic_Section_Notes" xml:space="preserve">
+    <value>说明</value>
+  </data>
+  <data name="Dynamic_Notes_Description" xml:space="preserve">
+    <value>视频在 Muralis 运行期间显示在主显示器上，绘制于图标之后。静态壁纸不会被修改，移除视频后即刻恢复原来的背景。</value>
+  </data>
+  <data name="Dynamic_State_Starting" xml:space="preserve">
+    <value>正在启动视频…</value>
+  </data>
+  <data name="Dynamic_State_Playing" xml:space="preserve">
+    <value>正在桌面播放</value>
+  </data>
+  <data name="Dynamic_State_Stopped" xml:space="preserve">
+    <value>未在桌面播放</value>
+  </data>
+  <data name="Dynamic_State_Failed" xml:space="preserve">
+    <value>无法播放视频：{0}</value>
+  </data>
+  <data name="Dynamic_Status_VideoSelected" xml:space="preserve">
+    <value>已选择视频：{0}</value>
+  </data>
+  <data name="Dynamic_Status_ChooseFirst" xml:space="preserve">
+    <value>请先选择一个视频。</value>
+  </data>
+  <data name="Dynamic_Status_FileMissing" xml:space="preserve">
+    <value>该文件已不存在，请重新选择视频。</value>
+  </data>
+  <data name="Dynamic_Status_StartFailed" xml:space="preserve">
+    <value>视频启动失败：{0}</value>
+  </data>
+  <data name="Dynamic_Status_StopFailed" xml:space="preserve">
+    <value>移除视频失败：{0}</value>
+  </data>
+  <data name="Dynamic_Status_StartupOn" xml:space="preserve">
+    <value>下次启动 Muralis 时将在桌面播放该视频。</value>
+  </data>
+  <data name="Dynamic_Status_StartupOff" xml:space="preserve">
+    <value>下次启动 Muralis 时将不再自动播放该视频。</value>
+  </data>
+
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">
     <value>Muralis — 壁纸工作室</value>

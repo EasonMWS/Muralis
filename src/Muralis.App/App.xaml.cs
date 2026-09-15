@@ -5,6 +5,7 @@ using Muralis.App.Infrastructure;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
+using Muralis.Core.Models;
 using Serilog;
 
 namespace Muralis.App;
@@ -70,6 +71,10 @@ public partial class App : Application
             _host.Services.GetRequiredService<TrayService>();
             _host.Services.GetRequiredService<RotationService>().ApplySettings();
 
+            // Bringing the video wallpaper back is off the startup path: the desktop host owns
+            // its own thread, and a missing or broken file must not delay the window.
+            _ = RestoreVideoWallpaperAsync(logger);
+
             // SQLite and the catalog are not needed for the first frame; loading them in
             // the background keeps the window's appear time short. Pages listening to
             // ILocalLibrary.Changed refresh as soon as the catalog is ready.
@@ -93,6 +98,38 @@ public partial class App : Application
         catch (Exception ex)
         {
             logger.LogError(ex, "Could not load the wallpaper catalog");
+        }
+    }
+
+    private async Task RestoreVideoWallpaperAsync(Microsoft.Extensions.Logging.ILogger logger)
+    {
+        try
+        {
+            var settings = _host.Services.GetRequiredService<ISettingsService>().Current.VideoWallpaper;
+            if (!settings.Enabled)
+            {
+                return;
+            }
+
+            if (!File.Exists(settings.VideoPath))
+            {
+                logger.LogWarning("The saved video wallpaper is gone: {Path}", settings.VideoPath);
+                return;
+            }
+
+            var status = await _host.Services
+                .GetRequiredService<IVideoWallpaperService>()
+                .StartAsync(settings.VideoPath, settings.Muted)
+                .ConfigureAwait(true);
+
+            if (status.State == VideoWallpaperState.Failed)
+            {
+                logger.LogWarning("The video wallpaper could not be restored: {Error}", status.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The video wallpaper could not be restored");
         }
     }
 

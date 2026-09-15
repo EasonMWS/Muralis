@@ -10,6 +10,8 @@ public interface IFilePickerService
 
     Task<IReadOnlyList<string>> PickImageFilesAsync();
 
+    Task<string?> PickVideoFileAsync();
+
     Task<string?> PickFolderAsync();
 }
 
@@ -20,6 +22,9 @@ public interface IFilePickerService
 public sealed class FilePickerService : IFilePickerService
 {
     private static readonly string[] ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".avif"];
+
+    // Formats the media player's frame server can decode out of the box.
+    private static readonly string[] VideoExtensions = [".mp4", ".m4v", ".mov", ".wmv", ".avi"];
 
     private readonly WindowContext _windowContext;
     private readonly ILogger<FilePickerService> _logger;
@@ -66,6 +71,37 @@ public sealed class FilePickerService : IFilePickerService
         {
             _logger.LogError(ex, "The file picker failed");
             return [];
+        }
+    }
+
+    public async Task<string?> PickVideoFileAsync()
+    {
+        if (!EnsureWindow("video picker"))
+        {
+            return null;
+        }
+
+        try
+        {
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.VideosLibrary,
+                ViewMode = PickerViewMode.List,
+            };
+
+            foreach (var extension in VideoExtensions)
+            {
+                picker.FileTypeFilter.Add(extension);
+            }
+
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowContext.Handle);
+            var file = await picker.PickSingleFileAsync().AsTask().ConfigureAwait(true);
+            return string.IsNullOrEmpty(file?.Path) ? null : file.Path;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The video picker failed");
+            return null;
         }
     }
 

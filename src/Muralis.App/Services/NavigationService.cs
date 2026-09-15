@@ -103,6 +103,7 @@ public static class Routes
     public const string Library = "library";
     public const string Favorites = "favorites";
     public const string Downloads = "downloads";
+    public const string Dynamic = "dynamic";
     public const string Settings = "settings";
     public const string Detail = "detail";
 
@@ -113,6 +114,7 @@ public static class Routes
         new(Library, typeof(LibraryPage), "Library"),
         new(Favorites, typeof(FavoritesPage), "Favorites"),
         new(Downloads, typeof(DownloadsPage), "Downloads"),
+        new(Dynamic, typeof(DynamicWallpaperPage), "Dynamic wallpaper"),
         new(Settings, typeof(SettingsPage), "Settings"),
         new(Detail, typeof(DetailPage), "Details"),
     ];

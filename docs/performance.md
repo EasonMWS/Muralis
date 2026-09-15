@@ -183,6 +183,63 @@ data integrity for the numbers. The cache cap only drops the oldest cached thumb
 which re-download on demand; the cancellation changes only stop work whose result nobody
 will see. All optimisations are covered by the existing 116 tests plus the new ones.
 
+## Video wallpaper (Milestone 3, 2026-09-15)
+
+The video wallpaper is a Win32 host window parented into the shell's wallpaper worker (the
+layer the desktop compositor draws behind the icons), fed by a media player in frame-server
+mode through a DXGI swap chain. The window, its D3D11 device and the media player live on a
+thread of their own; the UI thread never touches them, and the user's static wallpaper is
+never modified — stopping removes the window and the original wallpaper is already there.
+
+### Cost while playing (Release build, same machine as the baseline)
+
+| Scenario | Working set | Private | CPU (avg / peak) | GPU (avg) |
+| --- | --- | --- | --- | --- |
+| App idle, no video wallpaper | 184.7 MB | 125.8 MB | 0.026 % / 0.195 % | 0 % |
+| 1080p30 video playing, muted | 267–270 MB | 236–238 MB | 0.65–0.73 % / 1.11–1.30 % | 2.24–2.27 % (videodecode 1.50–1.53 %, 3d 0.73 %, rest ≤ 0.01 %) |
+
+Method: 10 s after the window appears, then 15 s of 1 Hz samples — CPU is the process
+CPU-time delta over 24 logical cores, GPU is the sum of the process' GPU-engine counters.
+Two playing runs and one idle run, same build, back to back.
+
+Reading the numbers:
+
+- **The playing clip costs about 0.7 % of the machine's CPU and 2.3 % of its GPU**, and the
+  decode runs on the GPU's video engine (hardware decode), not on the CPU. The extra ~83 MB
+  of working set is the decoder's surfaces and the swap-chain buffers, not managed memory;
+  the idle-RAM caveats above apply unchanged.
+- **Not playing costs nothing extra**: with no video wallpaper set there is no host window
+  and the app sits at the 2C baseline (GPU exactly 0 %).
+- **The startup path stays clean**: bringing the wallpaper back on launch only kicks off a
+  background task — the log shows `Muralis starting` → `Starting video wallpaper` 238 ms
+  later, with the window up at 571 ms, against 581 ms for the idle run and the 2C warm
+  average of 540 ms.
+
+### Does it leave the desktop alone? (measured)
+
+The standalone host verifier drives the service directly and inspects window handles and
+layers — it never captures the screen:
+
+- Start → first frame on the desktop in **486 ms**, then a steady **30 fps** (60 frames in
+  2 s); frames keep arriving past the clip's 6 s length (another 148 frames over the next
+  5 s), so looping works.
+- Stop returns in **12 ms** (after 211 presented frames); the host window is gone, the
+  wallpaper worker still has exactly the other windows it had (1 → 1 children — this machine
+  runs Wallpaper Engine in the same layer, and it is left untouched), the top-level WorkerW
+  count is unchanged (13 → 13), and the static wallpaper is still
+  `c:\windows\web\wallpaper\windows\img0.jpg`.
+- Five start/stop cycles: **handles 701 → 709 (+8 across two further cycles), threads
+  21 → 21, working set −0.4 MB** — no leak.
+- `WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` (0x08000080): no taskbar entry, no Alt+Tab entry,
+  never takes focus; `WindowFromPoint` at the centre of the screen returns the real window
+  under the cursor, so the desktop still receives mouse input.
+
+Honest caveats: these runs used the primary display and a muted 1080p30 clip — the audio
+path, HDR and 4K60 clips are not measured. Frame flow is evidenced by the service's own
+presented-frame counter (a `PrintWindow` of the host window comes out black — it cannot read
+a swap chain) and by the window's place in the shell's wallpaper layer; the desktop itself
+was never captured.
+
 ## Re-measuring
 
 ```powershell
@@ -190,6 +247,9 @@ will see. All optimisations are covered by the existing 116 tests plus the new o
 pwsh tools/perf-measure.ps1 -Label after                 # Release build (default path)
 pwsh tools/perf-measure.ps1 -Exe <path\to\Muralis.exe> -Label debug-or-published
 ```
+
+To re-measure the playing scenario, set a video wallpaper in Settings first: the harness
+launches the app with the saved settings, so every run restores and plays the clip.
 
 The harness starts the app several times (cold then warm), records process start → first
 visible window, working set/private memory, idle CPU and GPU over a sampling window, and
