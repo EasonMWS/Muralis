@@ -34,6 +34,7 @@ public sealed class TrayService : IDisposable
         INavigationService navigation,
         RotationService rotation,
         ILocalizationService localization,
+        ShellLifecycleWatcher shellWatcher,
         ILogger<TrayService> logger)
     {
         _windowContext = windowContext;
@@ -44,6 +45,10 @@ public sealed class TrayService : IDisposable
         _windowProc = OnWindowMessage;
 
         _localization.LanguageChanged += (_, _) => UpdateTooltip();
+
+        // Explorer restarts drop every notification icon; the shell announcement is the
+        // documented signal to put ours back.
+        shellWatcher.ShellRestarted += (_, _) => ReAddTrayIcon();
 
         TryCreateTrayIcon();
     }
@@ -86,18 +91,7 @@ public sealed class TrayService : IDisposable
                     TrayInterop.LrLoadFromFile | TrayInterop.LrDefaultSize);
             }
 
-            var data = new TrayInterop.NotifyIconData
-            {
-                Size = Marshal.SizeOf<TrayInterop.NotifyIconData>(),
-                WindowHandle = _messageWindow,
-                Id = 1,
-                Flags = TrayInterop.NifMessage | TrayInterop.NifIcon | TrayInterop.NifTip,
-                CallbackMessage = TrayInterop.WmTrayCallback,
-                IconHandle = _iconHandle,
-                Tip = _localization.Get("Tray_Tooltip"),
-                Info = string.Empty,
-                InfoTitle = string.Empty,
-            };
+            var data = CreateIconData();
 
             if (!TrayInterop.Shell_NotifyIcon(TrayInterop.NimAdd, ref data))
             {
@@ -114,6 +108,45 @@ public sealed class TrayService : IDisposable
             Cleanup();
         }
     }
+
+    /// <summary>Puts the icon back into the notification area after Explorer recreated it.</summary>
+    private void ReAddTrayIcon()
+    {
+        if (_disposed || _messageWindow == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var data = CreateIconData();
+            if (TrayInterop.Shell_NotifyIcon(TrayInterop.NimAdd, ref data))
+            {
+                _logger.LogInformation("Tray icon re-added after the shell restart");
+            }
+            else
+            {
+                _logger.LogWarning("The tray icon could not be re-added ({Error})", Marshal.GetLastWin32Error());
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "The tray icon could not be re-added");
+        }
+    }
+
+    private TrayInterop.NotifyIconData CreateIconData() => new()
+    {
+        Size = Marshal.SizeOf<TrayInterop.NotifyIconData>(),
+        WindowHandle = _messageWindow,
+        Id = 1,
+        Flags = TrayInterop.NifMessage | TrayInterop.NifIcon | TrayInterop.NifTip,
+        CallbackMessage = TrayInterop.WmTrayCallback,
+        IconHandle = _iconHandle,
+        Tip = _localization.Get("Tray_Tooltip"),
+        Info = string.Empty,
+        InfoTitle = string.Empty,
+    };
 
     public void ShowMainWindow()
     {

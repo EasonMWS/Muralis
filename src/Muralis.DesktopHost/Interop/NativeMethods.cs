@@ -21,6 +21,7 @@ internal static class NativeMethods
     internal const uint WmEraseBackground = 0x0014;
     internal const uint WmTimer = 0x0113;
     internal const uint WmStopHost = 0x8000 + 1;
+    internal const uint WmShellRestarted = 0x8000 + 2;
 
     internal const uint SmtoNormal = 0x0000;
     internal const uint SpawnWallpaperWorker = 0x052C;
@@ -145,8 +146,21 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern nint SetTimer(nint hWnd, nint timerId, uint intervalMs, nint timerProc);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool KillTimer(nint hWnd, nint timerId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindow(nint hWnd);
+
+    /// <summary>Posts to the thread queue: reaches the host even when it has no window.</summary>
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    internal static extern bool PostMessageW(nint hWnd, uint message, nint wParam, nint lParam);
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PostThreadMessageW(uint threadId, uint message, nint wParam, nint lParam);
+
+    [DllImport("kernel32.dll")]
+    internal static extern uint GetCurrentThreadId();
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern void PostQuitMessage(int exitCode);

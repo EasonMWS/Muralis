@@ -157,6 +157,7 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<IWallpaperService, WindowsWallpaperService>();
         services.AddSingleton<IStartupService, StartupService>();
         services.AddSingleton<IVideoWallpaperService, DesktopVideoWallpaperService>();
+        services.AddSingleton<ShellLifecycleWatcher>();
         services.AddSingleton<RotationService>();
         services.AddSingleton<TrayService>();
 

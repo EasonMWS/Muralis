@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-15
+
+The second release: browsing gained filters, tags and categories, downloads got a queue with
+retries, and a video can now play on the desktop behind the icons — together with the resilience
+work that lets a playing video survive an Explorer restart.
+
 ### Added
 
 **Localization**
@@ -32,6 +38,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests are retried with exponential backoff (honouring `Retry-After`)
 - Browse warns when some sources are unreachable but still shows the rest; search results
   are merged with the local catalog so favorites and downloaded files appear immediately
+
+**Browse and library**
+
+- Browse filters for orientation (landscape/portrait/square) and minimum resolution
+  (Full HD/2K/4K); results are filtered as they arrive, so paging and caching stay intact
+- Editable tags on the details page and a tag filter in the library; tags live in the
+  SQLite catalog and survive restarts
+- Category filter (general/anime/people) for sources that classify their wallpapers,
+  starting with Wallhaven
+- Duplicate detection by content hash: importing or downloading an image whose bytes are
+  already in the catalog points at the existing entry instead of storing it twice
+- The About card checks GitHub for the newest release and links to it when a newer
+  version exists
+
+**Downloads**
+
+- A shared download queue with bounded concurrency replaces per-page downloads: transfers
+  keep running while you navigate, keep their progress, retry automatically with growing
+  backoff and can be retried by hand
+- A Downloads page lists active, queued, failed and finished transfers; a badge on the
+  navigation entry shows how many are active
+
+**Dynamic wallpaper**
+
+- `IVideoWallpaperService` plus the `Muralis.DesktopHost` module: a Win32 window is
+  parented to the shell's wallpaper worker, drawn into a DXGI swap chain and fed by a
+  media player in frame-server mode — the video loops behind the icons, and the static
+  wallpaper underneath is never modified
+- Dynamic wallpaper page: choose a clip, play it on the desktop, remove it again, mute it,
+  and decide whether it starts with Muralis
+- A video that was left switched on comes back automatically on the next launch
+
+**Reliability**
+
+- Single instance: a second launch wakes the running window (shown from the tray,
+  restored if minimized, moved to the front) and exits before creating a second tray icon,
+  rotation timer, database writer or desktop host
+- Explorer restart recovery: a hidden shell watcher window listens for `TaskbarCreated`;
+  the tray icon is re-registered and a playing video wallpaper is re-mounted on the
+  rebuilt desktop layer and resumes playback — the static wallpaper stays untouched
+  throughout
 
 **Performance**
 
@@ -115,5 +162,6 @@ The first public release: a modern, native wallpaper manager for Windows 10 & 11
 - Dependency injection, Serilog rolling file logs, global exception handling
 - CI (build + test) and tag-driven release workflows on GitHub Actions
 
-[Unreleased]: https://github.com/EasonMWS/Muralis/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/EasonMWS/Muralis/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/EasonMWS/Muralis/releases/tag/v0.2.0
 [0.1.0]: https://github.com/EasonMWS/Muralis/releases/tag/v0.1.0

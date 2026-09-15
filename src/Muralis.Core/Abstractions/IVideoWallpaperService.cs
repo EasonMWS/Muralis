@@ -26,4 +26,11 @@ public interface IVideoWallpaperService
 
     /// <summary>Removes the video from the desktop and reveals the static background again.</summary>
     Task StopAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tells the video wallpaper that the shell (Explorer) restarted, so whatever it was mounted
+    /// into is gone. Implementations should re-mount the video and resume playback when it was
+    /// playing. Must be safe to call from any thread and do nothing when no video is running.
+    /// </summary>
+    void NotifyShellRestarted();
 }

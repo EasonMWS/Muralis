@@ -36,6 +36,7 @@ internal sealed class DesktopHostSession
     private readonly object _renderGate = new();
 
     private Thread? _thread;
+    private uint _threadId;
     private nint _window;
     private nint _worker;
     private NativeMethods.Rect _displayBounds;
@@ -48,6 +49,13 @@ internal sealed class DesktopHostSession
     private int _frameErrors;
     private long _presentedFrames;
     private bool _playingReported;
+
+    // Shell lifecycle: the host window dies together with Explorer's wallpaper layer, so the
+    // session keeps the intent to play and re-mounts itself on the new desktop worker.
+    private volatile bool _stopping;
+    private volatile bool _mountLost;
+    private volatile bool _playbackActive;
+    private int _remountAttempts;
 
     internal DesktopHostSession(string videoPath, bool muted, ILogger logger)
     {
@@ -85,14 +93,14 @@ internal sealed class DesktopHostSession
     internal async Task StopAsync()
     {
         var thread = _thread;
+        _stopping = true;
 
-        lock (_renderGate)
+        // A thread message reaches the host even while its window does not exist — for example
+        // after Explorer destroyed the wallpaper layer and the re-mount has not happened yet.
+        if (_threadId != 0 && !NativeMethods.PostThreadMessageW(_threadId, NativeMethods.WmStopHost, nint.Zero, nint.Zero)
+            && thread?.IsAlive == true)
         {
-            var window = _window;
-            if (window != nint.Zero)
-            {
-                NativeMethods.PostMessageW(window, NativeMethods.WmStopHost, nint.Zero, nint.Zero);
-            }
+            _logger.LogWarning("The desktop host stop request could not be posted ({Error})", Marshal.GetLastWin32Error());
         }
 
         if (thread is not null)
@@ -107,8 +115,25 @@ internal sealed class DesktopHostSession
         _thread = null;
     }
 
+    /// <summary>
+    /// Tells the host that the shell restarted and its window is about to disappear. Safe to call
+    /// from any thread; the host re-mounts on its own thread, and the five-second safety timer
+    /// catches the loss even when this announcement never arrives.
+    /// </summary>
+    internal void NotifyShellRestarted()
+    {
+        if (_threadId == 0)
+        {
+            return;
+        }
+
+        NativeMethods.PostThreadMessageW(_threadId, NativeMethods.WmShellRestarted, nint.Zero, nint.Zero);
+    }
+
     private void Run()
     {
+        _threadId = NativeMethods.GetCurrentThreadId();
+
         try
         {
             var worker = DesktopWorkerWindow.FindOrCreate();
@@ -122,8 +147,11 @@ internal sealed class DesktopHostSession
             RepositionOverPrimaryDisplay();
             CreatePresentation();
             StartPlayback();
+
+            // A thread timer keeps ticking even after the host window is destroyed by an Explorer
+            // restart; a window timer would die with it and the re-mount would never run.
             NativeMethods.SetTimer(
-                _window,
+                nint.Zero,
                 NativeMethods.DisplayChangeCheckTimerId,
                 NativeMethods.DisplayChangeCheckIntervalMs,
                 nint.Zero);
@@ -272,6 +300,8 @@ internal sealed class DesktopHostSession
 
     private void StartPlayback()
     {
+        _playbackActive = true;
+
         var player = new MediaPlayer
         {
             IsVideoFrameServerEnabled = true,
@@ -352,6 +382,7 @@ internal sealed class DesktopHostSession
             if (!_playingReported)
             {
                 _playingReported = true;
+                _logger.LogInformation("The video wallpaper is playing on the desktop");
                 Report(VideoWallpaperState.Playing);
             }
         }
@@ -384,6 +415,9 @@ internal sealed class DesktopHostSession
     {
         var detail = string.IsNullOrWhiteSpace(args.ErrorMessage) ? args.Error.ToString() : args.ErrorMessage;
         _logger.LogError("The video wallpaper stopped: {Detail} (0x{Code:X8})", detail, args.ExtendedErrorCode?.HResult ?? 0);
+
+        // The file itself is unusable: unlike a lost graphics device, re-mounting cannot help.
+        _playbackActive = false;
         Report(VideoWallpaperState.Failed, detail);
     }
 
@@ -397,16 +431,198 @@ internal sealed class DesktopHostSession
                 return;
             }
 
+            // Thread messages (timer, stop, shell restart) arrive with no window at all; they are
+            // handled here because the host window may already be gone when they are processed.
+            if (message.Hwnd == nint.Zero)
+            {
+                switch (message.Value)
+                {
+                    case NativeMethods.WmTimer:
+                        OnDisplayCheckTimer();
+                        break;
+
+                    case NativeMethods.WmStopHost:
+                        HandleStopRequest();
+                        break;
+
+                    case NativeMethods.WmShellRestarted:
+                        OnShellRestarted();
+                        break;
+                }
+
+                continue;
+            }
+
             NativeMethods.TranslateMessage(ref message);
             NativeMethods.DispatchMessageW(ref message);
         }
     }
 
+    /// <summary>Explorer restarted: re-mount the video on the desktop layer it rebuilt.</summary>
+    private void OnShellRestarted()
+    {
+        if (_stopping)
+        {
+            return;
+        }
+
+        // The announcement can arrive before the old window dies; the timer picks up the loss
+        // then. Nothing to do while the current mount is still alive.
+        if (_window != nint.Zero && NativeMethods.IsWindow(_window))
+        {
+            return;
+        }
+
+        HandleMountLoss();
+        TryRemount();
+    }
+
+    /// <summary>
+    /// The host window - and with it the desktop parent - is gone. Playback stops, but the intent
+    /// to play survives, so the video comes back once the new wallpaper layer is ready.
+    /// </summary>
+    private void HandleMountLoss()
+    {
+        var window = _window;
+        _window = nint.Zero;
+        _worker = nint.Zero;
+
+        if (window != nint.Zero)
+        {
+            lock (WindowTableGate)
+            {
+                LiveWindows.Remove(window);
+            }
+        }
+
+        StopPlayback();
+        _playingReported = false;
+
+        if (_mountLost)
+        {
+            return;
+        }
+
+        _mountLost = true;
+        _remountAttempts = 0;
+        _logger.LogInformation("The desktop host window was lost (Explorer restart?); preparing to re-mount");
+
+        if (_playbackActive)
+        {
+            // The page shows "starting" until the first frame of the re-mounted video arrives.
+            Report(VideoWallpaperState.Starting);
+        }
+    }
+
+    /// <summary>
+    /// Puts the video back on the desktop after the wallpaper layer was recreated. Retried by the
+    /// five-second timer, so a slow Explorer restart costs nothing but a few attempts.
+    /// </summary>
+    private void TryRemount()
+    {
+        _remountAttempts++;
+        try
+        {
+            var worker = DesktopWorkerWindow.FindOrCreate();
+            if (worker == nint.Zero)
+            {
+                if (_remountAttempts == 1)
+                {
+                    _logger.LogWarning(
+                        "The desktop worker window is not back yet; retrying every {Seconds} s",
+                        NativeMethods.DisplayChangeCheckIntervalMs / 1000);
+                }
+
+                return;
+            }
+
+            _worker = worker;
+            _window = CreateHostWindow(worker);
+            RepositionOverPrimaryDisplay();
+            CreatePresentation();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Re-mounting the video wallpaper failed (attempt {Attempt})", _remountAttempts);
+            RollBackMount();
+            return;
+        }
+
+        _mountLost = false;
+        _logger.LogInformation("The video wallpaper is back on the desktop after {Attempts} attempt(s)", _remountAttempts);
+        _remountAttempts = 0;
+
+        if (_playbackActive)
+        {
+            _playingReported = false;
+            StartPlayback();
+        }
+    }
+
+    /// <summary>Discards a half-built mount so the next attempt starts from a clean state.</summary>
+    private void RollBackMount()
+    {
+        var window = _window;
+        _window = nint.Zero;
+        _worker = nint.Zero;
+
+        if (window != nint.Zero)
+        {
+            lock (WindowTableGate)
+            {
+                LiveWindows.Remove(window);
+            }
+
+            NativeMethods.DestroyWindow(window);
+        }
+
+        StopPlayback();
+    }
+
+    /// <summary>Runs on the host thread when the session was asked to stop.</summary>
+    private void HandleStopRequest()
+    {
+        _stopping = true;
+        _playbackActive = false;
+        NativeMethods.KillTimer(nint.Zero, NativeMethods.DisplayChangeCheckTimerId);
+        StopPlayback();
+
+        var window = _window;
+        _window = nint.Zero;
+        _worker = nint.Zero;
+        if (window != nint.Zero)
+        {
+            lock (WindowTableGate)
+            {
+                LiveWindows.Remove(window);
+            }
+
+            NativeMethods.DestroyWindow(window);
+        }
+
+        NativeMethods.PostQuitMessage(0);
+    }
+
     /// <summary>Rebuilds the swap chain after the display layout changed.</summary>
     private void OnDisplayCheckTimer()
     {
-        if (_window == nint.Zero)
+        if (_stopping)
         {
+            return;
+        }
+
+        if (_mountLost)
+        {
+            TryRemount();
+            return;
+        }
+
+        if (_window == nint.Zero || !NativeMethods.IsWindow(_window))
+        {
+            // Safety net: should the destroy notification have been missed, the dead window is
+            // noticed here and treated exactly like a shell restart.
+            HandleMountLoss();
+            TryRemount();
             return;
         }
 
@@ -436,6 +652,9 @@ internal sealed class DesktopHostSession
 
     private void TearDown()
     {
+        _stopping = true;
+        _playbackActive = false;
+        NativeMethods.KillTimer(nint.Zero, NativeMethods.DisplayChangeCheckTimerId);
         StopPlayback();
 
         var window = _window;
@@ -450,6 +669,8 @@ internal sealed class DesktopHostSession
             NativeMethods.DestroyWindow(window);
         }
 
+        _worker = nint.Zero;
+        _threadId = 0;
         Report(VideoWallpaperState.Stopped);
     }
 
@@ -504,17 +725,26 @@ internal sealed class DesktopHostSession
                 case NativeMethods.WmClose:
                     // Stop the player before the window disappears so no frame is presented into a
                     // swap chain whose window is gone.
-                    session.StopPlayback();
-                    NativeMethods.DestroyWindow(hwnd);
+                    session.HandleStopRequest();
                     return nint.Zero;
 
                 case NativeMethods.WmDestroy:
-                    lock (WindowTableGate)
+                    if (session._stopping)
                     {
-                        LiveWindows.Remove(hwnd);
+                        lock (WindowTableGate)
+                        {
+                            LiveWindows.Remove(hwnd);
+                        }
+
+                        NativeMethods.PostQuitMessage(0);
+                    }
+                    else
+                    {
+                        // Explorer took the wallpaper layer down: the window died with it, and the
+                        // session re-mounts instead of ending.
+                        session.HandleMountLoss();
                     }
 
-                    NativeMethods.PostQuitMessage(0);
                     return nint.Zero;
 
                 case NativeMethods.WmEraseBackground:

@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Muralis.App.Infrastructure;
 using Muralis.App.Services;
+using Muralis.App.Services.Platform;
 using Muralis.Core.Abstractions;
 
 namespace Muralis.App;
@@ -23,6 +25,7 @@ public sealed partial class MainWindow : Window
         ISettingsService settingsService,
         IDownloadQueue downloadQueue,
         TrayService trayService,
+        ShellLifecycleWatcher shellWatcher,
         WindowContext windowContext,
         ILogger<MainWindow> logger)
     {
@@ -36,6 +39,7 @@ public sealed partial class MainWindow : Window
         _logger = logger;
 
         windowContext.MainWindow = this;
+        shellWatcher.ActivationRequested += (_, _) => BringToForeground();
 
         ConfigureTitleBar();
         ApplyWindowIcon();
@@ -124,6 +128,37 @@ public sealed partial class MainWindow : Window
     {
         _allowClose = true;
         Close();
+    }
+
+    /// <summary>
+    /// Shows, restores and focuses the window. Used when a second launch asks this instance to
+    /// come forward: the window may be hidden in the tray or minimized at that point.
+    /// </summary>
+    private void BringToForeground()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(BringToForeground);
+            return;
+        }
+
+        try
+        {
+            AppWindow.Show();
+
+            if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter)
+            {
+                presenter.Restore();
+            }
+
+            Activate();
+            ShellInterop.SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+            _logger.LogInformation("Window brought to the foreground");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "The window could not be brought to the foreground");
+        }
     }
 
     private void OnWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)

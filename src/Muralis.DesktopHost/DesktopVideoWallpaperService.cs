@@ -91,6 +91,18 @@ public sealed class DesktopVideoWallpaperService : IVideoWallpaperService
         }
     }
 
+    public void NotifyShellRestarted()
+    {
+        var session = Volatile.Read(ref _session);
+        if (session is null)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Explorer restarted; asking the desktop host to re-mount");
+        session.NotifyShellRestarted();
+    }
+
     private async Task StopSessionAsync()
     {
         var session = _session;

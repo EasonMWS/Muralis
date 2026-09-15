@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Muralis.App.Infrastructure;
 using Muralis.App.Services;
+using Muralis.App.Services.Platform;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
 using Muralis.Core.Models;
@@ -42,6 +43,17 @@ public partial class App : Application
         try
         {
             AppPaths.EnsureCreated();
+
+            // A second launch must not build a second tray, rotation timer, database writer or
+            // desktop host: it wakes the running instance and exits before any service exists.
+            if (!SingleInstanceGuard.IsPrimaryInstance())
+            {
+                Log.Information("Another Muralis instance is already running; this launch only woke it");
+                Log.CloseAndFlush();
+                Exit();
+                return;
+            }
+
             await _host.StartAsync();
 
             var logger = _host.Services.GetRequiredService<ILogger<App>>();
@@ -70,6 +82,12 @@ public partial class App : Application
             // The tray icon and rotation timer need the window to exist first.
             _host.Services.GetRequiredService<TrayService>();
             _host.Services.GetRequiredService<RotationService>().ApplySettings();
+
+            // Explorer can restart at any time; the watcher turns that announcement into events,
+            // so the tray icon reappears and a running video wallpaper re-mounts on the new desktop.
+            var shellWatcher = _host.Services.GetRequiredService<ShellLifecycleWatcher>();
+            var videoWallpaper = _host.Services.GetRequiredService<IVideoWallpaperService>();
+            shellWatcher.ShellRestarted += (_, _) => videoWallpaper.NotifyShellRestarted();
 
             // Bringing the video wallpaper back is off the startup path: the desktop host owns
             // its own thread, and a missing or broken file must not delay the window.

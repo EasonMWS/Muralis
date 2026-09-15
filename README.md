@@ -11,7 +11,7 @@ download, favorite and apply beautiful static wallpapers — then let Muralis ro
 them for you. Designed to feel like a first-party Windows 11 app: Mica backdrop,
 Fluent controls, light/dark themes, and a clean, calm layout.
 
-> **Status:** v0.1 in development. See the [Roadmap](#roadmap).
+> **Status:** v0.2 — feature-complete through Milestone 3. See the [Roadmap](#roadmap).
 
 ## Features
 
@@ -23,15 +23,18 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 - **Fit modes** — Fill, Fit, Stretch, Center, Tile and Span
 - **Per-display control** — pick which monitor receives a wallpaper on multi-monitor setups
 - **Format friendly** — WebP and AVIF images are transcoded automatically so Windows can use them
-- **Local library** — import your own images and manage them without touching the original files
+- **Local library** — import your own images and manage them without touching the original files; duplicates are detected by content hash so the same image never enters the catalog twice
 - **Favorites** — keep the ones you love, persisted across restarts
 - **Downloads** — a download queue with progress, cancellation, automatic retries with growing backoff and manual retry; it keeps running while you keep browsing, and a badge on the navigation entry shows the active count
+- **Update check** — the About card asks GitHub for the newest release and points you at it when a newer version exists
+- **Single instance** — launching Muralis again wakes and focuses the running window instead of starting a second copy
 - **Auto rotation** — shuffle favorites or a folder every 15 minutes to 24 hours
 - **Dynamic wallpaper** — play a video on the desktop behind the icons: it loops, can be muted, and
   comes back automatically on the next launch if you leave it switched on. Your static wallpaper is
-  never modified, so removing the video brings it straight back
-- **Runs in the tray** — close to the notification area and keep rotating; optional run at sign-in
-- **Per-display targeting** — pick which monitor receives a wallpaper
+  never modified, so removing the video brings it straight back. A playing video survives an
+  Explorer restart: Muralis re-mounts it on the rebuilt desktop layer and resumes playback
+- **Runs in the tray** — close to the notification area and keep rotating; the icon re-registers
+  itself when Explorer restarts; optional run at sign-in
 - **English & 简体中文** — the UI follows your Windows language, or pick one in Settings; switching applies instantly
 - **Light on the machine** — nothing heavy on the startup path (no network, database or
   image work before the window is up), idle CPU/GPU at ~0%, cancellable background
@@ -131,6 +134,9 @@ Muralis.Core.Tests   Unit tests for the core logic
 - **Video wallpaper** — `IVideoWallpaperService` abstraction; `Muralis.DesktopHost` points a Win32
   window at the shell's wallpaper worker (the window right behind the icons), draws into a DXGI
   swap chain and feeds it from a media player in frame-server mode, on its own thread
+- **Shell lifecycle** — one hidden watcher window turns Explorer restarts (`TaskbarCreated`) and
+  second-launch wakes into events, so the tray icon and the video host react without shell
+  knowledge leaking into their own code
 
 ## Roadmap
 
@@ -141,10 +147,18 @@ Muralis.Core.Tests   Unit tests for the core logic
 - [x] M5 — Rotation, run-at-startup, system tray
 - [x] M6 — UI polish, performance, error & memory audits
 - [x] M7 — Docs, CI, release packaging
+- [x] M2A — English & 简体中文 localization with live switching
+- [x] M2B — Pluggable sources: Wallhaven and NASA APOD behind one provider interface
+- [x] M2C — Measured performance work: startup path, thumbnails, bounded caches
+- [x] M2D — Browse filters and tags, download queue, duplicate detection, update check
+- [x] M3 — Dynamic wallpaper: a video plays behind the desktop icons, with shell-restart recovery
+- [x] v0.2.0 hardening — single instance, Explorer restart recovery, release polish
 
 ### Later
 
+- Video wallpaper: multiple displays, pause/seek and volume controls, HDR / 4K60 tuning
 - Web wallpapers and a plugin API
+- Architecture V2 — moving the desktop host and a future canvas layer into their own process
 - Microsoft Store (MSIX) packaging
 
 ## Contributing
