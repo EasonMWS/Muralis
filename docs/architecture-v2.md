@@ -799,6 +799,38 @@ Phase 1E 落地后的事实：
 
 Phase 1F 删除 `DesktopHostSession` 前的阻塞项：App 侧（动态壁纸页 ViewModel + 启动恢复）仍经 Core 的 `IVideoWallpaperService` + 上述适配器消费视频；需先按 §11.2 落地 `IDesktopBackdropService` 的最小实现并切换消费方，之后才能删除 `DesktopHostSession`、`VideoWallpaperServiceAdapter`、`AppHost` 注册与 `IVideoWallpaperService` 契约本身。
 
+### 14.7 Phase 1F 落地记录：legacy DesktopHostSession 已删除
+
+**`DesktopHostSession` 已删除。** Phase 1E 遗留的会话粘合（发起挂载、等首帧、20 s 超时、失败映射、停止）并入 `VideoWallpaperServiceAdapter`，适配器直接对接 `IDesktopShell` —— 它仍不含线程、窗口、WorkerW 查找与重挂载逻辑。
+
+- 真实生产链（唯一）：
+
+  ```text
+  App / ViewModel（动态壁纸页、启动恢复）
+      ↓  IVideoWallpaperService（UI compatibility API）
+  VideoWallpaperServiceAdapter
+      ↓  IDesktopShell.AddSurfaceAsync / RemoveSurfaceAsync
+  DesktopShell（线程、注册表、重挂载、watchdog）
+      ↓  Win32SurfaceHost（唯一建/销窗口处）
+  VideoSurfaceContent（MediaPlayer / DXGI / Present）
+  ```
+
+- `IVideoWallpaperService` 现存唯一用途 = **UI compatibility API**：在 `IDesktopBackdropService` 正式接管 UI 之前，动态壁纸页与启动恢复仍经它工作；接口上的 `NotifyShellRestarted` 已删除（无任何生产调用者，重启语义只属于 `ShellEventSource` → `DesktopShell`）。
+- 日志分层使用现有 Serilog category，不新增机制：视频事件（playing / display changed / media failed / device lost）由 `VideoSurfaceContent` 自己的 category 记录，壳层事件（window lost / re-mounted / worker）由 `DesktopShell` 记录，适配器只记录 start/stop 与启动失败。
+- 架构门禁（`tests/Muralis.Desktop.Tests/Architecture/ArchitectureGuardTests.cs`，11 条，断言失败信息给出违规文件）：无 `DesktopHostSession` 类型与源码引用；桌面窗口只在 `Surfaces/Win32SurfaceHost.cs` 创建（唯一例外：`Shell/ShellEventSource.cs` 自己的隐藏监听窗口）；`SetParent(` 只在 `Win32SurfaceHost`；`MediaPlayer` 只在 `Surfaces/VideoSurfaceContent.cs`；WorkerW 探测（`NativeMethods.FindWindowExW(`、`NativeMethods.EnumWindows(`、`"WorkerW"` 字面量、`SHELLDLL_DefView`）只在 `Interop/DesktopWorkerWindow.cs`；`TaskbarCreated` 只在 `Shell/ShellEventSource.cs`；`VideoSurfaceContent` 不出现 `WorkerW`/`SHELLDLL_DefView`/`CreateWindowEx`/`SetParent`/`TaskbarCreated`/`ShellRestarted`；`Shell/` 目录无 `MediaPlayer`/`IDXGISwapChain`/`VideoFrameAvailable`/`CopyFrameToVideoSurface`；App 不出现 `WorkerW`/`SHELLDLL_DefView`/`MuralisDesktopHostWindow`/`Win32SurfaceHost`/`DesktopLayerHost`/`SetParent(`；Core 不引用 `Muralis.Desktop`/`Microsoft.Windows.SDK.NET`/`WinRT.Runtime`/`Microsoft.UI.Xaml`；Desktop 不引用 `Microsoft.UI*`/`Microsoft.WindowsAppSDK*`/`Muralis.App`。源码扫描先剥离注释（允许注释里解释规则），token 使用调用点形式（`NativeMethods.…(`）与引号字面量，避免被类型名（如 `DesktopWorkerWindow`）误报。
+
+### Phase 1 状态（1A–1F）
+
+| Phase | 内容 | 状态 |
+| --- | --- | --- |
+| 1A | `Muralis.DesktopHost` → `Muralis.Desktop` 纯机械改名 | 完成（`0d3a50c`） |
+| 1B | Desktop Shell / Monitor / Surface 契约与数据模型 | 完成（`7f3ca4b`） |
+| 1C | `ShellEventSource` + 桌面生命周期集中 | 完成（`ff4be93`） |
+| 1D | `DesktopShell` / `DesktopSurface` / `Win32SurfaceHost` / `PrimaryDisplayProbe` | 完成（`8deee28`、`146953d`、`7fe5e41`） |
+| 1E | `VideoSurfaceContent` + `VideoWallpaperServiceAdapter` | 完成（`5184b84`、`2a0f86a`） |
+| 1F | 删除 legacy `DesktopHostSession` 与会话粘合 | 完成（`5724f85`、`2dfecb3`） |
+| 1G | 架构门禁 / 测试 / 诊断 | 门禁已随 1F 提前落地；其余未开始 |
+
 ---
 
 ## 15. 已裁决事项与兼容承诺
