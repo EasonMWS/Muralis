@@ -329,7 +329,15 @@ public sealed partial class DetailViewModel : ViewModelBase
             switch (item?.State)
             {
                 case DownloadState.Completed:
-                    SetSuccess("Detail_Success_Downloaded", ResolveDownloadFolder());
+                    if (item.IsDuplicate)
+                    {
+                        SetSuccess("Detail_Success_DownloadDuplicate", item.LocalPath ?? ResolveDownloadFolder());
+                    }
+                    else
+                    {
+                        SetSuccess("Detail_Success_Downloaded", ResolveDownloadFolder());
+                    }
+
                     SetError(null);
                     break;
                 case DownloadState.Failed:

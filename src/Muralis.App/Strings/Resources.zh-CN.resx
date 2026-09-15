@@ -355,6 +355,9 @@
   <data name="Downloads_State_CancelledHint" xml:space="preserve">
     <value>下载在完成前被停止，点击重试可重新开始。</value>
   </data>
+  <data name="Downloads_DuplicateKept" xml:space="preserve">
+    <value>库中已有相同图片，未重复保存，沿用原文件：{0}</value>
+  </data>
 
   <!--  Wallpaper detail  -->
   <data name="Detail_AspectRatio" xml:space="preserve">
@@ -428,6 +431,9 @@
   </data>
   <data name="Detail_Success_Downloaded" xml:space="preserve">
     <value>已下载到 {0}。</value>
+  </data>
+  <data name="Detail_Success_DownloadDuplicate" xml:space="preserve">
+    <value>库中已有相同图片，已沿用原有文件：{0}</value>
   </data>
   <data name="Detail_Success_DownloadCancelled" xml:space="preserve">
     <value>下载已取消。</value>

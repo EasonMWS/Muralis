@@ -42,6 +42,7 @@ public sealed partial class DownloadRow : ViewModelBase
         DownloadState.Failed when !string.IsNullOrWhiteSpace(Item.FailureReason) =>
             Loc.Format("Downloads_State_FailedReason", Item.FailureReason),
         DownloadState.Cancelled => Loc.Get("Downloads_State_CancelledHint"),
+        DownloadState.Completed when Item.IsDuplicate => Loc.Format("Downloads_DuplicateKept", Item.LocalPath ?? string.Empty),
         DownloadState.Completed => Item.LocalPath ?? string.Empty,
         _ => string.Empty,
     };
@@ -109,6 +110,9 @@ public sealed partial class DownloadRow : ViewModelBase
             case nameof(DownloadItem.LocalPath):
                 OnPropertyChanged(nameof(DetailText));
                 OnPropertyChanged(nameof(CanOpenInExplorer));
+                break;
+            case nameof(DownloadItem.IsDuplicate):
+                OnPropertyChanged(nameof(DetailText));
                 break;
             case nameof(DownloadItem.FailureReason):
                 OnPropertyChanged(nameof(DetailText));

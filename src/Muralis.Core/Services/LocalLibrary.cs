@@ -17,7 +17,9 @@ public sealed class LocalLibrary : ILocalLibrary
     private readonly IWallpaperRepository _repository;
     private readonly ILogger<LocalLibrary> _logger;
     private readonly Lock _gate = new();
+    private readonly Lock _backfillGate = new();
     private readonly List<Wallpaper> _cache = [];
+    private Task? _hashBackfill;
 
     public LocalLibrary(IWallpaperRepository repository, ILogger<LocalLibrary> logger)
     {
@@ -66,16 +68,24 @@ public sealed class LocalLibrary : ILocalLibrary
 
         _logger.LogInformation("Catalog loaded with {Count} wallpapers ({Favorites} favorites)",
             items.Count, items.Count(item => item.IsFavorite));
+
         RaiseChanged();
+
+        // Hash the entries that predate content-based duplicate detection in the background;
+        // anything that needs the hashes awaits this task through EnsureContentHashesAsync.
+        _ = EnsureContentHashesAsync();
     }
 
     public async Task<ImportResult> ImportAsync(IEnumerable<string> filePaths, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(filePaths);
 
+        await EnsureContentHashesAsync().ConfigureAwait(false);
+
         var added = 0;
         var duplicates = 0;
         var failed = 0;
+        var batchHashes = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var path in filePaths)
         {
@@ -95,6 +105,21 @@ public sealed class LocalLibrary : ILocalLibrary
                 continue;
             }
 
+            var contentHash = await ContentHash.TryComputeAsync(path, cancellationToken).ConfigureAwait(false);
+            if (contentHash is not null)
+            {
+                var match = FindByHash(contentHash);
+                if (match is not null || batchHashes.Contains(contentHash))
+                {
+                    _logger.LogInformation(
+                        "Skipping '{Path}': identical content is already in the library as '{Existing}'",
+                        path,
+                        match?.Id ?? "another file of this import");
+                    duplicates++;
+                    continue;
+                }
+            }
+
             var wallpaper = await CreateWallpaperAsync(id, path).ConfigureAwait(false);
             if (wallpaper is null)
             {
@@ -102,10 +127,16 @@ public sealed class LocalLibrary : ILocalLibrary
                 continue;
             }
 
+            wallpaper.ContentHash = contentHash;
             await _repository.UpsertAsync(wallpaper, cancellationToken).ConfigureAwait(false);
             lock (_gate)
             {
                 _cache.Add(wallpaper);
+            }
+
+            if (contentHash is not null)
+            {
+                batchHashes.Add(contentHash);
             }
 
             added++;
@@ -194,6 +225,83 @@ public sealed class LocalLibrary : ILocalLibrary
         lock (_gate)
         {
             return _cache.FirstOrDefault(item => string.Equals(item.Id, wallpaperId, StringComparison.Ordinal));
+        }
+    }
+
+    public async Task<Wallpaper?> FindByContentHashAsync(string contentHash, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(contentHash);
+
+        await EnsureContentHashesAsync().ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return FindByHash(contentHash);
+    }
+
+    private Wallpaper? FindByHash(string contentHash)
+    {
+        lock (_gate)
+        {
+            return _cache.FirstOrDefault(item =>
+                item.ContentHash is { Length: > 0 } hash
+                && string.Equals(hash, contentHash, StringComparison.Ordinal));
+        }
+    }
+
+    /// <summary>
+    /// Runs the hash backfill at most once; everybody who needs hashes awaits the same task.
+    /// </summary>
+    private Task EnsureContentHashesAsync()
+    {
+        lock (_backfillGate)
+        {
+            return _hashBackfill ??= BackfillContentHashesAsync();
+        }
+    }
+
+    /// <summary>
+    /// Computes and persists content hashes for catalog entries that have a file on disk
+    /// but no hash yet (entries imported before this was tracked). Never throws.
+    /// </summary>
+    private async Task BackfillContentHashesAsync()
+    {
+        try
+        {
+            Wallpaper[] pending;
+            lock (_gate)
+            {
+                pending = _cache
+                    .Where(item => item.ContentHash is null && !string.IsNullOrEmpty(item.LocalPath))
+                    .ToArray();
+            }
+
+            if (pending.Length == 0)
+            {
+                return;
+            }
+
+            var updated = 0;
+            foreach (var wallpaper in pending)
+            {
+                var hash = await ContentHash.TryComputeAsync(wallpaper.LocalPath!).ConfigureAwait(false);
+                if (hash is null)
+                {
+                    continue;
+                }
+
+                wallpaper.ContentHash = hash;
+                await _repository.UpsertAsync(wallpaper).ConfigureAwait(false);
+                updated++;
+            }
+
+            _logger.LogInformation(
+                "Computed content hashes for {Updated} of {Total} catalog entries",
+                updated,
+                pending.Length);
+        }
+        catch (Exception ex)
+        {
+            // Duplicate detection degrades to the file's identity until the next attempt.
+            _logger.LogWarning(ex, "Content-hash backfill failed");
         }
     }
 

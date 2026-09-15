@@ -235,6 +235,22 @@ public sealed class DownloadQueueService : IDownloadQueue
     private async Task CompleteAsync(DownloadItem item, string path)
     {
         var wallpaper = item.Wallpaper;
+        var contentHash = await ContentHash.TryComputeAsync(path).ConfigureAwait(true);
+        var duplicate = await FindDuplicateAsync(wallpaper, contentHash).ConfigureAwait(true);
+        var isDuplicate = false;
+
+        if (duplicate is { LocalPath: { } existing } && !PathsEqual(existing, path) && File.Exists(existing))
+        {
+            // The very same image is already on disk under another entry: keep one copy only.
+            TryDelete(path);
+            path = existing;
+            isDuplicate = true;
+            _logger.LogInformation(
+                "Downloaded '{Title}' matches '{Existing}' already in the library; kept the existing copy",
+                wallpaper.Title,
+                duplicate.Title);
+        }
+
         if (ImageMetadataReader.TryReadDimensions(path, out var width, out var height))
         {
             wallpaper.Width = width;
@@ -243,16 +259,53 @@ public sealed class DownloadQueueService : IDownloadQueue
 
         wallpaper.FileSize = new FileInfo(path).Length;
         wallpaper.LocalPath = path;
+        wallpaper.ContentHash = contentHash;
         await _library.SaveAsync(wallpaper).ConfigureAwait(true);
 
         _logger.LogInformation("Downloaded '{Title}' to {Path}", wallpaper.Title, path);
 
+        item.IsDuplicate = isDuplicate;
         item.LocalPath = path;
         item.Progress = 1;
         item.FailureReason = null;
         item.State = DownloadState.Completed;
         RaiseChanged();
     }
+
+    /// <summary>Looks for a catalog entry with the same content; failures never block the download.</summary>
+    private async Task<Wallpaper?> FindDuplicateAsync(Wallpaper wallpaper, string? contentHash)
+    {
+        if (contentHash is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _library.FindByContentHashAsync(contentHash).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            // Duplicate detection is best-effort; the download itself already succeeded.
+            _logger.LogWarning(ex, "Duplicate check failed for '{Title}'", wallpaper.Title);
+            return null;
+        }
+    }
+
+    private void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not remove the redundant copy at {Path}", path);
+        }
+    }
+
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
     private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 }

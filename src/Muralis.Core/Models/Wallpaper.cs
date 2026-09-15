@@ -121,6 +121,12 @@ public sealed class Wallpaper : INotifyPropertyChanged
         set => SetField(ref _lastUsedAt, value);
     }
 
+    /// <summary>
+    /// SHA-256 of the file content once it is known; null for entries added before the
+    /// hash was tracked or whose file cannot be read.
+    /// </summary>
+    public string? ContentHash { get; set; }
+
     public WallpaperSource Source { get; set; } = WallpaperSource.Local;
 
     /// <summary>Source-provided category, when the source classifies its items.</summary>

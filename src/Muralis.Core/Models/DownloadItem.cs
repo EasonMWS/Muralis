@@ -25,6 +25,7 @@ public sealed class DownloadItem : INotifyPropertyChanged
     private int _attempts;
     private string? _failureReason;
     private string? _localPath;
+    private bool _isDuplicate;
 
     public DownloadItem(Wallpaper wallpaper, string targetDirectory, int maxAttempts = 3)
     {
@@ -79,6 +80,16 @@ public sealed class DownloadItem : INotifyPropertyChanged
         internal set => SetField(ref _localPath, value);
     }
 
+    /// <summary>
+    /// True when the transfer finished but the identical image was already in the library,
+    /// whose existing file was kept instead of the fresh copy.
+    /// </summary>
+    public bool IsDuplicate
+    {
+        get => _isDuplicate;
+        internal set => SetField(ref _isDuplicate, value);
+    }
+
     internal CancellationTokenSource Cancellation { get; private set; } = new();
 
     /// <summary>True while the item still has work left (waiting or transferring).</summary>
@@ -96,6 +107,7 @@ public sealed class DownloadItem : INotifyPropertyChanged
         Attempts = 0;
         Progress = 0;
         FailureReason = null;
+        IsDuplicate = false;
         State = DownloadState.Queued;
     }
 

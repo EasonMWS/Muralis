@@ -51,6 +51,91 @@ public sealed class LocalLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_DetectsTheSameImageUnderANewName()
+    {
+        await _library.InitializeAsync();
+        var original = CreateImage("original.png");
+
+        await _library.ImportAsync([original]);
+        var copy = CreateImage("renamed.png");
+        var second = await _library.ImportAsync([copy]);
+
+        Assert.Equal(0, second.Added);
+        Assert.Equal(1, second.Duplicates);
+        Assert.Single(_library.Items);
+    }
+
+    [Fact]
+    public async Task Import_DetectsDuplicatesWithinOneBatch()
+    {
+        await _library.InitializeAsync();
+        var first = CreateImage("batch-1.png");
+        var second = CreateImage("batch-2.png");
+
+        var result = await _library.ImportAsync([first, second]);
+
+        Assert.Equal(1, result.Added);
+        Assert.Equal(1, result.Duplicates);
+        Assert.Single(_library.Items);
+    }
+
+    [Fact]
+    public async Task Import_AddsImagesWithDifferentContent()
+    {
+        await _library.InitializeAsync();
+        var small = CreateImage("small.png", 320, 200);
+        var large = CreateImage("large.png", 640, 480);
+
+        var result = await _library.ImportAsync([small, large]);
+
+        Assert.Equal(2, result.Added);
+        Assert.Equal(0, result.Duplicates);
+        Assert.Equal(2, _library.Items.Count);
+    }
+
+    [Fact]
+    public async Task Import_MatchesEntriesThatPredateContentHashes()
+    {
+        // A catalog written before content hashes existed: the record has a file but no hash.
+        var legacyPath = CreateImage("legacy.png");
+        var repository = new SqliteWallpaperRepository(NullLogger<SqliteWallpaperRepository>.Instance, _databasePath);
+        await repository.InitializeAsync();
+        await repository.UpsertAsync(new Muralis.Core.Models.Wallpaper
+        {
+            Id = Muralis.Core.Helpers.WallpaperId.ForLocalFile(legacyPath),
+            Title = "Legacy",
+            LocalPath = legacyPath,
+            Source = Muralis.Core.Models.WallpaperSource.Local,
+        });
+
+        var library = CreateLibrary(_databasePath);
+        await library.InitializeAsync();
+        var copy = CreateImage("legacy-copy.png");
+
+        var result = await library.ImportAsync([copy]);
+
+        Assert.Equal(0, result.Added);
+        Assert.Equal(1, result.Duplicates);
+        Assert.Single(library.Items);
+    }
+
+    [Fact]
+    public async Task Import_PersistsTheContentHashAcrossSessions()
+    {
+        await _library.InitializeAsync();
+        var path = CreateImage("hashed.png");
+        await _library.ImportAsync([path]);
+        var hash = Assert.Single(_library.Items).ContentHash;
+        Assert.NotNull(hash);
+
+        var reopened = CreateLibrary(_databasePath);
+        await reopened.InitializeAsync();
+
+        Assert.Equal(hash, Assert.Single(reopened.Items).ContentHash);
+        Assert.Equal(Assert.Single(reopened.Items), await reopened.FindByContentHashAsync(hash));
+    }
+
+    [Fact]
     public async Task Import_CountsUnsupportedFilesAsFailed()
     {
         await _library.InitializeAsync();

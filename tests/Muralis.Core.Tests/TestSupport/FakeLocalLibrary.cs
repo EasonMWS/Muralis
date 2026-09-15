@@ -41,6 +41,10 @@ internal sealed class FakeLocalLibrary : ILocalLibrary
         return Task.CompletedTask;
     }
 
+    public Task<Wallpaper?> FindByContentHashAsync(string contentHash, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_items.Values.FirstOrDefault(item =>
+            item.ContentHash is { Length: > 0 } hash && string.Equals(hash, contentHash, StringComparison.Ordinal)));
+
     public Task RecordUsageAsync(Wallpaper wallpaper, string? monitorName, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
 

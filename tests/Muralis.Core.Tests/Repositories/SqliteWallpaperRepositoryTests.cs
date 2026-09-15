@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Muralis.Core.Models;
 using Muralis.Core.Repositories;
@@ -36,6 +37,7 @@ public sealed class SqliteWallpaperRepositoryTests : IDisposable
             IsFavorite = true,
             Source = WallpaperSource.Local,
             CreatedAt = createdAt,
+            ContentHash = "3f2a1b",
         });
 
         var loaded = Assert.Single(await repository.GetAllAsync());
@@ -49,6 +51,7 @@ public sealed class SqliteWallpaperRepositoryTests : IDisposable
         Assert.True(loaded.IsFavorite);
         Assert.Equal(WallpaperSource.Local, loaded.Source);
         Assert.Equal(createdAt, loaded.CreatedAt, TimeSpan.FromSeconds(1));
+        Assert.Equal("3f2a1b", loaded.ContentHash);
     }
 
     [Fact]
@@ -123,6 +126,52 @@ public sealed class SqliteWallpaperRepositoryTests : IDisposable
         await repository.InitializeAsync();
 
         Assert.Empty(await repository.GetAllAsync());
+    }
+
+    [Fact]
+    public async Task DatabaseFromThePreviousSchema_IsMigratedWithContentHashes()
+    {
+        // A database exactly as the previous release wrote it: schema v1, no content_hash.
+        var legacyPath = Path.Combine(_directory, "legacy.db");
+        await using (var connection = new SqliteConnection($"Data Source={legacyPath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE schema_version (version INTEGER NOT NULL);
+                INSERT INTO schema_version (version) VALUES (1);
+                CREATE TABLE wallpapers (
+                    id            TEXT PRIMARY KEY,
+                    title         TEXT NOT NULL DEFAULT '',
+                    local_path    TEXT NULL,
+                    remote_url    TEXT NULL,
+                    thumbnail_url TEXT NULL,
+                    width         INTEGER NOT NULL DEFAULT 0,
+                    height        INTEGER NOT NULL DEFAULT 0,
+                    file_size     INTEGER NOT NULL DEFAULT 0,
+                    tags          TEXT NOT NULL DEFAULT '',
+                    is_favorite   INTEGER NOT NULL DEFAULT 0,
+                    source        INTEGER NOT NULL DEFAULT 0,
+                    created_at    TEXT NOT NULL,
+                    last_used_at  TEXT NULL
+                );
+                INSERT INTO wallpapers (id, title, created_at)
+                VALUES ('local:old', 'Old wallpaper', '2026-01-01T00:00:00.0000000+00:00');
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var repository = new SqliteWallpaperRepository(NullLogger<SqliteWallpaperRepository>.Instance, legacyPath);
+        await repository.InitializeAsync();
+
+        var wallpaper = Assert.Single(await repository.GetAllAsync());
+        Assert.Equal("Old wallpaper", wallpaper.Title);
+        Assert.Null(wallpaper.ContentHash);
+
+        // The migrated column accepts and returns values.
+        wallpaper.ContentHash = "abc123";
+        await repository.UpsertAsync(wallpaper);
+        Assert.Equal("abc123", Assert.Single(await repository.GetAllAsync()).ContentHash);
     }
 
     private SqliteWallpaperRepository CreateRepository() =>

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Helpers;
 using Muralis.Core.Models;
 using Muralis.Core.Services;
 using Muralis.Core.Tests.TestSupport;
@@ -60,6 +61,52 @@ public sealed class DownloadQueueServiceTests : IDisposable
         Assert.Equal("https://example.test/wallhaven:one", Assert.Single(_downloads.Urls));
         Assert.Equal(wallpaper.LocalPath, _library.Find(wallpaper.Id)?.LocalPath);
         Assert.False(queue.Items.Single().IsActive);
+        Assert.False(item.IsDuplicate);
+    }
+
+    [Fact]
+    public async Task Enqueue_MergesWithAnIdenticalFileAlreadyInTheLibrary()
+    {
+        // The same picture already sits in the library under a different name and id.
+        var libraryDirectory = Path.Combine(_directory, "library");
+        Directory.CreateDirectory(libraryDirectory);
+        var existingPath = Path.Combine(libraryDirectory, "already-here.jpg");
+        await File.WriteAllBytesAsync(existingPath, [1, 2, 3, 4]);
+        var existing = Wallpaper("wallhaven:old");
+        existing.LocalPath = existingPath;
+        existing.ContentHash = await ContentHash.TryComputeAsync(existingPath);
+        _library.Add(existing);
+
+        var downloadsDirectory = Path.Combine(_directory, "downloads");
+        var queue = CreateQueue();
+        var item = queue.Enqueue(Wallpaper("wallhaven:new"), downloadsDirectory);
+        await WaitForStateAsync(item, DownloadState.Completed);
+
+        Assert.Equal(1, _downloads.Attempts);
+        Assert.True(item.IsDuplicate);
+        Assert.Equal(existingPath, item.LocalPath);
+        Assert.Equal(existingPath, item.Wallpaper.LocalPath);
+        Assert.Empty(Directory.GetFiles(downloadsDirectory));
+        Assert.Equal(existingPath, _library.Find("wallhaven:new")?.LocalPath);
+    }
+
+    [Fact]
+    public async Task Enqueue_RedownloadingOverTheSameFile_KeepsTheOnlyCopy()
+    {
+        var queue = CreateQueue();
+        var wallpaper = Wallpaper("wallhaven:one");
+        var first = queue.Enqueue(wallpaper, _directory);
+        await WaitForStateAsync(first, DownloadState.Completed);
+        var path = first.LocalPath!;
+
+        // The user clears the finished row and asks for the same wallpaper again.
+        queue.Remove(first);
+        var second = queue.Enqueue(wallpaper, _directory);
+        await WaitForStateAsync(second, DownloadState.Completed);
+
+        Assert.False(second.IsDuplicate);
+        Assert.Equal(path, second.LocalPath);
+        Assert.True(File.Exists(path));
     }
 
     [Fact]

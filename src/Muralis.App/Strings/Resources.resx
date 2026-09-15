@@ -355,6 +355,9 @@
   <data name="Downloads_State_CancelledHint" xml:space="preserve">
     <value>Stopped before it finished. Retry to start it again.</value>
   </data>
+  <data name="Downloads_DuplicateKept" xml:space="preserve">
+    <value>The identical image is already in your library — kept the existing file: {0}</value>
+  </data>
 
   <!--  Wallpaper detail  -->
   <data name="Detail_AspectRatio" xml:space="preserve">
@@ -428,6 +431,9 @@
   </data>
   <data name="Detail_Success_Downloaded" xml:space="preserve">
     <value>Downloaded to {0}.</value>
+  </data>
+  <data name="Detail_Success_DownloadDuplicate" xml:space="preserve">
+    <value>The identical image was already in your library — kept the existing file at {0}</value>
   </data>
   <data name="Detail_Success_DownloadCancelled" xml:space="preserve">
     <value>Download cancelled.</value>

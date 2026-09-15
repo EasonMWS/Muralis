@@ -13,7 +13,7 @@ namespace Muralis.Core.Repositories;
 /// </summary>
 public sealed class SqliteWallpaperRepository : IWallpaperRepository
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const int HistoryRetentionLimit = 200;
 
     private readonly string _connectionString;
@@ -64,6 +64,12 @@ public sealed class SqliteWallpaperRepository : IWallpaperRepository
                 version = 1;
             }
 
+            if (version < 2)
+            {
+                await ExecuteAsync(connection, SchemaV2, cancellationToken).ConfigureAwait(false);
+                version = 2;
+            }
+
             await ExecuteAsync(
                 connection,
                 $"INSERT INTO schema_version (version) VALUES ({version});",
@@ -86,7 +92,7 @@ public sealed class SqliteWallpaperRepository : IWallpaperRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, title, local_path, remote_url, thumbnail_url, width, height,
-                   file_size, tags, is_favorite, source, created_at, last_used_at
+                   file_size, tags, is_favorite, source, created_at, last_used_at, content_hash
             FROM wallpapers
             ORDER BY created_at DESC;
             """;
@@ -111,10 +117,10 @@ public sealed class SqliteWallpaperRepository : IWallpaperRepository
         command.CommandText = """
             INSERT INTO wallpapers
                 (id, title, local_path, remote_url, thumbnail_url, width, height,
-                 file_size, tags, is_favorite, source, created_at, last_used_at)
+                 file_size, tags, is_favorite, source, created_at, last_used_at, content_hash)
             VALUES
                 ($id, $title, $localPath, $remoteUrl, $thumbnailUrl, $width, $height,
-                 $fileSize, $tags, $isFavorite, $source, $createdAt, $lastUsedAt)
+                 $fileSize, $tags, $isFavorite, $source, $createdAt, $lastUsedAt, $contentHash)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 local_path = excluded.local_path,
@@ -126,7 +132,8 @@ public sealed class SqliteWallpaperRepository : IWallpaperRepository
                 tags = excluded.tags,
                 is_favorite = excluded.is_favorite,
                 source = excluded.source,
-                last_used_at = excluded.last_used_at;
+                last_used_at = excluded.last_used_at,
+                content_hash = excluded.content_hash;
             """;
 
         command.Parameters.AddWithValue("$id", wallpaper.Id);
@@ -142,6 +149,7 @@ public sealed class SqliteWallpaperRepository : IWallpaperRepository
         command.Parameters.AddWithValue("$source", (int)wallpaper.Source);
         command.Parameters.AddWithValue("$createdAt", FormatTimestamp(wallpaper.CreatedAt));
         command.Parameters.AddWithValue("$lastUsedAt", wallpaper.LastUsedAt is { } used ? FormatTimestamp(used) : (object)DBNull.Value);
+        command.Parameters.AddWithValue("$contentHash", (object?)wallpaper.ContentHash ?? DBNull.Value);
 
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -201,7 +209,7 @@ public sealed class SqliteWallpaperRepository : IWallpaperRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT w.id, w.title, w.local_path, w.remote_url, w.thumbnail_url, w.width, w.height,
-                   w.file_size, w.tags, w.is_favorite, w.source, w.created_at, w.last_used_at
+                   w.file_size, w.tags, w.is_favorite, w.source, w.created_at, w.last_used_at, w.content_hash
             FROM wallpapers w
             JOIN (
                 SELECT wallpaper_id, MAX(applied_at) AS last_used
@@ -276,6 +284,7 @@ public sealed class SqliteWallpaperRepository : IWallpaperRepository
         Source = (WallpaperSource)reader.GetInt32(10),
         CreatedAt = ParseTimestamp(reader.GetString(11)),
         LastUsedAt = reader.IsDBNull(12) ? null : ParseTimestamp(reader.GetString(12)),
+        ContentHash = reader.IsDBNull(13) ? null : reader.GetString(13),
     };
 
     private static string FormatTimestamp(DateTimeOffset value) =>
@@ -317,5 +326,10 @@ public sealed class SqliteWallpaperRepository : IWallpaperRepository
         );
 
         CREATE INDEX IF NOT EXISTS ix_history_applied_at ON history (applied_at DESC);
+        """;
+
+    private const string SchemaV2 = """
+        ALTER TABLE wallpapers ADD COLUMN content_hash TEXT NULL;
+        CREATE INDEX IF NOT EXISTS ix_wallpapers_content_hash ON wallpapers (content_hash);
         """;
 }

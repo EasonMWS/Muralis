@@ -36,6 +36,12 @@ public interface ILocalLibrary
     /// <summary>Persists changes made to a wallpaper (e.g. a finished download), adding it if needed.</summary>
     Task SaveAsync(Wallpaper wallpaper, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Finds a catalog entry whose file content matches the given hash, if any. Entries
+    /// created before content hashes were tracked are hashed on first use.
+    /// </summary>
+    Task<Wallpaper?> FindByContentHashAsync(string contentHash, CancellationToken cancellationToken = default);
+
     /// <summary>Records that the wallpaper was applied to the desktop and when.</summary>
     Task RecordUsageAsync(Wallpaper wallpaper, string? monitorName, CancellationToken cancellationToken = default);
 
