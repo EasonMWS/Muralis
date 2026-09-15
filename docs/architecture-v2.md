@@ -786,6 +786,19 @@ Phase 1D（DesktopShell & Win32SurfaceHost）落地后的事实：**旧恢复代
 
 删除后的门禁：全仓不再出现 `IVideoWallpaperService`；Desktop hosting 的窗口 / 桌面层 / 重挂载在任意时刻只有 `DesktopShell` + `Win32SurfaceHost` 一个 owner。
 
+### 14.6 Phase 1E 落地记录：VideoSurfaceContent 与兼容适配器
+
+Phase 1E 落地后的事实：
+
+- 新增 `src/Muralis.Desktop/Surfaces/VideoSurfaceContent.cs`（内部 `ISurfaceContent` 实现）：进程内**唯一**的 MediaPlayer/DXGI 呈现代码 —— 加载、循环、静音、首帧确认、swapchain 创建/绑定、present 失败与设备丢失重建（每挂载世代仅重建一次，再失败报 `Failed`）。
+- `DesktopHostSession` 缩水为 135 行会话粘合：start-with-app 恢复流程、启动超时与失败映射、停止，**不含**任何视频 / native 代码；它和旧适配器一起留给 Phase 1F 删除。
+- 旧 `DesktopVideoWallpaperService.cs` 删除；兼容适配器按蓝图更名为 `src/Muralis.Desktop/Surfaces/Compatibility/VideoWallpaperServiceAdapter.cs`，行为与 v0.2.0 逐条一致（20 s 启动超时、异常映射、Stop 幂等、失败启动后不误报 Stopped）。
+- HWND 归属：建窗 / 销毁只属于 `Win32SurfaceHost`；视频侧只经 `IWin32SurfaceTarget` 获得句柄，绝不 `CreateWindowEx`。Swapchain 属 VideoSurfaceContent，随挂载/几何变化/设备丢失重建，永不重建 host window。
+- Explorer 重启链路：`ShellEventSource` → `DesktopShell` → Surface `Orphaned` → `Win32SurfaceHost` 重挂 → `VideoSurfaceContent` 得到新 target 后重绑 swapchain 继续播放；视频内容只感知「目标失效 / 新目标可用」，不感知 `TaskbarCreated`/`WorkerW`。
+- 状态口径：Orphaned 不向用户报 `Stopped`（重启恢复不计为一次停止）；只有内容级失败（打不开、codec、设备丢失重建失败）才报 `Failed`。
+
+Phase 1F 删除 `DesktopHostSession` 前的阻塞项：App 侧（动态壁纸页 ViewModel + 启动恢复）仍经 Core 的 `IVideoWallpaperService` + 上述适配器消费视频；需先按 §11.2 落地 `IDesktopBackdropService` 的最小实现并切换消费方，之后才能删除 `DesktopHostSession`、`VideoWallpaperServiceAdapter`、`AppHost` 注册与 `IVideoWallpaperService` 契约本身。
+
 ---
 
 ## 15. 已裁决事项与兼容承诺
