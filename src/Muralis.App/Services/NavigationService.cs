@@ -102,6 +102,7 @@ public static class Routes
     public const string Browse = "browse";
     public const string Library = "library";
     public const string Favorites = "favorites";
+    public const string Downloads = "downloads";
     public const string Settings = "settings";
     public const string Detail = "detail";
 
@@ -111,6 +112,7 @@ public static class Routes
         new(Browse, typeof(BrowsePage), "Browse"),
         new(Library, typeof(LibraryPage), "Library"),
         new(Favorites, typeof(FavoritesPage), "Favorites"),
+        new(Downloads, typeof(DownloadsPage), "Downloads"),
         new(Settings, typeof(SettingsPage), "Settings"),
         new(Detail, typeof(DetailPage), "Details"),
     ];

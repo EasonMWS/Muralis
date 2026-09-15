@@ -63,6 +63,9 @@
   <data name="Nav_Favorites" xml:space="preserve">
     <value>Favorites</value>
   </data>
+  <data name="Nav_Downloads" xml:space="preserve">
+    <value>Downloads</value>
+  </data>
   <data name="Nav_Settings" xml:space="preserve">
     <value>Settings</value>
   </data>
@@ -301,6 +304,56 @@
   </data>
   <data name="Favorites_Empty_Action" xml:space="preserve">
     <value>Browse wallpapers</value>
+  </data>
+
+  <!--  Downloads  -->
+  <data name="Downloads_Title" xml:space="preserve">
+    <value>Downloads</value>
+  </data>
+  <data name="Downloads_Summary_Idle" xml:space="preserve">
+    <value>Nothing is downloading right now.</value>
+  </data>
+  <data name="Downloads_Summary_Active" xml:space="preserve">
+    <value>{0} still in progress — downloads keep running while you browse.</value>
+  </data>
+  <data name="Downloads_ClearFinished" xml:space="preserve">
+    <value>Clear finished</value>
+  </data>
+  <data name="Downloads_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Downloads_Remove" xml:space="preserve">
+    <value>Remove from list</value>
+  </data>
+  <data name="Downloads_Empty_Title" xml:space="preserve">
+    <value>No downloads yet</value>
+  </data>
+  <data name="Downloads_Empty_Description" xml:space="preserve">
+    <value>Wallpapers you download while browsing show up here, with their progress and any retries.</value>
+  </data>
+  <data name="Downloads_Empty_Action" xml:space="preserve">
+    <value>Browse wallpapers</value>
+  </data>
+  <data name="Downloads_State_Queued" xml:space="preserve">
+    <value>Waiting in the queue</value>
+  </data>
+  <data name="Downloads_State_Downloading" xml:space="preserve">
+    <value>Downloading — {0}%</value>
+  </data>
+  <data name="Downloads_State_Completed" xml:space="preserve">
+    <value>Downloaded</value>
+  </data>
+  <data name="Downloads_State_Failed" xml:space="preserve">
+    <value>Download failed</value>
+  </data>
+  <data name="Downloads_State_FailedReason" xml:space="preserve">
+    <value>Last error: {0}</value>
+  </data>
+  <data name="Downloads_State_Cancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="Downloads_State_CancelledHint" xml:space="preserve">
+    <value>Stopped before it finished. Retry to start it again.</value>
   </data>
 
   <!--  Wallpaper detail  -->

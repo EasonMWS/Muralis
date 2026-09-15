@@ -217,6 +217,17 @@
                         </StackPanel>
                     </Button>
 
+                    <Button
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="{Binding [Downloads_Retry], Source={StaticResource Loc}}"
+                        Click="OnRetryDownloadClick"
+                        Visibility="{x:Bind ViewModel.CanRetryDownload, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon FontSize="16" Glyph="&#xE72C;" />
+                            <TextBlock Text="{Binding [Downloads_Retry], Source={StaticResource Loc}}" />
+                        </StackPanel>
+                    </Button>
+
                     <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.IsDownloading, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                         <ProgressBar Maximum="1" Value="{x:Bind ViewModel.DownloadProgress, Mode=OneWay}" />
                         <Grid>

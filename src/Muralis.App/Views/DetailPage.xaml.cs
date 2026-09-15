@@ -44,6 +44,9 @@ public sealed partial class DetailPage : Page
     private void OnDownloadClick(object sender, RoutedEventArgs e) =>
         ViewModel.DownloadCommand.Execute(null);
 
+    private void OnRetryDownloadClick(object sender, RoutedEventArgs e) =>
+        ViewModel.RetryDownloadCommand.Execute(null);
+
     private void OnCancelDownloadClick(object sender, RoutedEventArgs e) =>
         ViewModel.CancelDownloadCommand.Execute(null);
 

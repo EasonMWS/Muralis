@@ -12,6 +12,7 @@ public sealed partial class MainWindow : Window
     private readonly INavigationService _navigation;
     private readonly IThemeService _themeService;
     private readonly ISettingsService _settingsService;
+    private readonly IDownloadQueue _downloadQueue;
     private readonly TrayService _trayService;
     private readonly ILogger<MainWindow> _logger;
     private bool _allowClose;
@@ -20,6 +21,7 @@ public sealed partial class MainWindow : Window
         INavigationService navigation,
         IThemeService themeService,
         ISettingsService settingsService,
+        IDownloadQueue downloadQueue,
         TrayService trayService,
         WindowContext windowContext,
         ILogger<MainWindow> logger)
@@ -29,6 +31,7 @@ public sealed partial class MainWindow : Window
         _navigation = navigation;
         _themeService = themeService;
         _settingsService = settingsService;
+        _downloadQueue = downloadQueue;
         _trayService = trayService;
         _logger = logger;
 
@@ -42,12 +45,36 @@ public sealed partial class MainWindow : Window
         _navigation.Attach(RootFrame);
         _navigation.Navigated += OnNavigated;
 
+        // The count on the Downloads entry is the only sign that a transfer is still
+        // running while the user is on another page.
+        _downloadQueue.Changed += OnDownloadQueueChanged;
+        UpdateDownloadsBadge();
+
         WindowHelper.ConfigureInitialPlacement(this);
 
         AppWindow.Closing += OnWindowClosing;
 
         RootNavigationView.SelectedItem = RootNavigationView.MenuItems[0];
         _navigation.NavigateTo(Routes.Home);
+    }
+
+    private void OnDownloadQueueChanged(object? sender, EventArgs e)
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            UpdateDownloadsBadge();
+        }
+        else
+        {
+            DispatcherQueue.TryEnqueue(UpdateDownloadsBadge);
+        }
+    }
+
+    private void UpdateDownloadsBadge()
+    {
+        var active = _downloadQueue.ActiveCount;
+        DownloadsBadge.Value = active;
+        DownloadsBadge.Visibility = active > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnFirstActivated(object sender, WindowActivatedEventArgs args)

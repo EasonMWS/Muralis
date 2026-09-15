@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muralis.App.Views.DownloadsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Muralis.App.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Muralis.App.ViewModels"
+    Background="Transparent"
+    mc:Ignorable="d">
+
+    <Grid Padding="36,24,36,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Style="{StaticResource PageTitleStyle}" Text="{Binding [Downloads_Title], Source={StaticResource Loc}}" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}" />
+            </StackPanel>
+            <Button
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="{Binding [Downloads_ClearFinished], Source={StaticResource Loc}}"
+                Command="{x:Bind ViewModel.ClearFinishedCommand}"
+                Content="{Binding [Downloads_ClearFinished], Source={StaticResource Loc}}"
+                Visibility="{x:Bind ViewModel.HasFinishedItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
+
+        <Grid Grid.Row="1" Margin="0,20,0,0">
+            <ListView
+                Padding="0,0,0,24"
+                ItemsSource="{x:Bind ViewModel.Items}"
+                SelectionMode="None">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0,0,0,8" />
+                        <Setter Property="MinHeight" Value="0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DownloadRow">
+                        <Border Padding="14" Style="{StaticResource CardBorderStyle}">
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border
+                                    Width="92"
+                                    Height="58"
+                                    Background="{x:Bind Wallpaper.Id, Converter={StaticResource IdToPlaceholderBrush}}"
+                                    CornerRadius="6">
+                                    <Image
+                                        Source="{x:Bind Wallpaper.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}, ConverterParameter=256}"
+                                        Stretch="UniformToFill" />
+                                </Border>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                                    <TextBlock
+                                        MaxLines="1"
+                                        Text="{x:Bind Title}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Style="{StaticResource CardCaptionStyle}" Text="{x:Bind StatusText, Mode=OneWay}" />
+                                    <TextBlock
+                                        MaxLines="1"
+                                        Style="{StaticResource CardCaptionStyle}"
+                                        Text="{x:Bind DetailText, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis"
+                                        Visibility="{x:Bind DetailText, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+                                    <ProgressBar
+                                        Maximum="1"
+                                        Value="{x:Bind Progress, Mode=OneWay}"
+                                        Visibility="{x:Bind IsDownloading, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                                </StackPanel>
+
+                                <StackPanel
+                                    Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="4">
+                                    <Button
+                                        Padding="10,4"
+                                        AutomationProperties.Name="{Binding [Common_Cancel], Source={StaticResource Loc}}"
+                                        Command="{x:Bind CancelCommand}"
+                                        Content="{Binding [Common_Cancel], Source={StaticResource Loc}}"
+                                        Visibility="{x:Bind IsActive, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                                    <Button
+                                        Padding="10,4"
+                                        AutomationProperties.Name="{Binding [Downloads_Retry], Source={StaticResource Loc}}"
+                                        Command="{x:Bind RetryCommand}"
+                                        Content="{Binding [Downloads_Retry], Source={StaticResource Loc}}"
+                                        Visibility="{x:Bind CanRetry, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                                    <Button
+                                        Padding="8"
+                                        AutomationProperties.Name="{Binding [Detail_ShowInExplorer], Source={StaticResource Loc}}"
+                                        Command="{x:Bind OpenInExplorerCommand}"
+                                        ToolTipService.ToolTip="{Binding [Detail_ShowInExplorer], Source={StaticResource Loc}}"
+                                        Visibility="{x:Bind CanOpenInExplorer, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                                        <FontIcon FontSize="14" Glyph="&#xE7C5;" />
+                                    </Button>
+                                    <Button
+                                        Padding="8"
+                                        AutomationProperties.Name="{Binding [Downloads_Remove], Source={StaticResource Loc}}"
+                                        Command="{x:Bind RemoveCommand}"
+                                        ToolTipService.ToolTip="{Binding [Downloads_Remove], Source={StaticResource Loc}}">
+                                        <FontIcon FontSize="14" Glyph="&#xE711;" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <controls:EmptyState
+                ActionCommand="{x:Bind ViewModel.OpenBrowseCommand}"
+                ActionText="{Binding [Downloads_Empty_Action], Source={StaticResource Loc}}"
+                Description="{Binding [Downloads_Empty_Description], Source={StaticResource Loc}}"
+                Glyph="&#xE896;"
+                Title="{Binding [Downloads_Empty_Title], Source={StaticResource Loc}}"
+                Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
+    </Grid>
+</Page>

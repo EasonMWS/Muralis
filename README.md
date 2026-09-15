@@ -25,7 +25,7 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 - **Format friendly** — WebP and AVIF images are transcoded automatically so Windows can use them
 - **Local library** — import your own images and manage them without touching the original files
 - **Favorites** — keep the ones you love, persisted across restarts
-- **Downloads** — asynchronous downloads with progress, cancellation and conflict-safe file names
+- **Downloads** — a download queue with progress, cancellation, automatic retries with growing backoff and manual retry; it keeps running while you keep browsing, and a badge on the navigation entry shows the active count
 - **Auto rotation** — shuffle favorites or a folder every 15 minutes to 24 hours
 - **Runs in the tray** — close to the notification area and keep rotating; optional run at sign-in
 - **Per-display targeting** — pick which monitor receives a wallpaper

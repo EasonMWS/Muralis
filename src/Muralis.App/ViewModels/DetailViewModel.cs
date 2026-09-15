@@ -7,7 +7,6 @@ using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Helpers;
 using Muralis.Core.Models;
-using Muralis.Core.Services;
 
 namespace Muralis.App.ViewModels;
 
@@ -20,11 +19,10 @@ public sealed partial class DetailViewModel : ViewModelBase
     private readonly ILocalLibrary _library;
     private readonly ISettingsService _settingsService;
     private readonly IDialogService _dialogs;
-    private readonly IDownloadService _downloadService;
+    private readonly IDownloadQueue _downloadQueue;
     private readonly IImageCacheService _imageCache;
-    private readonly WallpaperProviderManager _providers;
     private readonly ILogger<DetailViewModel> _logger;
-    private CancellationTokenSource? _downloadCts;
+    private DownloadItem? _downloadItem;
     private Notice? _successNotice;
     private Notice? _errorNotice;
 
@@ -60,9 +58,8 @@ public sealed partial class DetailViewModel : ViewModelBase
         ILocalLibrary library,
         ISettingsService settingsService,
         IDialogService dialogs,
-        IDownloadService downloadService,
+        IDownloadQueue downloadQueue,
         IImageCacheService imageCache,
-        WallpaperProviderManager providers,
         ILocalizationService localization,
         ILogger<DetailViewModel> logger)
         : base(localization)
@@ -71,9 +68,8 @@ public sealed partial class DetailViewModel : ViewModelBase
         _library = library;
         _settingsService = settingsService;
         _dialogs = dialogs;
-        _downloadService = downloadService;
+        _downloadQueue = downloadQueue;
         _imageCache = imageCache;
-        _providers = providers;
         _logger = logger;
 
         DownloadProgressText = string.Empty;
@@ -109,7 +105,11 @@ public sealed partial class DetailViewModel : ViewModelBase
     public bool CanDownload =>
         Wallpaper is { Source: WallpaperSource.Online, HasLocalFile: false }
         && !string.IsNullOrEmpty(Wallpaper.RemoteUrl)
-        && !IsDownloading;
+        && !IsDownloading
+        && !CanRetryDownload;
+
+    /// <summary>Offered after the queue gave up (or the user cancelled); retries the same item.</summary>
+    public bool CanRetryDownload => _downloadItem?.State is DownloadState.Failed or DownloadState.Cancelled;
 
     public bool CanShowInExplorer => Wallpaper?.HasLocalFile == true;
 
@@ -147,6 +147,10 @@ public sealed partial class DetailViewModel : ViewModelBase
         SetError(null);
         DownloadProgress = 0;
         DownloadProgressText = string.Empty;
+
+        // A download started earlier (here or from the queue page) is still running;
+        // follow it rather than pretending nothing is happening.
+        AttachTo(wallpaper is null ? null : _downloadQueue.Find(wallpaper.Id));
 
         if (wallpaper is { Source: WallpaperSource.Online, HasLocalFile: false })
         {
@@ -235,7 +239,7 @@ public sealed partial class DetailViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task DownloadAsync()
+    private void Download()
     {
         if (Wallpaper is not { } wallpaper || string.IsNullOrEmpty(wallpaper.RemoteUrl))
         {
@@ -243,65 +247,110 @@ public sealed partial class DetailViewModel : ViewModelBase
             return;
         }
 
-        _downloadCts?.Dispose();
-        _downloadCts = new CancellationTokenSource();
-        var token = _downloadCts.Token;
-
-        IsDownloading = true;
-        DownloadProgress = 0;
         SetSuccess(null);
         SetError(null);
-        NotifyDerivedChanged();
 
-        try
+        // The queue owns the transfer, so it keeps running when the user leaves this page.
+        var item = _downloadQueue.Enqueue(wallpaper, ResolveDownloadFolder());
+        if (ReferenceEquals(item, _downloadItem) || item.State == DownloadState.Completed)
         {
-            var folder = ResolveDownloadFolder();
-            var progress = new Progress<double>(value =>
-            {
-                DownloadProgress = value;
-                DownloadProgressText = $"{value * 100:0}%";
-            });
-
-            var sourceUrl = await _providers.GetDownloadUrlAsync(wallpaper, token).ConfigureAwait(true);
-            if (string.IsNullOrWhiteSpace(sourceUrl))
-            {
-                SetError("Detail_Error_NoDownloadLink");
-                return;
-            }
-
-            var path = await _downloadService.DownloadAsync(sourceUrl, folder, wallpaper.Title, progress, token);
-
-            if (ImageMetadataReader.TryReadDimensions(path, out var width, out var height))
-            {
-                wallpaper.Width = width;
-                wallpaper.Height = height;
-            }
-
-            wallpaper.FileSize = new FileInfo(path).Length;
-            wallpaper.LocalPath = path;
-            await _library.SaveAsync(wallpaper);
-
-            SetSuccess("Detail_Success_Downloaded", folder);
+            return;
         }
-        catch (OperationCanceledException)
+
+        AttachTo(item);
+    }
+
+    [RelayCommand]
+    private void CancelDownload()
+    {
+        if (_downloadItem is { } item)
         {
-            SetSuccess("Detail_Success_DownloadCancelled");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Download failed for {Url}", wallpaper.RemoteUrl);
-            SetError("Detail_Error_DownloadFailed");
-        }
-        finally
-        {
-            IsDownloading = false;
-            DownloadProgressText = string.Empty;
-            NotifyDerivedChanged();
+            _downloadQueue.Cancel(item);
         }
     }
 
     [RelayCommand]
-    private void CancelDownload() => _downloadCts?.Cancel();
+    private void RetryDownload()
+    {
+        if (_downloadItem is { } item)
+        {
+            SetError(null);
+            _downloadQueue.Retry(item);
+        }
+    }
+
+    /// <summary>
+    /// Follows one queue item while this page is open. A page opened while a download is
+    /// already running attaches to it instead of starting a second transfer.
+    /// </summary>
+    private void AttachTo(DownloadItem? item)
+    {
+        if (ReferenceEquals(item, _downloadItem))
+        {
+            return;
+        }
+
+        if (_downloadItem is { } previous)
+        {
+            previous.PropertyChanged -= OnDownloadItemChanged;
+        }
+
+        _downloadItem = item;
+        if (item is not null)
+        {
+            item.PropertyChanged += OnDownloadItemChanged;
+        }
+
+        ApplyDownloadState(item, announce: false);
+    }
+
+    private void OnDownloadItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(DownloadItem.Progress):
+                DownloadProgress = _downloadItem?.Progress ?? 0;
+                DownloadProgressText = $"{DownloadProgress * 100:0}%";
+                break;
+            case nameof(DownloadItem.State):
+                ApplyDownloadState(_downloadItem);
+                break;
+        }
+    }
+
+    private void ApplyDownloadState(DownloadItem? item, bool announce = true)
+    {
+        IsDownloading = item?.State == DownloadState.Downloading;
+        DownloadProgress = item?.Progress ?? 0;
+        DownloadProgressText = item?.State == DownloadState.Downloading ? $"{DownloadProgress * 100:0}%" : string.Empty;
+
+        if (announce)
+        {
+            switch (item?.State)
+            {
+                case DownloadState.Completed:
+                    SetSuccess("Detail_Success_Downloaded", ResolveDownloadFolder());
+                    SetError(null);
+                    break;
+                case DownloadState.Failed:
+                    SetError("Detail_Error_DownloadFailed");
+                    SetSuccess(null);
+                    break;
+                case DownloadState.Cancelled:
+                    SetSuccess("Detail_Success_DownloadCancelled");
+                    SetError(null);
+                    break;
+            }
+        }
+
+        NotifyDerivedChanged();
+    }
+
+    public override void DetachFromPage()
+    {
+        AttachTo(null);
+        base.DetachFromPage();
+    }
 
     /// <summary>Adds the text in the tag box to the wallpaper, skipping duplicates and empty input.</summary>
     [RelayCommand]
@@ -479,6 +528,7 @@ public sealed partial class DetailViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanApplyWallpaper));
         OnPropertyChanged(nameof(CanRemoveFromLibrary));
         OnPropertyChanged(nameof(CanDownload));
+        OnPropertyChanged(nameof(CanRetryDownload));
         OnPropertyChanged(nameof(CanShowInExplorer));
         OnPropertyChanged(nameof(HasTechnicalDetails));
         OnPropertyChanged(nameof(FavoriteLabel));

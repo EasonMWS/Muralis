@@ -128,6 +128,7 @@ public sealed class AppHost : IDisposable
             sp.GetRequiredService<ILogger<SqliteWallpaperRepository>>()));
         services.AddSingleton<ILocalLibrary, LocalLibrary>();
         services.AddSingleton<IDownloadService, DownloadService>();
+        services.AddSingleton<IDownloadQueue, DownloadQueueService>();
         services.AddSingleton<IImageCacheService, ImageCacheService>();
 
         // Application services.
@@ -153,6 +154,7 @@ public sealed class AppHost : IDisposable
         services.AddTransient<DetailViewModel>();
         services.AddTransient<LibraryViewModel>();
         services.AddTransient<FavoritesViewModel>();
+        services.AddTransient<DownloadsViewModel>();
         services.AddTransient<SettingsViewModel>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions
