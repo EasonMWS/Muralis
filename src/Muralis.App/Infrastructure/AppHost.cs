@@ -10,8 +10,8 @@ using Muralis.Core.Networking;
 using Muralis.Core.Providers;
 using Muralis.Core.Repositories;
 using Muralis.Core.Services;
-using Muralis.Desktop;
 using Muralis.Desktop.Shell;
+using Muralis.Desktop.Surfaces.Compatibility;
 
 namespace Muralis.App.Infrastructure;
 
@@ -160,7 +160,7 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<IStartupService, StartupService>();
         services.AddSingleton<ShellEventSource>();
         services.AddSingleton<IDesktopShell, DesktopShell>();
-        services.AddSingleton<IVideoWallpaperService, DesktopVideoWallpaperService>();
+        services.AddSingleton<IVideoWallpaperService, VideoWallpaperServiceAdapter>();
         services.AddSingleton<RotationService>();
         services.AddSingleton<TrayService>();
 

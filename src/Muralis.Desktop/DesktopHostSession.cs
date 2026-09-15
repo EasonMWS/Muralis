@@ -1,334 +1,135 @@
-using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Models;
-using Muralis.Desktop.Interop;
+using Muralis.Desktop.Shell;
 using Muralis.Desktop.Surfaces;
-using Windows.Graphics.DirectX.Direct3D11;
-using Windows.Media.Core;
-using Windows.Media.Playback;
-using WinRT;
 
 namespace Muralis.Desktop;
 
 /// <summary>
-/// The video backdrop: a swap chain on the window it is mounted in, and a media player in frame
-/// server mode copying its frames into that swap chain. It is content, not a host — the desktop
-/// shell owns the thread, the window, the desktop layer and the re-mounting, and hands the window
-/// over through the surface target on every mount.
+/// One video backdrop session on the desktop shell: it creates the video content, registers it as
+/// a single surface on the primary display, waits for the first frame and removes the surface
+/// again when the session ends. It owns no thread, window, worker lookup or rendering — the shell
+/// hosts the surface and <see cref="VideoSurfaceContent"/> renders the video.
 /// </summary>
 /// <remarks>
-/// Frame presentation runs on the media player's thread and is serialized with the mount and
-/// unmount paths by <c>_renderGate</c>; nothing here runs on the shell thread except the mount and
-/// unmount calls themselves.
+/// Temporary compatibility glue (Phase 1E). The session-era service still needs a place that ties
+/// one start request to one surface and one status stream while the App keeps resolving
+/// <c>IVideoWallpaperService</c>. Removal (Phase 1F): the App moves to the shell-facing backdrop
+/// service, then this class, the <c>VideoWallpaperServiceAdapter</c> and the
+/// <c>IVideoWallpaperService</c> seam are deleted together. Until then keep this class free of
+/// video and native code — anything that renders belongs in <see cref="VideoSurfaceContent"/>, and
+/// anything that creates or re-mounts windows belongs in the shell.
 /// </remarks>
-internal sealed class DesktopHostSession : ISurfaceContent
+internal sealed class DesktopHostSession
 {
-    /// <summary>DXGI_ERROR_DEVICE_REMOVED / DEVICE_RESET: the video cannot be shown any more.</summary>
-    private const int DeviceRemoved = unchecked((int)0x887A0005);
-    private const int DeviceReset = unchecked((int)0x887A0007);
+    private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
 
-    private readonly string _videoPath;
-    private readonly bool _muted;
     private readonly ILogger _logger;
-    private readonly TaskCompletionSource<VideoWallpaperStatus> _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly object _renderGate = new();
+    private readonly IDesktopShell _shell;
+    private VideoSurfaceContent? _content;
+    private IDesktopSurface? _surface;
 
-    private nint _window;
-    private PixelRect _displayBounds;
-    private D3D11Interop.IDXGISwapChainInterop? _swapChain;
-    private IDirect3DSurface? _surface;
-    private MediaPlayer? _player;
-    private nint _device;
-    private nint _deviceContext;
-    private int _presentFailures;
-    private int _frameErrors;
-    private long _presentedFrames;
-    private bool _playingReported;
-    private bool _everMounted;
-    private bool _playbackDisabled;
-
-    internal DesktopHostSession(string videoPath, bool muted, ILogger logger)
+    internal DesktopHostSession(IDesktopShell shell, ILogger logger)
     {
-        _videoPath = videoPath;
-        _muted = muted;
+        _shell = shell;
         _logger = logger;
     }
 
-    /// <summary>How many frames have been put on the desktop since this session started.</summary>
-    internal long PresentedFrames => Interlocked.Read(ref _presentedFrames);
+    /// <summary>How many frames the current video has put on the desktop; 0 when nothing is running.</summary>
+    internal long PresentedFrames => Volatile.Read(ref _content)?.PresentedFrames ?? 0;
 
-    /// <summary>Raised when playback starts, fails or stops. Fires on the shell or player thread.</summary>
+    /// <summary>Raised whenever the session's status changes. Fires on the shell, player or pool thread.</summary>
     internal event EventHandler<VideoWallpaperStatus>? StatusChanged;
 
-    /// <summary>Completes with the first frame on the desktop, or with the failure that stopped it.</summary>
-    internal Task<VideoWallpaperStatus> Started => _started.Task;
-
-    public SurfaceKind Kind => SurfaceKind.Backdrop;
-
-    public SurfaceInteraction Interaction => SurfaceInteraction.None;
-
-    public SurfaceActivation Activation => SurfaceActivation.Never;
-
-    public Task MountAsync(ISurfaceTarget target, CancellationToken cancellationToken)
+    /// <summary>
+    /// Puts the video on the primary display and waits for its first frame. The session cleans
+    /// itself up when the start fails, so no half-mounted surface is left behind.
+    /// </summary>
+    internal async Task<VideoWallpaperStatus> StartAsync(string fullPath, bool muted, CancellationToken cancellationToken)
     {
-        if (target is not IWin32SurfaceTarget win32)
+        _logger.LogInformation("Starting video wallpaper {Path} (muted: {Muted})", fullPath, muted);
+
+        var primary = _shell.Monitors.Primary;
+        if (primary is null)
         {
-            throw new ArgumentException($"The video backdrop needs a Win32 surface target, not {target.GetType().Name}.", nameof(target));
+            var missing = new VideoWallpaperStatus(
+                VideoWallpaperState.Failed,
+                fullPath,
+                "No display was found to place the video wallpaper on.");
+            Publish(missing);
+            return missing;
         }
 
-        // A fresh mount, possibly after a lost one: release whatever a previous mount left behind
-        // before touching the new window.
-        UnmountAsync().GetAwaiter().GetResult();
+        var content = new VideoSurfaceContent(fullPath, muted, _logger);
+        content.StatusChanged += OnContentStatusChanged;
+        _content = content;
+        Publish(new VideoWallpaperStatus(VideoWallpaperState.Starting, fullPath));
 
-        _window = win32.WindowHandle;
-        _displayBounds = target.PixelBounds;
-
-        CreatePresentation();
-
-        if (_everMounted && !_playbackDisabled)
-        {
-            // The page shows "starting" again while the re-mounted video catches up.
-            Report(VideoWallpaperState.Starting);
-        }
-
-        _everMounted = true;
-
-        if (!_playbackDisabled)
-        {
-            // The new player starts from scratch: its first frame reports Playing again, which is
-            // what tells the page and the logs that a re-mounted video is back on the desktop.
-            _playingReported = false;
-            StartPlayback();
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public Task UnmountAsync()
-    {
-        StopPlayback();
-        _window = nint.Zero;
-        return Task.CompletedTask;
-    }
-
-    public void OnGeometryChanged(MonitorGeometry geometry, double scale)
-    {
-        if (_window == nint.Zero)
-        {
-            return;
-        }
-
-        _logger.LogInformation(
-            "The display changed to {Width}x{Height}; restarting the video wallpaper",
-            geometry.Bounds.Width,
-            geometry.Bounds.Height);
-
-        StopPlayback();
-        _playingReported = false;
-        _displayBounds = geometry.Bounds;
-        CreatePresentation();
-
-        if (!_playbackDisabled)
-        {
-            StartPlayback();
-        }
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        UnmountAsync().GetAwaiter().GetResult();
-        return ValueTask.CompletedTask;
-    }
-
-    private void CreatePresentation()
-    {
-        var description = new D3D11Interop.SwapChainDescription
-        {
-            BufferDescription = new D3D11Interop.ModeDescription
-            {
-                Width = (uint)_displayBounds.Width,
-                Height = (uint)_displayBounds.Height,
-                Format = D3D11Interop.FormatB8G8R8A8Unorm,
-            },
-            SampleCount = 1,
-            BufferUsage = D3D11Interop.UsageRenderTargetOutput,
-            BufferCount = 2,
-            OutputWindow = _window,
-            Windowed = 1,
-            SwapEffect = D3D11Interop.SwapEffectDiscard,
-        };
-
-        var result = D3D11Interop.CreateDeviceAndSwapChain(
-            nint.Zero,
-            D3D11Interop.DriverTypeHardware,
-            nint.Zero,
-            D3D11Interop.CreateDeviceBgraSupport,
-            nint.Zero,
-            0,
-            D3D11Interop.SdkVersion,
-            ref description,
-            out var swapChain,
-            out var device,
-            out _,
-            out var deviceContext);
-
-        if (result < 0)
-        {
-            throw new InvalidOperationException($"The desktop swap chain could not be created (0x{result:X8}).");
-        }
-
-        // Our reference is the only one holding the device and its context once the swap chain
-        // exists, so they are released together with the rest of the presentation.
-        _device = device;
-        _deviceContext = deviceContext;
-
-        _swapChain = (D3D11Interop.IDXGISwapChainInterop)Marshal.GetObjectForIUnknown(swapChain);
-        Marshal.Release(swapChain);
-
-        var surfaceId = D3D11Interop.DxgiSurfaceId;
-        _swapChain.GetBuffer(0, ref surfaceId, out var dxgiSurface);
         try
         {
-            result = D3D11Interop.CreateDirect3D11SurfaceFromDXGISurface(dxgiSurface, out var graphicsSurface);
-            if (result < 0)
+            _surface = await _shell
+                .AddSurfaceAsync(new SurfaceRequest(content, MonitorRef.From(primary)), cancellationToken)
+                .ConfigureAwait(false);
+
+            var status = await content.Started.WaitAsync(StartTimeout, cancellationToken).ConfigureAwait(false);
+            Publish(status);
+
+            if (status.State == VideoWallpaperState.Failed)
             {
-                throw new InvalidOperationException($"The desktop surface could not be created (0x{result:X8}).");
+                // The file or its codec is unusable: the desktop must fall back to the static
+                // wallpaper instead of showing an empty window.
+                await StopAsync().ConfigureAwait(false);
             }
 
-            _surface = MarshalInterface<IDirect3DSurface>.FromAbi(graphicsSurface);
-            Marshal.Release(graphicsSurface);
+            return status;
         }
-        finally
+        catch (OperationCanceledException)
         {
-            Marshal.Release(dxgiSurface);
+            await StopAsync().ConfigureAwait(false);
+            throw;
         }
-    }
-
-    private void StartPlayback()
-    {
-        var player = new MediaPlayer
+        catch (TimeoutException)
         {
-            IsVideoFrameServerEnabled = true,
-            IsLoopingEnabled = true,
-            IsMuted = _muted,
-        };
-
-        // No media keys, no transport controls: this is a wallpaper, not a media session.
-        player.CommandManager.IsEnabled = false;
-        player.SetSurfaceSize(new Windows.Foundation.Size(_displayBounds.Width, _displayBounds.Height));
-        player.VideoFrameAvailable += OnVideoFrameAvailable;
-        player.MediaFailed += OnMediaFailed;
-
-        _player = player;
-        player.Source = MediaSource.CreateFromUri(new Uri(_videoPath));
-        player.Play();
-    }
-
-    private void StopPlayback()
-    {
-        lock (_renderGate)
-        {
-            var player = _player;
-            if (player is not null)
-            {
-                player.VideoFrameAvailable -= OnVideoFrameAvailable;
-                player.MediaFailed -= OnMediaFailed;
-                player.Source = null;
-                player.Dispose();
-                _player = null;
-            }
-
-            _surface = null;
-
-            var swapChain = _swapChain;
-            _swapChain = null;
-            if (swapChain is not null && Marshal.IsComObject(swapChain))
-            {
-                Marshal.ReleaseComObject(swapChain);
-            }
-
-            if (_deviceContext != nint.Zero)
-            {
-                Marshal.Release(_deviceContext);
-                _deviceContext = nint.Zero;
-            }
-
-            if (_device != nint.Zero)
-            {
-                Marshal.Release(_device);
-                _device = nint.Zero;
-            }
-        }
-    }
-
-    private void OnVideoFrameAvailable(MediaPlayer sender, object args)
-    {
-        try
-        {
-            lock (_renderGate)
-            {
-                if (_surface is null || _swapChain is null)
-                {
-                    return;
-                }
-
-                sender.CopyFrameToVideoSurface(_surface);
-                var result = _swapChain.Present(1, 0);
-                if (result < 0)
-                {
-                    OnPresentFailed(result);
-                    return;
-                }
-
-                Interlocked.Increment(ref _presentedFrames);
-            }
-
-            if (!_playingReported)
-            {
-                _playingReported = true;
-                _logger.LogInformation("The video wallpaper is playing on the desktop");
-                Report(VideoWallpaperState.Playing);
-            }
+            await StopAsync().ConfigureAwait(false);
+            var timedOut = new VideoWallpaperStatus(
+                VideoWallpaperState.Failed,
+                fullPath,
+                "The desktop host did not start in time.");
+            Publish(timedOut);
+            return timedOut;
         }
         catch (Exception ex)
         {
-            if (Interlocked.Increment(ref _frameErrors) == 1)
-            {
-                _logger.LogError(ex, "A video frame could not be put on the desktop");
-                Report(VideoWallpaperState.Failed, ex.Message);
-            }
+            _logger.LogError(ex, "The video wallpaper could not be shown");
+            await StopAsync().ConfigureAwait(false);
+            var failed = new VideoWallpaperStatus(VideoWallpaperState.Failed, fullPath, ex.Message);
+            Publish(failed);
+            return failed;
         }
     }
 
-    private void OnPresentFailed(int result)
+    /// <summary>Removes the video from the shell. Safe to call when nothing is running.</summary>
+    internal async Task StopAsync()
     {
-        if (result is DeviceRemoved or DeviceReset)
+        var content = _content;
+        var surface = _surface;
+        if (content is null)
         {
-            _logger.LogError("The desktop swap chain was lost (0x{Result:X8})", result);
-            Report(VideoWallpaperState.Failed, "The graphics device was lost.");
             return;
         }
 
-        if (Interlocked.Increment(ref _presentFailures) == 1)
+        _content = null;
+        _surface = null;
+        content.StatusChanged -= OnContentStatusChanged;
+
+        if (surface is not null)
         {
-            _logger.LogWarning("Presenting a video frame failed (0x{Result:X8})", result);
+            // Removes the mount and releases the media player and the swap chain behind it.
+            await _shell.RemoveSurfaceAsync(surface, CancellationToken.None).ConfigureAwait(false);
         }
     }
 
-    private void OnMediaFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args)
-    {
-        var detail = string.IsNullOrWhiteSpace(args.ErrorMessage) ? args.Error.ToString() : args.ErrorMessage;
-        _logger.LogError("The video wallpaper stopped: {Detail} (0x{Code:X8})", detail, args.ExtendedErrorCode?.HResult ?? 0);
+    private void OnContentStatusChanged(object? sender, VideoWallpaperStatus status) => Publish(status);
 
-        // The file itself is unusable: unlike a lost window, a fresh mount cannot help.
-        _playbackDisabled = true;
-        Report(VideoWallpaperState.Failed, detail);
-    }
-
-    private void Report(VideoWallpaperState state, string? error = null)
-    {
-        var status = new VideoWallpaperStatus(state, _videoPath, error);
-        _started.TrySetResult(status);
-        StatusChanged?.Invoke(this, status);
-    }
+    private void Publish(VideoWallpaperStatus status) => StatusChanged?.Invoke(this, status);
 }
