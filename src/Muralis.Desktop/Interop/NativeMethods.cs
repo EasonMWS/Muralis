@@ -24,11 +24,15 @@ internal static class NativeMethods
     internal const uint WmTimer = 0x0113;
     internal const uint WmStopHost = 0x8000 + 1;
     internal const uint WmShellRestarted = 0x8000 + 2;
+    internal const uint WmRunWork = 0x8000 + 3;
+
+    internal const uint PmNoRemove = 0x0000;
 
     internal const uint SmtoNormal = 0x0000;
     internal const uint SpawnWallpaperWorker = 0x052C;
 
     internal const uint MonitorDefaultToPrimary = 1;
+    internal const int MonitorDpiTypeEffective = 0;
     internal const nint DisplayChangeCheckTimerId = 1;
     internal const uint DisplayChangeCheckIntervalMs = 5000;
 
@@ -63,6 +67,16 @@ internal static class NativeMethods
         public Rect Monitor;
         public Rect Work;
         public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct MonitorInfoEx
+    {
+        public int Size;
+        public Rect Monitor;
+        public Rect Work;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -153,6 +167,13 @@ internal static class NativeMethods
     internal static extern bool GetMonitorInfoW(nint monitor, ref MonitorInfo info);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool GetMonitorInfoW(nint monitor, ref MonitorInfoEx info);
+
+    /// <summary>Effective DPI of a display; <c>shcore</c> reports 96 for DPI-unaware processes.</summary>
+    [DllImport("shcore.dll")]
+    internal static extern int GetDpiForMonitor(nint monitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern nint SendMessageTimeoutW(nint hWnd, uint message, nint wParam, nint lParam, uint flags, uint timeout, out nint result);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -179,6 +200,13 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern int GetMessageW(out Message message, nint hWnd, uint filterMin, uint filterMax);
+
+    /// <summary>
+    /// Also the cheapest way to force a thread's message queue into existence, which must happen
+    /// before its thread id can be used with <see cref="PostThreadMessageW"/>.
+    /// </summary>
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool PeekMessageW(out Message message, nint hWnd, uint filterMin, uint filterMax, uint removeMessage);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern bool TranslateMessage(ref Message message);
