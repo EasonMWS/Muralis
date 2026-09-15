@@ -47,6 +47,12 @@ public sealed partial class FavoritesViewModel : ViewModelBase
         }
     }
 
+    public override void DetachFromPage()
+    {
+        _library.Changed -= OnLibraryChanged;
+        base.DetachFromPage();
+    }
+
     private void OnLibraryChanged(object? sender, EventArgs e)
     {
         if (_dispatcherQueue.HasThreadAccess)

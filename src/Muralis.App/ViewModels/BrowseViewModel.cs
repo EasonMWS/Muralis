@@ -192,7 +192,7 @@ public sealed partial class BrowseViewModel : ViewModelBase
     private async Task DebouncedSearchAsync()
     {
         _searchDebounce?.Cancel();
-        var cts = new CancellationTokenSource();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(PageToken);
         _searchDebounce = cts;
 
         try

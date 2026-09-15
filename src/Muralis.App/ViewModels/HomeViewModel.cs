@@ -164,6 +164,12 @@ public sealed partial class HomeViewModel : ViewModelBase
         ErrorMessage = key is null ? null : Loc.Format(key, args);
     }
 
+    public override void DetachFromPage()
+    {
+        _library.Changed -= OnLibraryChanged;
+        base.DetachFromPage();
+    }
+
     private void OnLibraryChanged(object? sender, EventArgs e)
     {
         if (_dispatcherQueue.HasThreadAccess)

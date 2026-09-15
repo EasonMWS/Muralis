@@ -37,8 +37,12 @@ public abstract class ViewModelBase : ObservableObject, ILanguageAware, IProvide
     {
     }
 
-    /// <summary>Called by the page from its Unloaded handler (navigated away or closed).</summary>
-    public void DetachFromPage()
+    /// <summary>
+    /// Called by the page from its Unloaded handler (navigated away or closed). Overrides
+    /// must unsubscribe from long-lived services so those services do not keep the view
+    /// model alive.
+    /// </summary>
+    public virtual void DetachFromPage()
     {
         if (!_pageCancellation.IsCancellationRequested)
         {

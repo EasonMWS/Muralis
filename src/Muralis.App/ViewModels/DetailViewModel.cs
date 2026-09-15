@@ -139,7 +139,7 @@ public sealed partial class DetailViewModel : ViewModelBase
         if (wallpaper is { Source: WallpaperSource.Online, HasLocalFile: false })
         {
             // Show the cached thumbnail right away while the full image is not on disk.
-            _ = _imageCache.WarmThumbnailsAsync([wallpaper]);
+            _ = _imageCache.WarmThumbnailsAsync([wallpaper], PageToken);
         }
     }
 

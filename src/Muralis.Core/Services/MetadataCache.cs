@@ -11,8 +11,12 @@ namespace Muralis.Core.Services;
 /// </summary>
 public sealed class MetadataCache : IMetadataCache
 {
+    /// <summary>How many writes happen between sweeps of expired entries.</summary>
+    private const int WritesBetweenSweeps = 16;
+
     private readonly ILogger<MetadataCache> _logger;
     private readonly string _directory;
+    private int _writesSinceSweep;
 
     public MetadataCache(ILogger<MetadataCache> logger, string? directory = null)
     {
@@ -75,6 +79,12 @@ public sealed class MetadataCache : IMetadataCache
             var temporaryPath = path + ".tmp";
             await File.WriteAllTextAsync(temporaryPath, text, cancellationToken).ConfigureAwait(false);
             File.Move(temporaryPath, path, overwrite: true);
+
+            if (Interlocked.Increment(ref _writesSinceSweep) >= WritesBetweenSweeps)
+            {
+                Interlocked.Exchange(ref _writesSinceSweep, 0);
+                PruneExpiredEntries();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -88,6 +98,56 @@ public sealed class MetadataCache : IMetadataCache
 
     private string GetEntryPath(string key) =>
         Path.Combine(_directory, HashKey(key) + ".cache");
+
+    /// <summary>
+    /// Deletes entries whose freshness window has passed. Runs occasionally (not on the
+    /// startup path) so keys that are never requested again cannot accumulate on disk.
+    /// </summary>
+    private void PruneExpiredEntries()
+    {
+        try
+        {
+            if (!Directory.Exists(_directory))
+            {
+                return;
+            }
+
+            var removed = 0;
+            foreach (var path in Directory.EnumerateFiles(_directory, "*.cache"))
+            {
+                if (IsExpired(path))
+                {
+                    TryDelete(path);
+                    removed++;
+                }
+            }
+
+            if (removed > 0)
+            {
+                _logger.LogInformation("Pruned {Count} expired metadata cache entries", removed);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogDebug(ex, "Could not sweep the metadata cache");
+        }
+    }
+
+    private static bool IsExpired(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var reader = new StreamReader(stream);
+            var firstLine = reader.ReadLine();
+            return long.TryParse(firstLine, CultureInfo.InvariantCulture, out var expiresAt)
+                && DateTimeOffset.UtcNow.UtcTicks >= expiresAt;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     private static string HashKey(string key)
     {

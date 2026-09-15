@@ -160,6 +160,12 @@ public sealed partial class LibraryViewModel : ViewModelBase
         ErrorNotice = null;
     }
 
+    public override void DetachFromPage()
+    {
+        _library.Changed -= OnLibraryChanged;
+        base.DetachFromPage();
+    }
+
     private void OnLibraryChanged(object? sender, EventArgs e)
     {
         // The event can fire from a background continuation; marshal to the UI thread.

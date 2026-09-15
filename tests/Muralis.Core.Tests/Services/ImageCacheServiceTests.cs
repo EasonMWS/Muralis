@@ -67,8 +67,49 @@ public sealed class ImageCacheServiceTests : IDisposable
         Assert.Null(wallpaper.CachedThumbnailPath);
     }
 
-    private ImageCacheService CreateService(FakeHttpMessageHandler handler) =>
-        new(new HttpClient(handler), NullLogger<ImageCacheService>.Instance, _directory);
+    [Fact]
+    public async Task Warm_OverCacheLimit_DropsOldestThumbnails()
+    {
+        Directory.CreateDirectory(_directory);
+        var oldest = WriteThumbnailFile("0000000000000001.jpg", 800, DateTime.UtcNow.AddHours(-2));
+        var middle = WriteThumbnailFile("0000000000000002.jpg", 800, DateTime.UtcNow.AddHours(-1));
+
+        var service = CreateService(FakeHttpMessageHandler.Bytes([1, 2, 3]), maxCacheBytes: 1024);
+        var wallpaper = CreateOnlineWallpaper();
+
+        await service.WarmThumbnailsAsync([wallpaper]);
+
+        // 800 + 800 + 3 bytes is above the 1 KB cap; the oldest file goes first and the
+        // freshly fetched one (the wallpaper's own thumbnail) must survive.
+        Assert.False(File.Exists(oldest));
+        Assert.True(File.Exists(middle));
+        Assert.NotNull(wallpaper.CachedThumbnailPath);
+        Assert.True(File.Exists(wallpaper.CachedThumbnailPath));
+    }
+
+    [Fact]
+    public async Task Warm_UnderCacheLimit_KeepsOldThumbnails()
+    {
+        Directory.CreateDirectory(_directory);
+        var older = WriteThumbnailFile("0000000000000003.jpg", 800, DateTime.UtcNow.AddHours(-2));
+
+        var service = CreateService(FakeHttpMessageHandler.Bytes([1, 2, 3]), maxCacheBytes: 1024 * 1024);
+
+        await service.WarmThumbnailsAsync([CreateOnlineWallpaper()]);
+
+        Assert.True(File.Exists(older));
+    }
+
+    private string WriteThumbnailFile(string name, int bytes, DateTime writtenUtc)
+    {
+        var path = Path.Combine(_directory, name);
+        File.WriteAllBytes(path, new byte[bytes]);
+        File.SetLastWriteTimeUtc(path, writtenUtc);
+        return path;
+    }
+
+    private ImageCacheService CreateService(FakeHttpMessageHandler handler, long maxCacheBytes = 256L * 1024 * 1024) =>
+        new(new HttpClient(handler), NullLogger<ImageCacheService>.Instance, _directory, maxCacheBytes);
 
     private static Wallpaper CreateOnlineWallpaper() => new()
     {

@@ -58,6 +58,12 @@ public partial class App : Application
             _mainWindow.Activate();
             StartupTrace.Log(logger, "window activated");
 
+            // Queued at low priority, so it runs once the startup work (page load, layout,
+            // first render) has been processed: the practical "window is interactive" mark.
+            _mainWindow.DispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () => StartupTrace.Log(logger, "ui idle (first frame done)"));
+
             _host.Services.GetRequiredService<IThemeService>().ApplyFromSettings();
 
             // The tray icon and rotation timer need the window to exist first.
