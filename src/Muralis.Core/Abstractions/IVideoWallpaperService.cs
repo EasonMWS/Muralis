@@ -3,9 +3,15 @@ using Muralis.Core.Models;
 namespace Muralis.Core.Abstractions;
 
 /// <summary>
-/// Plays a video file as an animated desktop background, behind the desktop icons. Implemented
-/// per platform in the app layer (<c>Muralis.Desktop</c>) so view models never touch native APIs.
+/// Plays a video file as an animated desktop background, behind the desktop icons. Implemented per
+/// platform in the app layer (<c>Muralis.Desktop</c>) so view models never touch native APIs.
 /// </summary>
+/// <remarks>
+/// UI compatibility API (Phase 1F): this is the session-era contract the dynamic wallpaper page
+/// and the start-with-app restore still resolve. Its implementation is a thin adapter over the
+/// desktop shell, and the whole seam is deleted once <see cref="IDesktopBackdropService"/> takes
+/// over the UI.
+/// </remarks>
 public interface IVideoWallpaperService
 {
     /// <summary>What the video wallpaper is doing right now.</summary>
@@ -26,11 +32,4 @@ public interface IVideoWallpaperService
 
     /// <summary>Removes the video from the desktop and reveals the static background again.</summary>
     Task StopAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Tells the video wallpaper that the shell (Explorer) restarted, so whatever it was mounted
-    /// into is gone. Implementations should re-mount the video and resume playback when it was
-    /// playing. Must be safe to call from any thread and do nothing when no video is running.
-    /// </summary>
-    void NotifyShellRestarted();
 }

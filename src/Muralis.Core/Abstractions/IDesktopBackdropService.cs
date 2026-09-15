@@ -7,8 +7,8 @@ namespace Muralis.Core.Abstractions;
 /// <c>Muralis.Desktop</c> so view models never touch native APIs. It is monitor-aware and driven
 /// by <see cref="BackdropSpec"/>; it never reads profiles or scenes itself — asset references
 /// arrive resolved by the caller. This is the eventual replacement for
-/// <see cref="IVideoWallpaperService"/>, which stays as the compatibility adapter until the
-/// scene orchestration (Phase 4) lands.
+/// <see cref="IVideoWallpaperService"/>, which now only exists as the UI compatibility adapter for
+/// the dynamic wallpaper page and the start-with-app restore.
 /// </summary>
 public interface IDesktopBackdropService
 {
