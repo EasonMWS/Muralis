@@ -123,6 +123,37 @@ public sealed class WallhavenWallpaperProviderTests
     }
 
     [Fact]
+    public async Task GetWallpapersAsync_WithOrientationAndResolution_SendsServerSideFilters()
+    {
+        var handler = CreateHandler(SearchJson);
+        var provider = CreateProvider(handler);
+
+        await provider.GetWallpapersAsync(new WallpaperQuery
+        {
+            SearchText = "mountains",
+            Orientation = WallpaperOrientation.Portrait,
+            MinimumResolution = WallpaperResolution.QuadHd,
+        });
+
+        var url = handler.RequestedUrls.Single();
+        Assert.Contains("ratios=portrait", url);
+        Assert.Contains("atleast=2560x1440", url);
+    }
+
+    [Fact]
+    public async Task GetWallpapersAsync_WithoutFilters_OmitsFilterParameters()
+    {
+        var handler = CreateHandler(SearchJson);
+        var provider = CreateProvider(handler);
+
+        await provider.GetWallpapersAsync(new WallpaperQuery { SearchText = "mountains" });
+
+        var url = handler.RequestedUrls.Single();
+        Assert.DoesNotContain("ratios=", url);
+        Assert.DoesNotContain("atleast=", url);
+    }
+
+    [Fact]
     public async Task GetWallpapersAsync_WithConfiguredKey_SendsTheKey()
     {
         var handler = CreateHandler(SearchJson);

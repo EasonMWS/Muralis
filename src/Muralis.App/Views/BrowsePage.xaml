@@ -61,6 +61,60 @@
                     PlaceholderText="{Binding [Browse_SearchPlaceholder], Source={StaticResource Loc}}"
                     QueryIcon="Find"
                     Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Button
+                    x:Name="FilterButton"
+                    AutomationProperties.Name="{Binding [Browse_FilterTooltip], Source={StaticResource Loc}}"
+                    VerticalAlignment="Center"
+                    ToolTipService.ToolTip="{Binding [Browse_FilterTooltip], Source={StaticResource Loc}}">
+                    <Grid>
+                        <FontIcon FontSize="14" Glyph="&#xE71C;" />
+                        <Ellipse
+                            Width="7"
+                            Height="7"
+                            Margin="0,0,-2,-2"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                            Visibility="{x:Bind ViewModel.IsFilterActive, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                    </Grid>
+                    <Button.Flyout>
+                        <Flyout Placement="BottomEdgeAlignedRight">
+                            <StackPanel Width="248" Spacing="12">
+                                <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{Binding [Browse_Filter_Title], Source={StaticResource Loc}}" />
+                                <ComboBox
+                                    x:Name="OrientationCombo"
+                                    HorizontalAlignment="Stretch"
+                                    Header="{Binding [Browse_Filter_Orientation], Source={StaticResource Loc}}"
+                                    ItemsSource="{x:Bind ViewModel.OrientationOptions}"
+                                    SelectedItem="{x:Bind ViewModel.SelectedOrientation, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:OrientationOption">
+                                            <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <ComboBox
+                                    x:Name="ResolutionCombo"
+                                    HorizontalAlignment="Stretch"
+                                    Header="{Binding [Browse_Filter_Resolution], Source={StaticResource Loc}}"
+                                    ItemsSource="{x:Bind ViewModel.ResolutionOptions}"
+                                    SelectedItem="{x:Bind ViewModel.SelectedResolution, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ResolutionOption">
+                                            <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button
+                                    x:Name="ResetFiltersButton"
+                                    HorizontalAlignment="Stretch"
+                                    AutomationProperties.Name="{Binding [Browse_Filter_Reset], Source={StaticResource Loc}}"
+                                    Command="{x:Bind ViewModel.ResetFiltersCommand}"
+                                    Content="{Binding [Browse_Filter_Reset], Source={StaticResource Loc}}" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
             </StackPanel>
 
             <Button

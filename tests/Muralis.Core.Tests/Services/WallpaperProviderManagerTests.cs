@@ -193,6 +193,48 @@ public sealed class WallpaperProviderManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchAsync_WithFilters_DropsMismatchesClientSide()
+    {
+        var manager = CreateManager();
+        _bing.OnSearch = _ =>
+        [
+            Wallpaper("bing:landscape-4k", 3840, 2160),
+            Wallpaper("bing:portrait-4k", 2160, 3840),
+            Wallpaper("bing:landscape-1080p", 1920, 1080),
+            Wallpaper("bing:unknown-dims"),
+        ];
+
+        var query = new WallpaperQuery
+        {
+            Orientation = WallpaperOrientation.Portrait,
+            MinimumResolution = WallpaperResolution.UltraHd,
+        };
+
+        var result = await manager.SearchAsync(query, "bing", CancellationToken.None);
+
+        Assert.Equal(["bing:portrait-4k", "bing:unknown-dims"], result.Items.Select(item => item.Id));
+        // The provider still receives the filter so it can apply it server-side.
+        Assert.Equal(WallpaperOrientation.Portrait, _bing.SearchQueries.Single().Orientation);
+        Assert.Equal(WallpaperResolution.UltraHd, _bing.SearchQueries.Single().MinimumResolution);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithoutFilters_KeepsEverything()
+    {
+        var manager = CreateManager();
+        _bing.OnSearch = _ =>
+        [
+            Wallpaper("bing:portrait", 1080, 1920),
+            Wallpaper("bing:small", 800, 600),
+            Wallpaper("bing:unknown-dims"),
+        ];
+
+        var result = await manager.SearchAsync(new WallpaperQuery(), "bing", CancellationToken.None);
+
+        Assert.Equal(3, result.Items.Count);
+    }
+
+    [Fact]
     public async Task GetFeaturedAsync_UsesTheDefaultSource()
     {
         var manager = CreateManager();
@@ -238,11 +280,13 @@ public sealed class WallpaperProviderManagerTests : IDisposable
             _library,
             NullLogger<WallpaperProviderManager>.Instance);
 
-    private static Wallpaper Wallpaper(string id) => new()
+    private static Wallpaper Wallpaper(string id, int width = 0, int height = 0) => new()
     {
         Id = id,
         Title = id,
         RemoteUrl = "https://example.test/" + id,
+        Width = width,
+        Height = height,
         Source = WallpaperSource.Online,
     };
 }

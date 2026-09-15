@@ -48,4 +48,10 @@ public sealed record WallpaperQuery
     public int Page { get; init; } = 1;
 
     public int PageSize { get; init; } = 30;
+
+    /// <summary>Providers with native support translate this into request parameters; the rest are filtered by the manager.</summary>
+    public WallpaperOrientation Orientation { get; init; } = WallpaperOrientation.Any;
+
+    /// <summary>Smallest long-edge class to return; see <see cref="WallpaperResolution"/>.</summary>
+    public WallpaperResolution MinimumResolution { get; init; } = WallpaperResolution.Any;
 }

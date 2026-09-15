@@ -16,6 +16,7 @@ Fluent controls, light/dark themes, and a clean, calm layout.
 ## Features
 
 - **Browse** — discover wallpapers in a responsive card grid with resolution, aspect ratio and tags
+- **Filters** — narrow results by orientation (landscape/portrait) and minimum resolution (Full HD, 2K, 4K); applied server-side where the source supports it
 - **Multiple sources** — Bing, Wallhaven and NASA APOD (plus the samples shipped with Windows): search all of them at once or one at a time, switch sources off, and choose which one fills the Home page
 - **Preview & apply** — open a wallpaper, then set it as your desktop background with one click
 - **Fit modes** — Fill, Fit, Stretch, Center, Tile and Span

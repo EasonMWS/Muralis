@@ -55,7 +55,9 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
             searchText: query.SearchText,
             sorting: string.IsNullOrWhiteSpace(query.SearchText) ? "date_added" : "relevance",
             page: query.Page,
-            topRange: null);
+            topRange: null,
+            orientation: query.Orientation,
+            minimumResolution: query.MinimumResolution);
 
         var response = await FetchSearchAsync(url, SearchCacheLifetime, cancellationToken).ConfigureAwait(false);
         return MapItems(response).Take(query.PageSize).ToList();
@@ -95,7 +97,13 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
         return response ?? new WallhavenSearchResponse();
     }
 
-    private string BuildSearchUrl(string? searchText, string sorting, int page, string? topRange)
+    private string BuildSearchUrl(
+        string? searchText,
+        string sorting,
+        int page,
+        string? topRange,
+        WallpaperOrientation orientation = WallpaperOrientation.Any,
+        WallpaperResolution minimumResolution = WallpaperResolution.Any)
     {
         var query = new List<string>
         {
@@ -108,6 +116,17 @@ public sealed class WallhavenWallpaperProvider : IWallpaperProvider
         if (!string.IsNullOrWhiteSpace(topRange))
         {
             query.Add("topRange=" + Uri.EscapeDataString(topRange));
+        }
+
+        if (orientation != WallpaperOrientation.Any)
+        {
+            query.Add("ratios=" + (orientation == WallpaperOrientation.Landscape ? "landscape" : "portrait"));
+        }
+
+        if (minimumResolution != WallpaperResolution.Any)
+        {
+            var (width, height) = WallpaperFilter.MinimumSize(minimumResolution);
+            query.Add("atleast=" + width.ToString(CultureInfo.InvariantCulture) + "x" + height.ToString(CultureInfo.InvariantCulture));
         }
 
         if (!string.IsNullOrWhiteSpace(searchText))

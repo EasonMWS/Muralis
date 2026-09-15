@@ -19,6 +19,7 @@ public sealed partial class BrowseViewModel : ViewModelBase
     private CancellationTokenSource? _searchDebounce;
     private readonly bool _isInitialized;
     private bool _suppressReload;
+    private bool _reloadPending;
     private string? _errorKey;
     private object?[] _errorArgs = [];
     private bool _errorIsWarning;
@@ -35,6 +36,12 @@ public sealed partial class BrowseViewModel : ViewModelBase
     [ObservableProperty]
     public partial SourceOption? SelectedSource { get; set; }
 
+    [ObservableProperty]
+    public partial OrientationOption SelectedOrientation { get; set; }
+
+    [ObservableProperty]
+    public partial ResolutionOption SelectedResolution { get; set; }
+
     public BrowseViewModel(
         WallpaperProviderManager providers,
         INavigationService navigation,
@@ -48,6 +55,26 @@ public sealed partial class BrowseViewModel : ViewModelBase
         _imageCache = imageCache;
         _logger = logger;
 
+        OrientationOptions.Add(new OrientationOption(WallpaperOrientation.Any, "Browse_Filter_OrientationAny", localization));
+        OrientationOptions.Add(new OrientationOption(WallpaperOrientation.Landscape, "Browse_Filter_OrientationLandscape", localization));
+        OrientationOptions.Add(new OrientationOption(WallpaperOrientation.Portrait, "Browse_Filter_OrientationPortrait", localization));
+
+        ResolutionOptions.Add(new ResolutionOption(WallpaperResolution.Any, "Browse_Filter_ResolutionAny", localization));
+        ResolutionOptions.Add(new ResolutionOption(WallpaperResolution.FullHd, "Browse_Filter_ResolutionFullHd", localization));
+        ResolutionOptions.Add(new ResolutionOption(WallpaperResolution.QuadHd, "Browse_Filter_ResolutionQuadHd", localization));
+        ResolutionOptions.Add(new ResolutionOption(WallpaperResolution.UltraHd, "Browse_Filter_ResolutionUltraHd", localization));
+
+        _suppressReload = true;
+        try
+        {
+            SelectedOrientation = OrientationOptions[0];
+            SelectedResolution = ResolutionOptions[0];
+        }
+        finally
+        {
+            _suppressReload = false;
+        }
+
         providers.Register(this);
         RebuildSources(selectDefault: true);
 
@@ -57,6 +84,10 @@ public sealed partial class BrowseViewModel : ViewModelBase
 
     /// <summary>The "all sources" entry followed by every usable provider.</summary>
     public ObservableCollection<SourceOption> Sources { get; } = [];
+
+    public ObservableCollection<OrientationOption> OrientationOptions { get; } = [];
+
+    public ObservableCollection<ResolutionOption> ResolutionOptions { get; } = [];
 
     public ObservableCollection<Wallpaper> Items { get; } = [];
 
@@ -76,19 +107,40 @@ public sealed partial class BrowseViewModel : ViewModelBase
 
     public bool IsInitialLoading => IsLoading && Items.Count == 0;
 
+    /// <summary>True when the orientation/resolution filters narrow the results.</summary>
+    public bool IsFilterActive => WallpaperFilter.IsActive(SelectedOrientation.Value, SelectedResolution.Value);
+
     public InfoBarSeverity ErrorSeverity => _errorIsWarning ? InfoBarSeverity.Warning : InfoBarSeverity.Error;
 
     public string EmptyTitle => HasAvailableSources ? Loc.Get("Browse_Empty_Title") : Loc.Get("Browse_NoSources_Title");
 
-    public string EmptyDescription => HasAvailableSources ? Loc.Get("Browse_Empty_Description") : Loc.Get("Browse_NoSources_Description");
+    public string EmptyDescription => !HasAvailableSources
+        ? Loc.Get("Browse_NoSources_Description")
+        : IsFilterActive
+            ? Loc.Get("Browse_Empty_FilterDescription")
+            : Loc.Get("Browse_Empty_Description");
 
-    public string EmptyActionText => HasAvailableSources ? Loc.Get("Browse_Empty_Action") : Loc.Get("Browse_GotoSettings");
+    public string EmptyActionText => !HasAvailableSources
+        ? Loc.Get("Browse_GotoSettings")
+        : IsFilterActive
+            ? Loc.Get("Browse_Filter_Reset")
+            : Loc.Get("Browse_Empty_Action");
 
     public override void OnLanguageChanged()
     {
         foreach (var source in Sources)
         {
             source.RefreshName();
+        }
+
+        foreach (var option in OrientationOptions)
+        {
+            option.RefreshName();
+        }
+
+        foreach (var option in ResolutionOptions)
+        {
+            option.RefreshName();
         }
 
         if (_errorKey is not null)
@@ -108,13 +160,19 @@ public sealed partial class BrowseViewModel : ViewModelBase
         NotifyStateChanged();
     }
 
-    /// <summary>Primary action of the empty state: clear the search, or open the settings when no source is usable.</summary>
+    /// <summary>Primary action of the empty state: reset the filters, clear the search, or open Settings.</summary>
     [RelayCommand]
     private void EmptyAction()
     {
         if (!HasAvailableSources)
         {
             _navigation.NavigateTo(Routes.Settings);
+            return;
+        }
+
+        if (IsFilterActive)
+        {
+            ResetFilters();
             return;
         }
 
@@ -129,6 +187,35 @@ public sealed partial class BrowseViewModel : ViewModelBase
 
     [RelayCommand]
     private void ClearSearch() => SearchText = string.Empty;
+
+    [RelayCommand]
+    private void ResetFilters()
+    {
+        if (!IsFilterActive)
+        {
+            return;
+        }
+
+        _suppressReload = true;
+        try
+        {
+            SelectedOrientation = OrientationOptions[0];
+            SelectedResolution = ResolutionOptions[0];
+        }
+        finally
+        {
+            _suppressReload = false;
+        }
+
+        NotifyStateChanged();
+        OnPropertyChanged(nameof(EmptyDescription));
+        OnPropertyChanged(nameof(EmptyActionText));
+
+        if (_isInitialized)
+        {
+            _ = LoadCoreAsync(CancellationToken.None);
+        }
+    }
 
     [RelayCommand]
     private void OpenWallpaper(Wallpaper? wallpaper)
@@ -151,6 +238,22 @@ public sealed partial class BrowseViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(ProviderName));
         OnPropertyChanged(nameof(SupportsSearch));
+
+        if (_isInitialized && !_suppressReload)
+        {
+            _ = LoadCoreAsync(CancellationToken.None);
+        }
+    }
+
+    partial void OnSelectedOrientationChanged(OrientationOption value) => FilterChanged();
+
+    partial void OnSelectedResolutionChanged(ResolutionOption value) => FilterChanged();
+
+    private void FilterChanged()
+    {
+        NotifyStateChanged();
+        OnPropertyChanged(nameof(EmptyDescription));
+        OnPropertyChanged(nameof(EmptyActionText));
 
         if (_isInitialized && !_suppressReload)
         {
@@ -219,6 +322,9 @@ public sealed partial class BrowseViewModel : ViewModelBase
     {
         if (IsLoading)
         {
+            // A source/filter change arrived while a load is in flight — run once more when it
+            // finishes instead of dropping the change (both filters can be set in quick succession).
+            _reloadPending = true;
             return;
         }
 
@@ -238,6 +344,8 @@ public sealed partial class BrowseViewModel : ViewModelBase
                     {
                         SearchText = SupportsSearch ? SearchText : null,
                         PageSize = 60,
+                        Orientation = SelectedOrientation.Value,
+                        MinimumResolution = SelectedResolution.Value,
                     },
                     scope?.Provider?.Id,
                     linkedToken)
@@ -272,6 +380,15 @@ public sealed partial class BrowseViewModel : ViewModelBase
         {
             IsLoading = false;
             NotifyStateChanged();
+
+            if (_reloadPending)
+            {
+                _reloadPending = false;
+                if (!PageToken.IsCancellationRequested)
+                {
+                    _ = LoadCoreAsync(PageToken);
+                }
+            }
         }
     }
 
@@ -313,5 +430,6 @@ public sealed partial class BrowseViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasAvailableSources));
         OnPropertyChanged(nameof(ProviderName));
         OnPropertyChanged(nameof(SupportsSearch));
+        OnPropertyChanged(nameof(IsFilterActive));
     }
 }

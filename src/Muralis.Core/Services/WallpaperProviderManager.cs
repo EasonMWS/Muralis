@@ -178,6 +178,16 @@ public sealed class WallpaperProviderManager
         failures.AddRange(results.Where(result => result.Failure is not null).Select(result => result.Failure!));
 
         var items = Interleave(results.Select(result => result.Items).ToList());
+
+        // Providers that cannot filter server-side (or return unknown dimensions) still honour
+        // the user's choice: anything that clearly does not match is dropped here.
+        if (WallpaperFilter.IsActive(query.Orientation, query.MinimumResolution))
+        {
+            items = items
+                .Where(item => WallpaperFilter.Matches(item, query.Orientation, query.MinimumResolution))
+                .ToList();
+        }
+
         ApplyCatalogState(items);
 
         return new WallpaperSearchResult(items, failures);
