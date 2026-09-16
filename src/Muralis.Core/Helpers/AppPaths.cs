@@ -15,6 +15,9 @@ public static class AppPaths
 
     public static string DatabaseFile => Path.Combine(RootDirectory, "muralis.db");
 
+    /// <summary>The desktop canvas prototype layout; deleting it resets the prototype to its seed.</summary>
+    public static string CanvasPrototypeFile => Path.Combine(RootDirectory, "desktop-canvas-prototype.json");
+
     public static string LogsDirectory => Path.Combine(RootDirectory, "logs");
 
     public static string CacheDirectory => Path.Combine(RootDirectory, "cache");
