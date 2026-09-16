@@ -10,17 +10,19 @@ using Muralis.Desktop.Surfaces;
 namespace Muralis.Desktop.Surfaces.Compatibility;
 
 /// <summary>
-/// Puts the desktop canvas prototype on the primary display and takes it off again. The layout is
-/// read from its own prototype file every time the canvas is enabled, so a reset to the seed layout
-/// or a hand-edit works without restarting the app; dragging is persisted by the canvas itself.
-/// Switching the canvas off removes the surface and releases its window — nothing about the native
-/// desktop is ever modified, so the desktop comes back exactly as it was.
+/// Puts the desktop canvas on the primary display and takes it off again, and is the app's way in to
+/// the items on it: the list the page draws, an item the user just imported, and a removal from the
+/// canvas. The layout is read from its own file every time the canvas is enabled, so a hand-edit
+/// works without restarting the app; dragging is persisted by the canvas itself. Switching the
+/// canvas off removes the surface and releases its window — nothing about the native desktop is ever
+/// modified, so the desktop comes back exactly as it was.
 /// </summary>
 /// <remarks>
 /// A thin adapter in the house style: no thread, no window and no WorkerW lookup live here. The
 /// shell owns the desktop layer and <see cref="CanvasSurfaceContent"/> owns the visuals and input,
 /// including survival across Explorer restarts, which the shell turns into a fresh mount. The
-/// pointer router is handed to the canvas on creation and reads its stats for the overlay.
+/// pointer router and the launcher are handed to the canvas on creation: the router reads the
+/// pointer across the whole desktop, and a double-click is opened by the launcher, never here.
 /// </remarks>
 public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
 {
@@ -30,6 +32,7 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
     private readonly DesktopLayoutStore _store;
 
     private readonly DesktopPointerRouter _pointer;
+    private readonly IDesktopItemLauncher _launcher;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
     private CanvasSurfaceContent? _content;
@@ -40,18 +43,21 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
         ILoggerFactory loggerFactory,
         IDesktopShell shell,
         DesktopLayoutStore store,
-        DesktopPointerRouter pointer)
+        DesktopPointerRouter pointer,
+        IDesktopItemLauncher launcher)
     {
         ArgumentNullException.ThrowIfNull(loggerFactory);
         ArgumentNullException.ThrowIfNull(shell);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(pointer);
+        ArgumentNullException.ThrowIfNull(launcher);
 
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<DesktopCanvasServiceAdapter>();
         _shell = shell;
         _store = store;
         _pointer = pointer;
+        _launcher = launcher;
     }
 
     public CanvasPrototypeStatus Status => Volatile.Read(ref _status);
@@ -89,7 +95,12 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
             }
 
             var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
-            var content = new CanvasSurfaceContent(layout, _store, _loggerFactory.CreateLogger<CanvasSurfaceContent>(), _pointer);
+            var content = new CanvasSurfaceContent(
+                layout,
+                _store,
+                _loggerFactory.CreateLogger<CanvasSurfaceContent>(),
+                _pointer,
+                _launcher);
             _content = content;
 
             CanvasPrototypeStatus status;
@@ -144,6 +155,90 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
             }
 
             Publish(CanvasPrototypeStatus.Disabled);
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<DesktopItem>> GetItemsAsync(CancellationToken cancellationToken = default)
+    {
+        // The mounted canvas is the answer while it is showing — it owns the live layout — and with
+        // nothing mounted, the answer is what the next mount would show, read from the layout file.
+        // Read without the mutex: a stale answer is a list from a moment ago, never a torn one.
+        if (_content is { } content && content.Items.Count > 0)
+        {
+            return content.Items;
+        }
+
+        var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return [.. layout.Items.Select(item => item.Clone())];
+    }
+
+    public async Task<bool> AddItemAsync(DesktopItem item, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        await _mutex.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_content is { } content)
+            {
+                content.AddItem(item);
+                _logger.LogInformation("The item {Id} ({Name}) was added to the desktop canvas", item.Id, item.Name);
+                return true;
+            }
+
+            // Nothing is mounted: the layout is edited on disk, so the item is already there when
+            // the canvas is switched on next.
+            var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (layout.Items.Any(existing => string.Equals(existing.Id, item.Id, StringComparison.Ordinal)))
+            {
+                return false;
+            }
+
+            layout.Items.Add(item);
+            await _store.SaveAsync(layout).ConfigureAwait(false);
+            _logger.LogInformation("The item {Id} ({Name}) was added to the saved layout", item.Id, item.Name);
+            return true;
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
+    public async Task<bool> RemoveItemAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return false;
+        }
+
+        await _mutex.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_content is { } content)
+            {
+                // Only the layout is edited: the file, shortcut or folder behind the item is never
+                // touched, so the user's own desktop and files stay exactly as they were.
+                content.RemoveItem(id);
+                _logger.LogInformation("The item {Id} was removed from the desktop canvas", id);
+                return true;
+            }
+
+            var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var item = layout.Items.FirstOrDefault(existing => string.Equals(existing.Id, id, StringComparison.Ordinal));
+            if (item is null)
+            {
+                return false;
+            }
+
+            layout.Items.Remove(item);
+            await _store.SaveAsync(layout).ConfigureAwait(false);
+            _logger.LogInformation("The item {Id} was removed from the saved layout", id);
+            return true;
         }
         finally
         {

@@ -909,6 +909,50 @@
     <value>画布诊断（仅开发版）</value>
   </data>
 
+  <!--  Desktop canvas items  -->
+  <data name="Dynamic_Section_Canvas_Items" xml:space="preserve">
+    <value>桌面项目</value>
+  </data>
+  <data name="Dynamic_Canvas_Items_Title" xml:space="preserve">
+    <value>画布上的项目</value>
+  </data>
+  <data name="Dynamic_Canvas_Items_Description" xml:space="preserve">
+    <value>让画布指向真实的东西：选择一个程序或快捷方式、选择一个文件夹，或者输入一个网址。Muralis 只记住它们在哪里——不会复制、移动或扫描任何东西，你桌面上的图标保持原样。</value>
+  </data>
+  <data name="Dynamic_Canvas_Items_Empty" xml:space="preserve">
+    <value>这里还是空的。添加一个程序、文件夹或网址，它就会出现在桌面图标后面。</value>
+  </data>
+  <data name="Dynamic_Canvas_Add_App" xml:space="preserve">
+    <value>添加程序或快捷方式…</value>
+  </data>
+  <data name="Dynamic_Canvas_Add_Folder" xml:space="preserve">
+    <value>添加文件夹…</value>
+  </data>
+  <data name="Dynamic_Canvas_Add_Url" xml:space="preserve">
+    <value>添加网址</value>
+  </data>
+  <data name="Dynamic_Canvas_Add_Url_Placeholder" xml:space="preserve">
+    <value>https://example.com</value>
+  </data>
+  <data name="Dynamic_Canvas_Remove" xml:space="preserve">
+    <value>从画布移除</value>
+  </data>
+  <data name="Dynamic_Canvas_Item_Missing" xml:space="preserve">
+    <value>目标不存在</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_ItemAdded" xml:space="preserve">
+    <value>已把 {0} 添加到桌面画布。</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_ItemRemoved" xml:space="preserve">
+    <value>已把 {0} 从画布移除，它指向的东西没有被改动。</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_ItemExists" xml:space="preserve">
+    <value>这个目标已经在画布上了。</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_ChangeFailed" xml:space="preserve">
+    <value>无法修改该项目：{0}</value>
+  </data>
+
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">
     <value>Muralis — 壁纸工作室</value>

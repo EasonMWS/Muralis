@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -5,14 +6,16 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Desktop;
 using Muralis.Core.Models;
 
 namespace Muralis.App.ViewModels;
 
 /// <summary>
 /// Drives the dynamic wallpaper page: pick a video, put it on the desktop behind the icons,
-/// take it off again, decide whether it comes back on the next launch, and switch the
-/// experimental desktop canvas prototype on or off.
+/// take it off again, decide whether it comes back on the next launch, and look after the
+/// experimental desktop canvas prototype — switch it on or off, add the programs, shortcuts,
+/// folders and addresses that should live on it, and take them off again.
 /// </summary>
 public sealed partial class DynamicWallpaperViewModel : ViewModelBase
 {
@@ -61,6 +64,14 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsCanvasBusy { get; set; }
 
+    /// <summary>What the user typed into the address box; cleared once the address is on the canvas.</summary>
+    [ObservableProperty]
+    public partial string NewItemUrl { get; set; }
+
+    /// <summary>True while an import or a removal is in flight, so the buttons wait for it.</summary>
+    [ObservableProperty]
+    public partial bool IsCanvasItemsBusy { get; set; }
+
     /// <summary>Whether the development diagnostics panel is expanded.</summary>
     [ObservableProperty]
     public partial bool IsDiagnosticsOpen { get; set; }
@@ -85,6 +96,9 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
+        CanvasItems = [];
+        NewItemUrl = string.Empty;
+
         var saved = settingsService.Current.VideoWallpaper;
         VideoPath = saved.VideoPath;
         Muted = saved.Muted;
@@ -101,6 +115,9 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         CanvasEnabled = _canvas.Status.State == CanvasPrototypeState.Active;
         DiagnosticsText = string.Empty;
         _applyingSettings = false;
+
+        // The list is what the canvas holds right now, which the page reads back on the pool.
+        _ = ReloadCanvasItemsAsync();
     }
 
     public string? SuccessMessage => StatusIsError ? null : StatusMessage;
@@ -118,6 +135,15 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     public bool CanStop => !IsBusy && _state is VideoWallpaperState.Starting or VideoWallpaperState.Playing;
 
     public bool CanToggleCanvas => !IsCanvasBusy;
+
+    /// <summary>The items on the canvas, in the order the canvas keeps them.</summary>
+    public ObservableCollection<DesktopItemRow> CanvasItems { get; }
+
+    /// <summary>Whether there is anything to list yet; the empty hint shows until there is.</summary>
+    public bool HasCanvasItems => CanvasItems.Count > 0;
+
+    /// <summary>The import buttons wait while an import or a removal is running.</summary>
+    public bool CanEditCanvasItems => !IsCanvasItemsBusy;
 
     /// <summary>The diagnostics panel is a development tool; release builds do not offer it.</summary>
     public bool IsDiagnosticsAvailable =>
@@ -281,6 +307,8 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
 
     partial void OnIsCanvasBusyChanged(bool value) => OnPropertyChanged(nameof(CanToggleCanvas));
 
+    partial void OnIsCanvasItemsBusyChanged(bool value) => OnPropertyChanged(nameof(CanEditCanvasItems));
+
     partial void OnIsDiagnosticsOpenChanged(bool value)
     {
         if (value)
@@ -333,6 +361,147 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Imports the program or shortcut the user picked. Only what was picked is referenced: nothing
+    /// is copied or moved, and the user's own desktop is never scanned or touched.
+    /// </summary>
+    [RelayCommand]
+    private async Task AddApplicationAsync()
+    {
+        var path = await _filePicker.PickApplicationFileAsync();
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        await ImportAsync(() => DesktopItemFactory.CreateFromPath(path));
+    }
+
+    /// <summary>Imports the folder the user picked; double-clicking it on the canvas opens Explorer.</summary>
+    [RelayCommand]
+    private async Task AddFolderAsync()
+    {
+        var path = await _filePicker.PickFolderAsync();
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        await ImportAsync(() => DesktopItemFactory.CreateFromPath(path));
+    }
+
+    /// <summary>Imports the address in the box; double-clicking it opens the default browser.</summary>
+    [RelayCommand]
+    private async Task AddUrlAsync()
+    {
+        var url = NewItemUrl?.Trim() ?? string.Empty;
+        if (url.Length == 0)
+        {
+            return;
+        }
+
+        await ImportAsync(() => DesktopItemFactory.CreateFromUrl(url));
+    }
+
+    /// <summary>
+    /// Takes an item off the canvas. Only the canvas layout is edited — the file, shortcut or folder
+    /// the item points at is left exactly where it is.
+    /// </summary>
+    [RelayCommand]
+    private async Task RemoveItemAsync(DesktopItemRow? row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        IsCanvasItemsBusy = true;
+        try
+        {
+            await _canvas.RemoveItemAsync(row.Id);
+            CanvasItems.Remove(row);
+            OnPropertyChanged(nameof(HasCanvasItems));
+            SetMessage("Dynamic_Canvas_Status_ItemRemoved", isError: false, row.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The desktop item {Id} could not be taken off the canvas", row.Id);
+            SetMessage("Dynamic_Canvas_Status_ChangeFailed", isError: true, ex.Message);
+        }
+        finally
+        {
+            IsCanvasItemsBusy = false;
+        }
+    }
+
+    private async Task ImportAsync(Func<DesktopItem> create)
+    {
+        DesktopItem item;
+        try
+        {
+            item = create();
+        }
+        catch (ArgumentException ex)
+        {
+            // What was picked or typed cannot be an item; the factory's sentence says why.
+            SetMessage("Dynamic_Canvas_Status_ChangeFailed", isError: true, ex.Message);
+            return;
+        }
+
+        IsCanvasItemsBusy = true;
+        try
+        {
+            if (!await _canvas.AddItemAsync(item))
+            {
+                SetMessage("Dynamic_Canvas_Status_ItemExists", isError: true);
+                return;
+            }
+
+            CanvasItems.Add(new DesktopItemRow(item, isMissing: false, RemoveItemAsync));
+            OnPropertyChanged(nameof(HasCanvasItems));
+            NewItemUrl = string.Empty;
+            SetMessage("Dynamic_Canvas_Status_ItemAdded", isError: false, item.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The desktop item {Id} could not be added to the canvas", item.Id);
+            SetMessage("Dynamic_Canvas_Status_ChangeFailed", isError: true, ex.Message);
+        }
+        finally
+        {
+            IsCanvasItemsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Reads the item list back from the canvas. Whether each target is still there is a file-system
+    /// question, so the rows are built on the pool — a folder on a sleeping drive must not stall the
+    /// page — and only the finished list reaches the UI thread.
+    /// </summary>
+    private async Task ReloadCanvasItemsAsync()
+    {
+        IReadOnlyList<DesktopItem> items;
+        try
+        {
+            items = await _canvas.GetItemsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The desktop canvas items could not be read");
+            return;
+        }
+
+        var rows = await Task.Run(() => items.Select(item => new DesktopItemRow(item, item.IsMissing(), RemoveItemAsync)).ToList());
+
+        CanvasItems.Clear();
+        foreach (var row in rows)
+        {
+            CanvasItems.Add(row);
+        }
+
+        OnPropertyChanged(nameof(HasCanvasItems));
+    }
+
     private void OnCanvasStatusChanged(object? sender, CanvasPrototypeStatus status)
     {
         if (_dispatcherQueue.HasThreadAccess)
@@ -363,6 +532,13 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
             {
                 _applyingCanvasStatus = wasApplying;
             }
+        }
+
+        if (status.State == CanvasPrototypeState.Active)
+        {
+            // A mount shows the layout as it is now, which may have been edited while the canvas was
+            // off; the list follows the canvas rather than what the page last saw.
+            _ = ReloadCanvasItemsAsync();
         }
     }
 
@@ -408,6 +584,9 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         report.AppendLine($"canvas   {snapshot.BoundsWidthDip:0.#} x {snapshot.BoundsHeightDip:0.#} DIP");
         report.AppendLine($"pointer  {(snapshot.PointerInside ? "inside " : "outside")} {snapshot.PointerXDip:0.#}, {snapshot.PointerYDip:0.#} DIP");
         report.AppendLine($"items    {snapshot.ItemCount} · hovered {snapshot.HoveredItemId ?? "none"} at {snapshot.HoveredScale:0.00}x");
+        report.AppendLine($"missing  {snapshot.MissingItemIds?.Count ?? 0} · selected {snapshot.SelectedItemId ?? "none"}");
+        report.AppendLine($"launch   {snapshot.LastLaunchId ?? "none"} → {snapshot.LastLaunchOutcome ?? "never"}");
+        report.AppendLine($"icons    {snapshot.IconCacheEntries} cached · {snapshot.IconCacheBytes / (1024.0 * 1024.0):0.0} MB");
         report.AppendLine($"dock     {snapshot.DockPhase} at {snapshot.DockScale:0.00}x");
         report.AppendLine($"router   {snapshot.PointerContext ?? "?"} · {snapshot.PointerDispatchesPerSecond:0.0}/s · {snapshot.PointerReports} reports · {snapshot.PointerDispatches} dispatches");
         report.AppendLine($"updates  {snapshot.UpdatesPerSecond:0.0}/s · {snapshot.Updates} total");

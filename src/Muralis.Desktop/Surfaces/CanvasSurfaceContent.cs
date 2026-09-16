@@ -1,9 +1,12 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
+using Muralis.Core.Abstractions;
 using Muralis.Core.Canvas;
 using Muralis.Core.Desktop;
 using Muralis.Core.Models;
+using Muralis.Desktop.Icons;
 using Muralis.Desktop.Input;
 using Muralis.Desktop.Interop;
 using Windows.UI;
@@ -40,14 +43,25 @@ namespace Muralis.Desktop.Surfaces;
 /// dock's one-shot timer. Everything the pointer does is event-driven: springs are handed to the
 /// composition engine, nothing polls, and a canvas that is not being touched does no work at all.
 /// </para>
+/// <para>
+/// Icons: an item starts as its tile and glyph and gains the real icon as soon as the icon cache
+/// has one. Reading an icon is the cache's business and happens off this thread; what the canvas
+/// decides is which items have an icon of their own and at what size it is read.
+/// </para>
+/// <para>
+/// Gestures: one click picks an item out, a second one close enough in place and time opens it, and
+/// a press that ever wanders beyond the system's drag rectangle is a drag for good — a drag never
+/// opens anything. Opening is the launcher's business and nothing here builds a command line. An
+/// item whose target is gone is dimmed, badged, and otherwise left exactly where the user put it.
+/// </para>
 /// </remarks>
 internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSink
 {
     /// <summary>The dock's one-shot timer on the surface window; the shell's own timer lives on no window.</summary>
     private const int DockTimerId = 2;
 
-    /// <summary>A press that moves less than this is a click, not a drag.</summary>
-    private const double DragThresholdDip = 4.0;
+    /// <summary>How much of itself an item shows when its target is gone; the badge says the rest.</summary>
+    private const float MissingOpacity = 0.5f;
 
     /// <summary>Pixel margin around an item's largest possible extent in the window region.</summary>
     private const int RegionSlackPixels = 2;
@@ -71,6 +85,10 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private readonly ILogger _logger;
     private readonly CanvasDockAutoHide _dock;
     private readonly DesktopPointerRouter? _pointer;
+    private readonly IDesktopItemLauncher? _launcher;
+    private readonly IconBitmapCache _iconCache;
+    private readonly DesktopGestureRecognizer _gestures;
+    private readonly ConcurrentQueue<Action> _work = new();
     private readonly List<ItemView> _freeViews = [];
     private readonly List<ItemView> _dockViews = [];
     private readonly CanvasUpdateRate _updates = new();
@@ -82,6 +100,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private Compositor? _compositor;
     private DesktopWindowTarget? _target;
+    private IconSurfaceDevice? _iconDevice;
     private ContainerVisual? _root;
     private ContainerVisual? _itemsLayer;
     private ContainerVisual? _rail;
@@ -94,15 +113,27 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private bool _trackingLeave;
 
     private ItemView? _drag;
-    private double _pressXDip;
-    private double _pressYDip;
+    private ItemView? _pressed;
     private double _grabXDip;
     private double _grabYDip;
-    private bool _dragMoved;
+    private string? _selectedId;
+    private string? _lastLaunchId;
+    private string? _lastLaunchOutcome;
+
+    /// <summary>The layout as copies, republished on every change; a reader on another thread sees a whole list.</summary>
+    private volatile IReadOnlyList<DesktopItem> _items = [];
+
+    /// <summary>The ids of the items whose targets are gone; null when there are none.</summary>
+    private volatile IReadOnlyList<string>? _missingIds;
 
     private volatile CanvasDiagnosticsSnapshot? _snapshot;
 
-    internal CanvasSurfaceContent(DesktopLayout layout, DesktopLayoutStore store, ILogger logger, DesktopPointerRouter? pointer = null)
+    internal CanvasSurfaceContent(
+        DesktopLayout layout,
+        DesktopLayoutStore store,
+        ILogger logger,
+        DesktopPointerRouter? pointer = null,
+        IDesktopItemLauncher? launcher = null)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(store);
@@ -112,7 +143,14 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _store = store;
         _logger = logger;
         _pointer = pointer;
+        _launcher = launcher;
         _dock = new CanvasDockAutoHide(layout.Dock);
+        _iconCache = new IconBitmapCache(logger);
+        _iconCache.BitmapArrived += OnIconArrived;
+
+        // The user's own thresholds, read once: the drag rectangle and the double-click rules that
+        // the rest of Windows honours.
+        _gestures = DesktopGestureRecognizer.ForThisSystem();
     }
 
     public SurfaceKind Kind => SurfaceKind.InteractiveOverlay;
@@ -136,6 +174,10 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
         UnmountCore();
 
+        // The generation this mount's own work is tagged with: answers and openings that arrive
+        // after the next mount belong to views that no longer exist.
+        _mountCount++;
+
         _window = win32.WindowHandle;
         _scaleFactor = target.ScaleFactor > 0 ? target.ScaleFactor : 1.0;
         _displayBounds = target.PixelBounds;
@@ -147,14 +189,19 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             BuildTree();
             ApplyLayout();
             UpdateRegion();
+
+            // Icons already resolved come straight back; anything new is asked for and arrives
+            // through the work message.
+            EnsureIcons();
         }
         catch
         {
+            // A mount that failed never got a canvas of its own, so it leaves no generation behind.
+            _mountCount--;
             UnmountCore();
             throw;
         }
 
-        _mountCount++;
         _logger.LogInformation(
             "The desktop canvas is showing {Count} items on {Width}x{Height} at {Scale:0.##}x (mount {Mount})",
             _freeViews.Count + _dockViews.Count,
@@ -170,6 +217,11 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _pointer?.SampleOnce();
 
         Bump();
+
+        // Work asked for while nothing was mounted — an item added with the canvas off — runs now
+        // that there is a canvas to run it against.
+        DrainWork();
+        RefreshItems();
         return Task.CompletedTask;
     }
 
@@ -181,7 +233,14 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     public ValueTask DisposeAsync()
     {
+        // Order matters: the mount releases its icon surfaces while the compositor is still there,
+        // the device goes once no chain is left to belong to it, and the cache outlives them both so
+        // a remount never re-reads an icon it already has.
         UnmountAsync().GetAwaiter().GetResult();
+        _iconDevice?.Dispose();
+        _iconDevice = null;
+        _iconCache.BitmapArrived -= OnIconArrived;
+        _iconCache.Dispose();
         return ValueTask.CompletedTask;
     }
 
@@ -233,6 +292,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
         _target?.Dispose();
         _target = null;
+        ReleaseMountIcons();
         _compositor?.Dispose();
         _compositor = null;
         _root = null;
@@ -243,17 +303,36 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _railSettlesAt = null;
         _freeViews.Clear();
         _dockViews.Clear();
+        _pressed = null;
+        _gestures.Cancel();
         _pointerXDip = null;
         _pointerYDip = null;
         _trackingLeave = false;
         _snapshot = null;
         _window = nint.Zero;
+        _missingIds = null;
+
+        // The work queue outlives the mount: everything in it is about the layout or about items by
+        // id, both of which survive, and the next mount runs what is left.
+    }
+
+    /// <summary>
+    /// Frees what the icons of this mount took: each item's surface and the brush drawn from it. The
+    /// resolved icons stay in the cache, so the next mount of the same layout is instant.
+    /// </summary>
+    private void ReleaseMountIcons()
+    {
+        foreach (var view in _freeViews.Concat(_dockViews))
+        {
+            view.IconSurface?.Dispose();
+            view.IconSurface = null;
+            view.IconVisual = null;
+        }
     }
 
     private void BuildTree()
     {
         var compositor = _compositor!;
-        var design = CanvasIconLibrary.DesignSize;
 
         _root = compositor.CreateContainerVisual();
         _root.RelativeSizeAdjustment = new Vector2(1, 1);
@@ -270,41 +349,305 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
         _railSpring = Spring(compositor, _layout.Motion.Dock);
 
-        var hoverBase = _layout.Dock.ItemSizeDip / design;
         foreach (var item in _layout.Items)
         {
-            if (!item.IsVisible)
+            if (item.IsVisible)
             {
-                continue;
-            }
-
-            var icon = CanvasIconLibrary.Create(compositor, item.IconKey, design);
-            var visual = compositor.CreateContainerVisual();
-            visual.Size = new Vector2(design, design);
-            visual.CenterPoint = new Vector3(design / 2f, design / 2f, 0);
-            visual.Children.InsertAtTop(icon);
-
-            var baseScale = item.Placement == CanvasItemPlacement.Dock
-                ? hoverBase
-                : item.SizeDip / design;
-            var view = new ItemView(item, visual, Spring(compositor, _layout.Motion.Hover), Spring(compositor, _layout.Motion.Dock), baseScale);
-
-            // The authored box is always 96 units; the base scale is what turns it into the item's size.
-            visual.Scale = new Vector3((float)baseScale, (float)baseScale, 1);
-
-            if (item.Placement == CanvasItemPlacement.Dock)
-            {
-                _rail.Children.InsertAtTop(visual);
-                _dockViews.Add(view);
-            }
-            else
-            {
-                _itemsLayer.Children.InsertAtTop(visual);
-                _freeViews.Add(view);
+                CreateView(item);
             }
         }
 
         OrderFreeViews();
+        ApplySelection();
+
+        // Fresh views carry no marks, so the reported set starts empty and follows the answers that
+        // come back from the pool.
+        RefreshMissingIds();
+
+        // Whether a target still exists is the file system's answer, and asking it is exactly the kind
+        // of call the shell thread must not wait for: the items that are gone are marked from the pool.
+        CheckEveryItem();
+    }
+
+    /// <summary>Builds one item's visuals and puts them where its placement says they belong.</summary>
+    private ItemView? CreateView(DesktopItem item)
+    {
+        var compositor = _compositor;
+        var itemsLayer = _itemsLayer;
+        var rail = _rail;
+        if (compositor is null || itemsLayer is null || rail is null)
+        {
+            return null;
+        }
+
+        var design = CanvasIconLibrary.DesignSize;
+        var icon = CanvasIconLibrary.Create(compositor, item.IconKey, design);
+        var visual = compositor.CreateContainerVisual();
+        visual.Size = new Vector2(design, design);
+        visual.CenterPoint = new Vector3(design / 2f, design / 2f, 0);
+        visual.Children.InsertAtTop(icon);
+
+        var docked = item.Placement == CanvasItemPlacement.Dock;
+        var baseScale = docked ? _layout.Dock.ItemSizeDip / design : item.SizeDip / design;
+        var view = new ItemView(item, visual, icon, Spring(compositor, _layout.Motion.Hover), Spring(compositor, _layout.Motion.Dock), baseScale);
+
+        // The authored box is always 96 units; the base scale is what turns it into the item's size.
+        visual.Scale = new Vector3((float)baseScale, (float)baseScale, 1);
+
+        if (docked)
+        {
+            rail.Children.InsertAtTop(visual);
+            _dockViews.Add(view);
+        }
+        else
+        {
+            itemsLayer.Children.InsertAtTop(visual);
+            _freeViews.Add(view);
+        }
+
+        RequestIcon(
+            view,
+            docked ? _layout.Dock.ItemSizeDip : item.SizeDip,
+            docked ? _layout.Dock.Proximity.MaxScale : _layout.Proximity.MaxScale);
+        return view;
+    }
+
+    /// <summary>
+    /// Asks the file system, off the shell thread, which items' targets are gone, and marks them when
+    /// the answers come back. A canvas that has just mounted has not got a generation yet, so the
+    /// answers are checked against the mount they were asked for.
+    /// </summary>
+    private void CheckEveryItem()
+    {
+        if (_freeViews.Count + _dockViews.Count == 0)
+        {
+            return;
+        }
+
+        CheckMissing([.. _freeViews.Concat(_dockViews).Select(view => view.Item)]);
+    }
+
+    /// <summary>The same question for the one item the user is touching right now.</summary>
+    private void CheckMissingOne(ItemView view) => CheckMissing([view.Item]);
+
+    private void CheckMissing(IReadOnlyList<DesktopItem> items)
+    {
+        var mount = _mountCount;
+
+        // Copies, so the disk is asked about what the items were while the canvas keeps moving them.
+        var copies = items.Select(item => item.Clone()).ToList();
+        _ = Task.Run(() =>
+        {
+            var missing = copies.Where(item => item.IsMissing()).Select(item => item.Id).ToList();
+            Post(() =>
+            {
+                // A mount that came and went while the disk was being asked is not the canvas that
+                // asked, and the items of that mount are already gone.
+                if (mount == _mountCount)
+                {
+                    ApplyMissing([.. copies.Select(item => item.Id)], missing);
+                }
+            });
+        });
+    }
+
+    /// <summary>
+    /// Applies the file system's answer to the items that were asked about: the ones whose targets
+    /// are gone are marked, and the ones that are back lose their mark. Only the asked-about items
+    /// are touched, so an item nobody asked about keeps what it was showing. A missing target only
+    /// ever marks its item — never removes it, never moves it and never rewrites it.
+    /// </summary>
+    private void ApplyMissing(IReadOnlyCollection<string> checkedIds, IReadOnlyCollection<string> missingIds)
+    {
+        var changed = false;
+        foreach (var view in _freeViews.Concat(_dockViews))
+        {
+            if (!checkedIds.Contains(view.Item.Id))
+            {
+                continue;
+            }
+
+            if (missingIds.Contains(view.Item.Id))
+            {
+                if (!view.MissingShown)
+                {
+                    ShowMissing(view);
+                    changed = true;
+                }
+            }
+            else if (view.MissingShown)
+            {
+                ClearMissing(view);
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            RefreshMissingIds();
+            Bump();
+        }
+    }
+
+    /// <summary>Dims the item and hangs the warning badge on it; nothing else about it changes.</summary>
+    private void ShowMissing(ItemView view)
+    {
+        view.MissingShown = true;
+        view.Visual.Opacity = MissingOpacity;
+
+        var compositor = _compositor;
+        if (compositor is not null && view.MissingBadge is null)
+        {
+            view.MissingBadge = CanvasIconLibrary.MissingBadge(compositor, CanvasIconLibrary.DesignSize);
+            view.Visual.Children.InsertAtTop(view.MissingBadge);
+        }
+    }
+
+    /// <summary>Puts the item back the way it was: full opacity, no badge.</summary>
+    private void ClearMissing(ItemView view)
+    {
+        view.MissingShown = false;
+        view.Visual.Opacity = 1.0f;
+
+        if (view.MissingBadge is not null)
+        {
+            view.Visual.Children.Remove(view.MissingBadge);
+            view.MissingBadge = null;
+        }
+    }
+
+    /// <summary>
+    /// Adds an item to the layout and shows it. Called from any thread — the layout and the visuals
+    /// belong to the shell thread, so the work travels there through the work queue.
+    /// </summary>
+    internal void AddItem(DesktopItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        Post(() => AddItemCore(item));
+    }
+
+    /// <summary>Removes an item from the layout. The target on disk is not touched; the item is.</summary>
+    internal void RemoveItem(string id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return;
+        }
+
+        Post(() => RemoveItemCore(id));
+    }
+
+    /// <summary>
+    /// The items as they are right now, copies the caller may keep. Published on the shell thread
+    /// whenever the layout changes, so a reader on another thread sees a whole list and never a
+    /// halfway-edited one.
+    /// </summary>
+    internal IReadOnlyList<DesktopItem> Items => _items;
+
+    private void AddItemCore(DesktopItem item)
+    {
+        if (_layout.Items.Any(existing => string.Equals(existing.Id, item.Id, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        // A new item that is free to move gets the free spot closest to the middle of the display, so
+        // imports do not land on top of each other. The placer answers in anchor offsets, which is
+        // exactly what the layout saves.
+        if (item.Placement == CanvasItemPlacement.Free && _displayBounds.Width > 0)
+        {
+            var (offsetX, offsetY) = DesktopItemPlacer.NextFreeSpot(
+                _layout.Items,
+                _displayBounds.Width / _scaleFactor,
+                _displayBounds.Height / _scaleFactor,
+                item.SizeDip);
+            item.OffsetXDip = offsetX;
+            item.OffsetYDip = offsetY;
+        }
+
+        _layout.Items.Add(item);
+
+        if (item.IsVisible && _root is not null)
+        {
+            var view = CreateView(item);
+            if (view is not null)
+            {
+                CheckMissingOne(view);
+            }
+        }
+
+        // A new item may be docked, which moves the rail and every dock slot with it.
+        ApplyLayout();
+        RefreshItems();
+        SaveLayout();
+        UpdateRegion();
+        Bump();
+    }
+
+    private void RemoveItemCore(string id)
+    {
+        var item = _layout.Items.FirstOrDefault(existing => string.Equals(existing.Id, id, StringComparison.Ordinal));
+        var view = _freeViews.Concat(_dockViews).FirstOrDefault(v => string.Equals(v.Item.Id, id, StringComparison.Ordinal));
+
+        if (item is null && view is null)
+        {
+            return;
+        }
+
+        if (item is not null)
+        {
+            _layout.Items.Remove(item);
+        }
+
+        if (view is not null)
+        {
+            DetachView(view);
+        }
+
+        if (_selectedId == id)
+        {
+            _selectedId = null;
+        }
+
+        // A docked item takes its slot with it, so the rail is re-laid out either way.
+        ApplyLayout();
+        RefreshMissingIds();
+        RefreshItems();
+        SaveLayout();
+        UpdateRegion();
+        Bump();
+    }
+
+    /// <summary>Takes one item off the desktop and releases what its icon took.</summary>
+    private void DetachView(ItemView view)
+    {
+        _freeViews.Remove(view);
+        _dockViews.Remove(view);
+
+        if (view.Visual.Parent is { } parent)
+        {
+            parent.Children.Remove(view.Visual);
+        }
+
+        view.IconSurface?.Dispose();
+        view.IconSurface = null;
+        view.IconVisual = null;
+    }
+
+    private void RefreshItems() => _items = _layout.Items.Select(item => item.Clone()).ToList();
+
+    private void RefreshMissingIds()
+    {
+        List<string>? missing = null;
+        foreach (var view in _freeViews.Concat(_dockViews))
+        {
+            if (view.MissingShown)
+            {
+                (missing ??= []).Add(view.Item.Id);
+            }
+        }
+
+        _missingIds = missing;
     }
 
     /// <summary>Recomputes every item's place from the display bounds; nothing pixel-shaped is stored.</summary>
@@ -447,6 +790,119 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         foreach (var view in _freeViews.OrderBy(v => v.Item.Z))
         {
             _itemsLayer.Children.InsertAtTop(view.Visual);
+        }
+    }
+
+    /// <summary>
+    /// Asks for the item's real icon, if it can have one: an address has no file behind it to read
+    /// an icon from, and a target that is gone has none of its own — both keep their glyph. The
+    /// request is only a question, answered later through the work message.
+    /// </summary>
+    private void RequestIcon(ItemView view, double sizeDip, double maxScale)
+    {
+        if (view.Item.Target is UrlTarget || view.Item.IsMissing())
+        {
+            return;
+        }
+
+        // Read at the size the item will really be drawn at, magnification included, so a magnified
+        // item is not a blown-up smaller picture.
+        view.IconPath = view.Item.Location;
+        view.IconPixels = (int)Math.Ceiling(sizeDip * _scaleFactor * maxScale);
+        _iconCache.Request(view.IconPath, view.IconPixels);
+    }
+
+    /// <summary>
+    /// Puts a real icon on every item whose icon has arrived, and asks again for the ones still
+    /// being read. Idempotent, and only ever runs on the shell thread: from the mount, and from the
+    /// work message the icon reader's arrival posts.
+    /// </summary>
+    private void EnsureIcons()
+    {
+        if (_compositor is null || _root is null)
+        {
+            return;
+        }
+
+        var attached = false;
+        foreach (var view in _freeViews.Concat(_dockViews))
+        {
+            if (view.IconVisual is not null || view.IconPath.Length == 0)
+            {
+                continue;
+            }
+
+            if (_iconCache.TryGet(view.IconPath, view.IconPixels) is { } bitmap)
+            {
+                AttachIcon(view, bitmap);
+                attached = true;
+            }
+            else
+            {
+                _iconCache.Request(view.IconPath, view.IconPixels);
+            }
+        }
+
+        if (attached)
+        {
+            Bump();
+        }
+    }
+
+    /// <summary>Draws a resolved icon over the item's tile and retires the glyph for good.</summary>
+    private void AttachIcon(ItemView view, IconBitmap bitmap)
+    {
+        var compositor = _compositor;
+        if (compositor is null)
+        {
+            return;
+        }
+
+        // The device is only worth having once there is a real icon to carry, and it stays for the
+        // life of the content so a remount does not build a second one.
+        _iconDevice ??= IconSurfaceDevice.TryCreate(_logger);
+        if (_iconDevice is null)
+        {
+            return;
+        }
+
+        var icon = IconSurface.TryCreate(compositor, _iconDevice, bitmap, _logger);
+        if (icon is null)
+        {
+            return;
+        }
+
+        var visual = compositor.CreateSpriteVisual();
+        visual.Size = new Vector2(CanvasIconLibrary.DesignSize, CanvasIconLibrary.DesignSize);
+        visual.Brush = icon.Brush;
+
+        // A real icon brings its own shape and its own alpha, so the tile and glyph step aside.
+        view.GlyphVisual.IsVisible = false;
+        view.Visual.Children.InsertAtTop(visual);
+        view.IconVisual = visual;
+        view.IconSurface = icon;
+    }
+
+    private void OnIconArrived() => Post(EnsureIcons);
+
+    /// <summary>
+    /// Hands work back to the shell thread: the queue keeps it, the window's work message runs it.
+    /// Calls with no mount behind them are dropped by the next unmount.
+    /// </summary>
+    private void Post(Action work)
+    {
+        _work.Enqueue(work);
+        if (_window != nint.Zero)
+        {
+            NativeMethods.PostMessageW(_window, NativeMethods.WmCanvasWork, nint.Zero, nint.Zero);
+        }
+    }
+
+    private void DrainWork()
+    {
+        while (_work.TryDequeue(out var work))
+        {
+            work();
         }
     }
 
@@ -814,26 +1270,37 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private void OnLeftDown(double x, double y)
     {
-        _pressXDip = x;
-        _pressYDip = y;
-        _dragMoved = false;
+        var (pixelX, pixelY) = ToDisplayPixels(x, y);
+        _gestures.Press(pixelX, pixelY);
 
-        var view = HitTest(x, y);
-        if (view is null)
+        _pressed = HitTest(x, y);
+        if (_pressed is null)
         {
             return;
         }
 
-        if (view.Item.Placement != CanvasItemPlacement.Free)
+        // A press is the moment to ask whether the target is still there, so an item whose file was
+        // deleted while the canvas was showing stops pretending the moment the user touches it.
+        if (!_pressed.MissingShown)
         {
-            // Dock items are clicked, not dragged, in this prototype: the click is reported on release.
+            CheckMissingOne(_pressed);
+        }
+
+        // Held from the press: the release then always finds its way back here, however far the
+        // pointer travels first.
+        NativeMethods.SetCapture(_window);
+
+        if (_pressed.Item.Placement != CanvasItemPlacement.Free)
+        {
+            // Dock items are clicked, not dragged: the press only waits to see what the release says.
+            Bump();
             return;
         }
 
-        _drag = view;
-        _grabXDip = x - view.CenterXDip;
-        _grabYDip = y - view.CenterYDip;
-        Raise(view);
+        _drag = _pressed;
+        _grabXDip = x - _pressed.CenterXDip;
+        _grabYDip = y - _pressed.CenterYDip;
+        Raise(_pressed);
 
         // Everything calms down while one item is being moved: the drag is the only motion.
         foreach (var other in _freeViews.Concat(_dockViews))
@@ -841,28 +1308,30 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             StartScale(other, 1.0);
         }
 
-        NativeMethods.SetCapture(_window);
-
         // The item may travel anywhere on the display before the button comes up, so while it is
         // held the window takes the whole display and nothing is clipped.
         ClearRegion();
-        _logger.LogDebug("Canvas drag started on {Id}", view.Item.Id);
         Bump();
     }
 
+    /// <summary>
+    /// Moves the held item, from the moment the press has travelled further than the system's drag
+    /// rectangle allows. Until then the item stays where it is, so a slightly shaky click is still
+    /// a click.
+    /// </summary>
     private void DragTo(double x, double y)
     {
         var view = _drag!;
-        if (!_dragMoved)
+        var wasDragging = _gestures.IsDragging;
+        var (pixelX, pixelY) = ToDisplayPixels(x, y);
+        if (!_gestures.Move(pixelX, pixelY))
         {
-            var dx = x - _pressXDip;
-            var dy = y - _pressYDip;
-            if ((dx * dx) + (dy * dy) < DragThresholdDip * DragThresholdDip)
-            {
-                return;
-            }
+            return;
+        }
 
-            _dragMoved = true;
+        if (!wasDragging)
+        {
+            _logger.LogDebug("Canvas drag started on {Id}", view.Item.Id);
         }
 
         // The item stays fully on the display, which is also what a saved offset reproduces later.
@@ -880,46 +1349,169 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private void OnLeftUp(double x, double y)
     {
-        var view = _drag;
-        if (view is not null)
+        var view = _pressed;
+        _pressed = null;
+
+        var (pixelX, pixelY) = ToDisplayPixels(x, y);
+        var gesture = _gestures.Release(pixelX, pixelY, Environment.TickCount64);
+
+        if (_drag is not null)
         {
-            var moved = _dragMoved;
+            var dragged = _drag;
             _drag = null;
 
-            // Released before the capture does, so the capture-changed message does not look like
-            // a second, unexpected end of the same drag.
+            // Released before the capture goes, so the capture-changed message does not look like a
+            // second, unexpected end of the same drag.
             NativeMethods.ReleaseCapture();
 
-            if (moved)
+            if (gesture == DesktopGesture.DragEnd)
             {
-                CommitDrag(view);
+                CommitDrag(dragged);
                 _logger.LogInformation(
                     "The canvas item {Id} was dropped at {X:0} / {Y:0} DIP from its {Anchor} anchor",
-                    view.Item.Id,
-                    view.Item.OffsetXDip,
-                    view.Item.OffsetYDip,
-                    view.Item.Anchor);
-            }
-            else
-            {
-                _logger.LogInformation("The canvas item {Id} was clicked", view.Item.Id);
+                    dragged.Item.Id,
+                    dragged.Item.OffsetXDip,
+                    dragged.Item.OffsetYDip,
+                    dragged.Item.Anchor);
             }
 
+            // The whole display was hittable while the item was held; the region goes back to what
+            // is really drawn.
             UpdateRegion();
-            _trackingLeave = false;
-            SetPointer(x, y);
-            UpdateHover();
-            UpdateDock(WantsDock(x, y), interactionLocked: false);
-            Bump();
+        }
+        else if (view is not null)
+        {
+            NativeMethods.ReleaseCapture();
+        }
+
+        switch (gesture)
+        {
+            case DesktopGesture.Click:
+                // The first click picks the item out; the second one opens it.
+                Select(view);
+                break;
+
+            case DesktopGesture.DoubleClick:
+                Launch(view);
+                break;
+        }
+
+        _trackingLeave = false;
+        SetPointer(x, y);
+        UpdateHover();
+        UpdateDock(WantsDock(x, y), interactionLocked: false);
+        Bump();
+    }
+
+    /// <summary>
+    /// Marks the clicked item as the selected one, or clears the selection when the click landed on
+    /// empty desktop. Selecting never opens anything; the badge and the outline are the whole answer.
+    /// </summary>
+    private void Select(ItemView? view)
+    {
+        var id = view?.Item.Id;
+        if (id == _selectedId)
+        {
             return;
         }
 
-        var hit = HitTest(x, y);
-        if (hit is not null)
+        _selectedId = id;
+        ApplySelection();
+
+        if (view is not null)
         {
-            _logger.LogInformation("The canvas item {Id} was clicked", hit.Item.Id);
-            Bump();
+            _logger.LogInformation("The desktop item {Id} ({Name}) was selected", view.Item.Id, view.Item.Name);
         }
+    }
+
+    /// <summary>Draws the outline on the selected item and takes it off every other one.</summary>
+    private void ApplySelection()
+    {
+        var compositor = _compositor;
+        foreach (var view in _freeViews.Concat(_dockViews))
+        {
+            var selected = view.Item.Id == _selectedId;
+            if (selected && view.SelectionRing is null && compositor is not null)
+            {
+                view.SelectionRing = CanvasIconLibrary.SelectionRing(compositor, CanvasIconLibrary.DesignSize);
+                view.Visual.Children.InsertAtTop(view.SelectionRing);
+            }
+
+            if (view.SelectionRing is not null)
+            {
+                view.SelectionRing.IsVisible = selected;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Opens the item the user double-clicked, provided it is the item the first click selected.
+    /// The launcher is the only thing that starts anything — the canvas never builds a command line
+    /// — and it runs on the pool, with the outcome posted back to the shell thread.
+    /// </summary>
+    private void Launch(ItemView? view)
+    {
+        if (view is null || view.Item.Id != _selectedId)
+        {
+            return;
+        }
+
+        var launcher = _launcher;
+        if (launcher is null)
+        {
+            _logger.LogDebug("The desktop item {Id} was double-clicked, but the canvas has no launcher", view.Item.Id);
+            return;
+        }
+
+        // A copy, so the launcher reads one item's facts while the canvas keeps editing its own.
+        var item = view.Item.Clone();
+        var mount = _mountCount;
+        _lastLaunchId = item.Id;
+        _lastLaunchOutcome = "Opening";
+        _logger.LogInformation("The desktop item {Id} ({Name}) is being opened", item.Id, item.Name);
+
+        _ = OpenAsync(launcher, item, mount);
+    }
+
+    private async Task OpenAsync(IDesktopItemLauncher launcher, DesktopItem item, int mount)
+    {
+        var result = await launcher.LaunchAsync(item).ConfigureAwait(false);
+        Post(() =>
+        {
+            // A mount that came and went while the shell was opening something is not the canvas
+            // that asked for it; its views are gone.
+            if (mount == _mountCount)
+            {
+                OnLaunched(result);
+            }
+        });
+    }
+
+    private void OnLaunched(DesktopItemLaunchResult result)
+    {
+        _lastLaunchOutcome = result.Outcome.ToString();
+
+        switch (result.Outcome)
+        {
+            case DesktopItemLaunchOutcome.Launched:
+                _logger.LogInformation("The desktop item {Id} was opened by the shell", _lastLaunchId);
+                break;
+
+            case DesktopItemLaunchOutcome.Missing:
+                _logger.LogWarning("The desktop item {Id} points at {Location}, which is no longer there", _lastLaunchId, result.Error);
+                if (_lastLaunchId is { } id)
+                {
+                    ApplyMissing([id], [id]);
+                }
+
+                break;
+
+            case DesktopItemLaunchOutcome.Failed:
+                _logger.LogWarning("The desktop item {Id} could not be opened: {Error}", _lastLaunchId, result.Error);
+                break;
+        }
+
+        Bump();
     }
 
     /// <summary>Turns the drop point back into the anchor + DIP offsets the layout stores.</summary>
@@ -941,7 +1533,8 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private void EndDragCapture()
     {
         _drag = null;
-        _dragMoved = false;
+        _pressed = null;
+        _gestures.Cancel();
         _trackingLeave = false;
         NativeMethods.ReleaseCapture();
         ClearRegion();
@@ -1045,13 +1638,15 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
                 return true;
 
             case NativeMethods.WmCaptureChanged:
-                // Capture taken away by someone else: finish the drag where the item is.
+                // Capture taken away by someone else: the press is over and the item, if one was
+                // held, is dropped where it stands. No gesture is reported — nobody released here.
+                _pressed = null;
+                _gestures.Cancel();
                 if (_drag is not null)
                 {
                     var dropped = _drag;
                     _drag = null;
                     CommitDrag(dropped);
-                    _dragMoved = false;
                     ClearRegion();
                     UpdateRegion();
                     UpdateHover();
@@ -1062,6 +1657,11 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
             case NativeMethods.WmSetCursor:
                 return TrySetCursor(lParam, out result);
+
+            case NativeMethods.WmCanvasWork:
+                // Something the canvas asked another thread for is ready: icons, in this round.
+                DrainWork();
+                return true;
 
             case NativeMethods.WmTimer:
                 if ((int)wParam == DockTimerId)
@@ -1109,7 +1709,13 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             DockPhase: _dock.Phase.ToString(),
             DockScale: _dock.Phase == CanvasDockPhase.Shown ? _layout.Dock.ExpandedScale : _layout.Dock.CollapsedScale,
             UpdatesPerSecond: _updates.PerSecond(now),
-            Updates: _updates.Total);
+            Updates: _updates.Total,
+            MissingItemIds: _missingIds,
+            SelectedItemId: _selectedId,
+            LastLaunchId: _lastLaunchId,
+            LastLaunchOutcome: _lastLaunchOutcome,
+            IconCacheEntries: _iconCache.EntryCount,
+            IconCacheBytes: _iconCache.ByteCount);
     }
 
     private (double X, double Y) ClientDip(nint lParam) => (
@@ -1153,12 +1759,14 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         internal ItemView(
             DesktopItem item,
             ContainerVisual visual,
+            ShapeVisual glyphVisual,
             SpringVector3NaturalMotionAnimation scaleSpring,
             SpringVector3NaturalMotionAnimation moveSpring,
             double baseScale)
         {
             Item = item;
             Visual = visual;
+            GlyphVisual = glyphVisual;
             ScaleSpring = scaleSpring;
             MoveSpring = moveSpring;
             BaseScale = baseScale;
@@ -1167,6 +1775,21 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         internal DesktopItem Item { get; }
 
         internal ContainerVisual Visual { get; }
+
+        /// <summary>The tile and glyph the item starts with; hidden once a real icon arrives.</summary>
+        internal ShapeVisual GlyphVisual { get; }
+
+        /// <summary>The target its icon is read from; empty when the item has no icon of its own.</summary>
+        internal string IconPath { get; set; } = string.Empty;
+
+        /// <summary>The size the icon was asked for, in device pixels — the cache answers by both.</summary>
+        internal int IconPixels { get; set; }
+
+        /// <summary>The real icon, once it has arrived.</summary>
+        internal SpriteVisual? IconVisual { get; set; }
+
+        /// <summary>The surface the icon was loaded into, the brush drawing it, and its stream.</summary>
+        internal IconSurface? IconSurface { get; set; }
 
         internal SpringVector3NaturalMotionAnimation ScaleSpring { get; }
 
@@ -1190,5 +1813,14 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
         /// <summary>The full scale the item is aiming for.</summary>
         internal double Scale => BaseScale * Hover;
+
+        /// <summary>Whether the item is drawn as missing; dimming and the badge follow from it.</summary>
+        internal bool MissingShown { get; set; }
+
+        /// <summary>The outline the selected item wears; made once and then only shown or hidden.</summary>
+        internal ShapeVisual? SelectionRing { get; set; }
+
+        /// <summary>The warning badge a missing item wears; made when the item is first found missing.</summary>
+        internal ShapeVisual? MissingBadge { get; set; }
     }
 }

@@ -13,6 +13,9 @@ public interface IFilePickerService
     Task<string?> PickVideoFileAsync();
 
     Task<string?> PickFolderAsync();
+
+    /// <summary>Picks one program or shortcut for the desktop canvas: an .exe or a .lnk.</summary>
+    Task<string?> PickApplicationFileAsync();
 }
 
 /// <summary>
@@ -101,6 +104,39 @@ public sealed class FilePickerService : IFilePickerService
         catch (Exception ex)
         {
             _logger.LogError(ex, "The video picker failed");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Picks the program or shortcut the user wants on the canvas. Only these two kinds are offered:
+    /// a desktop item is always an explicit choice of something that opens.
+    /// </summary>
+    public async Task<string?> PickApplicationFileAsync()
+    {
+        if (!EnsureWindow("application picker"))
+        {
+            return null;
+        }
+
+        try
+        {
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.ComputerFolder,
+                ViewMode = PickerViewMode.List,
+            };
+
+            picker.FileTypeFilter.Add(".exe");
+            picker.FileTypeFilter.Add(".lnk");
+
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowContext.Handle);
+            var file = await picker.PickSingleFileAsync().AsTask().ConfigureAwait(true);
+            return string.IsNullOrEmpty(file?.Path) ? null : file.Path;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The application picker failed");
             return null;
         }
     }

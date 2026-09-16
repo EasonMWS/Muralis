@@ -909,6 +909,50 @@
     <value>Canvas diagnostics (development builds only)</value>
   </data>
 
+  <!--  Desktop canvas items  -->
+  <data name="Dynamic_Section_Canvas_Items" xml:space="preserve">
+    <value>Desktop items</value>
+  </data>
+  <data name="Dynamic_Canvas_Items_Title" xml:space="preserve">
+    <value>Items on the canvas</value>
+  </data>
+  <data name="Dynamic_Canvas_Items_Description" xml:space="preserve">
+    <value>Point the canvas at real things: pick a program or a shortcut, pick a folder, or type an address. Muralis only remembers where they are — nothing is copied, moved or scanned, and your own desktop icons stay exactly as they are.</value>
+  </data>
+  <data name="Dynamic_Canvas_Items_Empty" xml:space="preserve">
+    <value>Nothing here yet. Add a program, a folder or an address and it will appear on the desktop behind your icons.</value>
+  </data>
+  <data name="Dynamic_Canvas_Add_App" xml:space="preserve">
+    <value>Add program or shortcut…</value>
+  </data>
+  <data name="Dynamic_Canvas_Add_Folder" xml:space="preserve">
+    <value>Add folder…</value>
+  </data>
+  <data name="Dynamic_Canvas_Add_Url" xml:space="preserve">
+    <value>Add address</value>
+  </data>
+  <data name="Dynamic_Canvas_Add_Url_Placeholder" xml:space="preserve">
+    <value>https://example.com</value>
+  </data>
+  <data name="Dynamic_Canvas_Remove" xml:space="preserve">
+    <value>Remove from the canvas</value>
+  </data>
+  <data name="Dynamic_Canvas_Item_Missing" xml:space="preserve">
+    <value>Target missing</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_ItemAdded" xml:space="preserve">
+    <value>Added {0} to the desktop canvas.</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_ItemRemoved" xml:space="preserve">
+    <value>Removed {0} from the canvas. What it points at is untouched.</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_ItemExists" xml:space="preserve">
+    <value>That target is already on the canvas.</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_ChangeFailed" xml:space="preserve">
+    <value>The item could not be changed: {0}</value>
+  </data>
+
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">
     <value>Muralis — Wallpaper Studio</value>

@@ -33,4 +33,10 @@ public sealed record CanvasDiagnosticsSnapshot(
     string? PointerContext = null,
     double PointerDispatchesPerSecond = 0,
     long PointerReports = 0,
-    long PointerDispatches = 0);
+    long PointerDispatches = 0,
+    int IconCacheEntries = 0,
+    long IconCacheBytes = 0,
+    IReadOnlyList<string>? MissingItemIds = null,
+    string? SelectedItemId = null,
+    string? LastLaunchId = null,
+    string? LastLaunchOutcome = null);

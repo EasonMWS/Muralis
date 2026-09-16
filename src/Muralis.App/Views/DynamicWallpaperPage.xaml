@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Muralis.App.ViewModels"
     Background="Transparent"
     mc:Ignorable="d">
 
@@ -222,6 +223,119 @@
                     IsTextSelectionEnabled="True"
                     Text="{x:Bind ViewModel.DiagnosticsText, Mode=OneWay}" />
             </Expander>
+
+            <!--  Desktop items: the programs, shortcuts, folders and addresses on the canvas  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Dynamic_Section_Canvas_Items], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_Canvas_Items_Title], Source={StaticResource Loc}}" />
+                        <TextBlock
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{Binding [Dynamic_Canvas_Items_Description], Source={StaticResource Loc}}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            AutomationProperties.AutomationId="CanvasAddApplication"
+                            AutomationProperties.Name="{Binding [Dynamic_Canvas_Add_App], Source={StaticResource Loc}}"
+                            Command="{x:Bind ViewModel.AddApplicationCommand}"
+                            Content="{Binding [Dynamic_Canvas_Add_App], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanEditCanvasItems, Mode=OneWay}" />
+                        <Button
+                            AutomationProperties.AutomationId="CanvasAddFolder"
+                            AutomationProperties.Name="{Binding [Dynamic_Canvas_Add_Folder], Source={StaticResource Loc}}"
+                            Command="{x:Bind ViewModel.AddFolderCommand}"
+                            Content="{Binding [Dynamic_Canvas_Add_Folder], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanEditCanvasItems, Mode=OneWay}" />
+                    </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                            AutomationProperties.AutomationId="CanvasUrlBox"
+                            AutomationProperties.Name="{Binding [Dynamic_Canvas_Add_Url_Placeholder], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanEditCanvasItems, Mode=OneWay}"
+                            PlaceholderText="{Binding [Dynamic_Canvas_Add_Url_Placeholder], Source={StaticResource Loc}}"
+                            Text="{x:Bind ViewModel.NewItemUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="CanvasAddUrl"
+                            AutomationProperties.Name="{Binding [Dynamic_Canvas_Add_Url], Source={StaticResource Loc}}"
+                            Command="{x:Bind ViewModel.AddUrlCommand}"
+                            Content="{Binding [Dynamic_Canvas_Add_Url], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanEditCanvasItems, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <TextBlock
+                Margin="0,10,0,0"
+                Style="{StaticResource CardCaptionStyle}"
+                Text="{Binding [Dynamic_Canvas_Items_Empty], Source={StaticResource Loc}}"
+                Visibility="{x:Bind ViewModel.HasCanvasItems, Mode=OneWay, Converter={StaticResource InverseBoolToVisibility}}" />
+            <ItemsControl
+                Margin="0,10,0,0"
+                ItemsSource="{x:Bind ViewModel.CanvasItems}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DesktopItemRow">
+                        <Border
+                            Margin="0,0,0,8"
+                            Padding="12,10"
+                            Style="{StaticResource CardBorderStyle}">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon
+                                    VerticalAlignment="Center"
+                                    FontSize="18"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Glyph="{x:Bind Glyph}" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock
+                                        MaxLines="1"
+                                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                                        Text="{x:Bind Name}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        MaxLines="1"
+                                        Style="{StaticResource CardCaptionStyle}"
+                                        Text="{x:Bind Location}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <Border
+                                        Margin="0,2,0,0"
+                                        Padding="6,1"
+                                        HorizontalAlignment="Left"
+                                        Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                                        CornerRadius="4"
+                                        Visibility="{x:Bind IsMissing, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                            Text="{Binding [Dynamic_Canvas_Item_Missing], Source={StaticResource Loc}}" />
+                                    </Border>
+                                </StackPanel>
+                                <Button
+                                    Grid.Column="2"
+                                    Padding="8"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.AutomationId="{x:Bind RemoveAutomationId}"
+                                    AutomationProperties.Name="{Binding [Dynamic_Canvas_Remove], Source={StaticResource Loc}}"
+                                    Command="{x:Bind RemoveCommand}"
+                                    ToolTipService.ToolTip="{Binding [Dynamic_Canvas_Remove], Source={StaticResource Loc}}">
+                                    <FontIcon FontSize="14" Glyph="&#xE711;" />
+                                </Button>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
             <!--  Notes  -->
             <TextBlock
