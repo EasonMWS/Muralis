@@ -412,19 +412,19 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
     {
         try
         {
-            if (FindSurfaceFor(request.Monitor) is not null)
+            if (FindSurfaceFor(request.Monitor, request.Content.Kind) is not null)
             {
-                throw new InvalidOperationException($"The display {request.Monitor.StableId} already shows a backdrop surface.");
+                throw new InvalidOperationException($"The display {request.Monitor.StableId} already shows this kind of surface.");
             }
 
             RefreshMonitors();
             var monitor = _monitors.Resolve(request.Monitor)
                 ?? throw new InvalidOperationException($"The display {request.Monitor.StableId} is not available.");
 
-            var worker = _layerHost.EnsureWorker();
-            if (worker == nint.Zero)
+            var parent = EnsureParentFor(request.Content.Kind);
+            if (parent == nint.Zero)
             {
-                throw new InvalidOperationException("The desktop worker window was not found; the surface cannot be placed behind the icons.");
+                throw new InvalidOperationException(PlacementProblemFor(request.Content.Kind));
             }
 
             var surface = (DesktopSurface)_surfaceHost.CreateAsync(request, CancellationToken.None).GetAwaiter().GetResult();
@@ -432,7 +432,7 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
 
             try
             {
-                Attach(surface, worker, monitor);
+                Attach(surface, parent, monitor);
             }
             catch
             {
@@ -454,15 +454,16 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
     /// is expected to finish its mount there, which is what lets the video wallpaper keep its media
     /// player on the thread that owns the window.
     /// </summary>
-    private void Attach(DesktopSurface surface, nint worker, Monitor monitor)
+    private void Attach(DesktopSurface surface, nint parent, Monitor monitor)
     {
+        var kind = surface.Content.Kind;
         var geometry = MonitorGeometry.From(monitor.Runtime);
-        var window = _surfaceHost.CreateWindow(worker, geometry);
+        var window = _surfaceHost.CreateWindow(parent, kind, geometry);
         _surfaceHost.Track(window, surface);
 
         try
         {
-            var target = Win32SurfaceTarget.ForWindow(window, geometry, monitor.Runtime.ScaleFactor);
+            var target = Win32SurfaceTarget.ForWindow(window, geometry, monitor.Runtime.ScaleFactor, LayerFor(kind));
             surface.AttachAsync(target, CancellationToken.None).GetAwaiter().GetResult();
         }
         catch
@@ -471,6 +472,25 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
             throw;
         }
     }
+
+    /// <summary>Which desktop window a surface of this kind is parented to.</summary>
+    private nint EnsureParentFor(SurfaceKind kind) => kind switch
+    {
+        SurfaceKind.InteractiveOverlay => _layerHost.EnsureIconHost(),
+        _ => _layerHost.EnsureWorker(),
+    };
+
+    private static SurfaceLayer LayerFor(SurfaceKind kind) => kind switch
+    {
+        SurfaceKind.InteractiveOverlay => SurfaceLayer.DesktopInteractiveLayer,
+        _ => SurfaceLayer.WallpaperLayer,
+    };
+
+    private static string PlacementProblemFor(SurfaceKind kind) => kind switch
+    {
+        SurfaceKind.InteractiveOverlay => "The desktop icon host was not found; the surface cannot be placed above the icons.",
+        _ => "The desktop worker window was not found; the surface cannot be placed behind the icons.",
+    };
 
     private void RemoveSurface(DesktopSurface surface)
     {
@@ -532,10 +552,20 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
                         Orphan(surface);
                         TryRemount(surface);
                     }
-                    else if (monitorRef is not null && geometry is not null
-                             && surface.Monitor == monitorRef.Value && surface.Bounds != geometry.Value.Bounds)
+                    else
                     {
-                        surface.MoveTo(monitorRef.Value, geometry.Value);
+                        if (surface.Content.Kind == SurfaceKind.InteractiveOverlay)
+                        {
+                            // Explorer can reshuffle the icon host's children; interactive content
+                            // has to stay above the icon view to remain visible and clickable.
+                            _surfaceHost.BringToTop(surface.WindowHandle);
+                        }
+
+                        if (monitorRef is not null && geometry is not null
+                            && surface.Monitor == monitorRef.Value && surface.Bounds != geometry.Value.Bounds)
+                        {
+                            surface.MoveTo(monitorRef.Value, geometry.Value);
+                        }
                     }
 
                     break;
@@ -580,13 +610,13 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
     {
         surface.RemountAttempts++;
 
-        var worker = _layerHost.EnsureWorker();
-        if (worker == nint.Zero)
+        var parent = EnsureParentFor(surface.Content.Kind);
+        if (parent == nint.Zero)
         {
             if (surface.RemountAttempts == 1)
             {
                 _logger.LogWarning(
-                    "The desktop worker window is not back yet; retrying every {Seconds} s",
+                    "The desktop layer is not back yet; retrying every {Seconds} s",
                     NativeMethods.DisplayChangeCheckIntervalMs / 1000);
             }
 
@@ -603,7 +633,7 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
         var attempts = surface.RemountAttempts;
         try
         {
-            Attach(surface, worker, monitor);
+            Attach(surface, parent, monitor);
         }
         catch (Exception ex)
         {
@@ -617,11 +647,11 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
         _logger.LogInformation("The desktop surface is back on the desktop after {Attempts} attempt(s)", attempts);
     }
 
-    private DesktopSurface? FindSurfaceFor(MonitorRef monitor)
+    private DesktopSurface? FindSurfaceFor(MonitorRef monitor, SurfaceKind kind)
     {
         foreach (var surface in _surfaces.Values)
         {
-            if (surface.Content.Kind == SurfaceKind.Backdrop && surface.Monitor == monitor)
+            if (surface.Content.Kind == kind && surface.Monitor == monitor)
             {
                 return surface;
             }

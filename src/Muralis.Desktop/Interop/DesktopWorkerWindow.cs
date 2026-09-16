@@ -1,11 +1,12 @@
 namespace Muralis.Desktop.Interop;
 
 /// <summary>
-/// Finds the desktop window the wallpaper is drawn in: the layer directly below the desktop icons.
-/// The shell arranges that layer in one of two ways - the worker is a top level window below the
-/// icon host (older builds), or a child of the icon host below the icon view (Windows 11, the same
-/// layer desktop wallpaper apps draw in). Asking the shell to prepare one is only needed when
-/// neither exists; the request is ignored while a worker is already there.
+/// Finds the two desktop layer windows surfaces are placed in: the window the wallpaper is drawn
+/// in (the layer directly below the desktop icons) and the window the icons themselves live under.
+/// The shell arranges the wallpaper layer in one of two ways - the worker is a top level window
+/// below the icon host (older builds), or a child of the icon host below the icon view
+/// (Windows 11, the same layer desktop wallpaper apps draw in). Asking the shell to prepare one is
+/// only needed when neither exists; the request is ignored while a worker is already there.
 /// </summary>
 internal static class DesktopWorkerWindow
 {
@@ -13,7 +14,20 @@ internal static class DesktopWorkerWindow
     private const string WorkerClass = "WorkerW";
 
     private static readonly NativeMethods.EnumWindowsProc FindCallback = OnEnumWindow;
+    private static readonly NativeMethods.EnumWindowsProc FindIconHostCallback = OnEnumIconHost;
     private static nint _found;
+    private static nint _foundIconHost;
+
+    /// <summary>
+    /// The window that directly parents the desktop icons. Interactive surfaces become its
+    /// topmost children, which is what puts them above the icons without touching the icon view.
+    /// </summary>
+    internal static nint FindIconHost()
+    {
+        _foundIconHost = nint.Zero;
+        NativeMethods.EnumWindows(FindIconHostCallback, nint.Zero);
+        return _foundIconHost;
+    }
 
     /// <summary>Returns the wallpaper worker, asking the shell to create one only if there is none.</summary>
     internal static nint FindOrCreate()
@@ -47,6 +61,30 @@ internal static class DesktopWorkerWindow
         _found = nint.Zero;
         NativeMethods.EnumWindows(FindCallback, nint.Zero);
         return _found;
+    }
+
+    private static bool OnEnumIconHost(nint window, nint lParam)
+    {
+        if (NativeMethods.FindWindowExW(window, nint.Zero, IconViewClass, null) != nint.Zero)
+        {
+            _foundIconHost = window;
+            return false;
+        }
+
+        // The icon view can sit one level deeper: on some builds the shell moves it under a
+        // worker of its own, and then that worker is the window the icons live under.
+        for (var child = NativeMethods.GetWindow(window, NativeMethods.GwChild);
+             child != nint.Zero;
+             child = NativeMethods.GetWindow(child, NativeMethods.GwHwndNext))
+        {
+            if (NativeMethods.FindWindowExW(child, nint.Zero, IconViewClass, null) != nint.Zero)
+            {
+                _foundIconHost = child;
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool OnEnumWindow(nint window, nint lParam)

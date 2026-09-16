@@ -34,6 +34,18 @@ public sealed record SurfaceRequest(ISurfaceContent Content, MonitorRef Monitor)
                 problems.Add("Backdrop content is never activated.");
             }
         }
+        else if (Content.Kind == SurfaceKind.InteractiveOverlay)
+        {
+            if (Content.Interaction == SurfaceInteraction.None)
+            {
+                problems.Add("Interactive overlay content must declare the pointer input it takes.");
+            }
+
+            if (Content.Activation == SurfaceActivation.Never)
+            {
+                problems.Add("Interactive overlay content must be activatable; the mouse has to reach it.");
+            }
+        }
 
         return problems;
     }

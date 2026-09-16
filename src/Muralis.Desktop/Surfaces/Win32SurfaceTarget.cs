@@ -12,6 +12,6 @@ internal sealed record Win32SurfaceTarget(
     double ScaleFactor,
     SurfaceLayer Layer) : IWin32SurfaceTarget
 {
-    internal static Win32SurfaceTarget ForWindow(nint window, MonitorGeometry geometry, double scaleFactor) =>
-        new(window, geometry.Bounds, scaleFactor, SurfaceLayer.WallpaperLayer);
+    internal static Win32SurfaceTarget ForWindow(nint window, MonitorGeometry geometry, double scaleFactor, SurfaceLayer layer) =>
+        new(window, geometry.Bounds, scaleFactor, layer);
 }

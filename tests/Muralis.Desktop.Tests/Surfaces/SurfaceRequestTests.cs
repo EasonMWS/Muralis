@@ -40,6 +40,54 @@ public sealed class SurfaceRequestTests
         Assert.NotEmpty(request.Validate());
     }
 
+    [Fact]
+    public void Validate_AcceptsInteractiveOverlayThatTakesPointerInput()
+    {
+        var request = new SurfaceRequest(
+            new OverlayContent(SurfaceInteraction.Pointer, SurfaceActivation.OnClick), new MonitorRef("edid:left"));
+
+        Assert.Empty(request.Validate());
+    }
+
+    [Fact]
+    public void Validate_RejectsInteractiveOverlayThatTakesNoInput()
+    {
+        var request = new SurfaceRequest(
+            new OverlayContent(SurfaceInteraction.None, SurfaceActivation.OnClick), new MonitorRef("edid:left"));
+
+        Assert.NotEmpty(request.Validate());
+    }
+
+    [Fact]
+    public void Validate_RejectsInteractiveOverlayThatCannotBeActivated()
+    {
+        var request = new SurfaceRequest(
+            new OverlayContent(SurfaceInteraction.Pointer, SurfaceActivation.Never), new MonitorRef("edid:left"));
+
+        Assert.NotEmpty(request.Validate());
+    }
+
+    private sealed class OverlayContent(
+        SurfaceInteraction interaction,
+        SurfaceActivation activation) : ISurfaceContent
+    {
+        public SurfaceKind Kind => SurfaceKind.InteractiveOverlay;
+
+        public SurfaceInteraction Interaction => interaction;
+
+        public SurfaceActivation Activation => activation;
+
+        public Task MountAsync(ISurfaceTarget target, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task UnmountAsync() => Task.CompletedTask;
+
+        public void OnGeometryChanged(MonitorGeometry geometry, double scale)
+        {
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     private sealed class BackdropContent(
         SurfaceInteraction interaction = SurfaceInteraction.None,
         SurfaceActivation activation = SurfaceActivation.Never) : ISurfaceContent

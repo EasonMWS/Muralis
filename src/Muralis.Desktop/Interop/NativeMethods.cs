@@ -10,11 +10,18 @@ internal static class NativeMethods
 {
     internal const uint WsPopup = 0x80000000;
 
-    internal const uint WsExNoActivate = 0x08000000;
+    internal const uint WsExTopmost = 0x00000008;
     internal const uint WsExToolWindow = 0x00000080;
+    internal const uint WsExNoActivate = 0x08000000;
+    internal const uint WsExNoRedirectionBitmap = 0x00200000;
 
+    internal const uint SwpNoSize = 0x0001;
+    internal const uint SwpNoMove = 0x0002;
     internal const uint SwpNoActivate = 0x0010;
     internal const uint SwpShowWindow = 0x0040;
+
+    internal const uint GwHwndNext = 2;
+    internal const uint GwChild = 5;
 
     internal const uint WmNull = 0x0000;
     internal const uint WmDestroy = 0x0002;
@@ -147,6 +154,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern nint FindWindowExW(nint parent, nint childAfter, string? className, string? windowName);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint GetWindow(nint hWnd, uint command);
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool EnumWindows(EnumWindowsProc callback, nint lParam);

@@ -10,6 +10,12 @@ public enum SurfaceKind
 {
     /// <summary>A full-display desktop background, behind the icons. At most one per display.</summary>
     Backdrop,
+
+    /// <summary>
+    /// Content the mouse can reach, placed above the desktop icons. At most one per display; the
+    /// native icons stay visible and usable underneath it.
+    /// </summary>
+    InteractiveOverlay,
 }
 
 /// <summary>How much input a surface needs. Declared, not inferred: the wallpaper layer cannot take input at all.</summary>

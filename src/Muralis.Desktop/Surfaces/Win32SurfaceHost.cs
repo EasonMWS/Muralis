@@ -7,9 +7,9 @@ namespace Muralis.Desktop.Surfaces;
 
 /// <summary>
 /// The single owner of the desktop layer's windowing: it creates the popup window a surface lives
-/// in, attaches it to the wallpaper worker, keeps it positioned over its display and destroys it
-/// again. It knows nothing about what a surface shows — video, and future canvas or widget content,
-/// all get the same correctly placed window.
+/// in, attaches it to the right desktop window, keeps it positioned over its display and destroys
+/// it again. It knows nothing about what a surface shows — video, and future canvas or widget
+/// content, all get the same correctly placed window.
 /// </summary>
 /// <remarks>
 /// Every method runs on the shell thread, which also dispatches the window procedure below; nothing
@@ -20,7 +20,7 @@ internal sealed class Win32SurfaceHost : ISurfaceHost
     private const string WindowClassName = "MuralisDesktopHostWindow";
 
     private static readonly object WindowTableGate = new();
-    private static readonly Dictionary<nint, DesktopSurface> LiveWindows = [];
+    private static readonly Dictionary<nint, WindowEntry> LiveWindows = [];
     private static readonly NativeMethods.WindowProc WindowCallback = OnWindowMessage;
     private static nint _instance;
     private static bool _classRegistered;
@@ -28,12 +28,18 @@ internal sealed class Win32SurfaceHost : ISurfaceHost
     private readonly ILogger _logger;
     private readonly Action<DesktopSurface> _onWindowLost;
 
-    private nint _worker;
-
     internal Win32SurfaceHost(ILogger logger, Action<DesktopSurface> onWindowLost)
     {
         _logger = logger;
         _onWindowLost = onWindowLost;
+    }
+
+    /// <summary>One live surface window: the window it was parented to, and the surface once it is tracked.</summary>
+    private sealed class WindowEntry(nint parent)
+    {
+        internal nint Parent { get; } = parent;
+
+        internal DesktopSurface? Surface { get; set; }
     }
 
     public Task<IDesktopSurface> CreateAsync(SurfaceRequest request, CancellationToken cancellationToken)
@@ -53,17 +59,17 @@ internal sealed class Win32SurfaceHost : ISurfaceHost
     }
 
     /// <summary>
-    /// Creates the window, parents it to the wallpaper worker and places it over
+    /// Creates the window, parents it to <paramref name="parent"/> and places it over
     /// <paramref name="geometry"/>. Throws when any of the three steps fails, leaving no window.
     /// </summary>
-    internal nint CreateWindow(nint worker, MonitorGeometry geometry)
+    internal nint CreateWindow(nint parent, SurfaceKind kind, MonitorGeometry geometry)
     {
         EnsureWindowClass();
 
         // Created as a popup and re-parented: that is the combination the shell expects from
-        // wallpaper hosts, and it keeps the window out of the taskbar and Alt+Tab.
+        // desktop hosts, and it keeps the window out of the taskbar and Alt+Tab.
         var window = NativeMethods.CreateWindowExW(
-            NativeMethods.WsExNoActivate | NativeMethods.WsExToolWindow,
+            ExStyleFor(kind),
             WindowClassName,
             "Muralis",
             NativeMethods.WsPopup,
@@ -81,20 +87,24 @@ internal sealed class Win32SurfaceHost : ISurfaceHost
             throw new InvalidOperationException($"The desktop surface window could not be created (error {Marshal.GetLastWin32Error()}).");
         }
 
-        _worker = worker;
-        NativeMethods.SetParent(window, worker);
+        lock (WindowTableGate)
+        {
+            LiveWindows[window] = new WindowEntry(parent);
+        }
 
         try
         {
+            NativeMethods.SetParent(window, parent);
             PositionWindow(window, geometry.Bounds);
         }
         catch
         {
+            Forget(window);
             NativeMethods.DestroyWindow(window);
             throw;
         }
 
-        _logger.LogDebug("The desktop surface window 0x{Window:X} is attached to the wallpaper worker", window);
+        _logger.LogDebug("The desktop surface window 0x{Window:X} is attached to 0x{Parent:X}", window, parent);
         return window;
     }
 
@@ -103,20 +113,27 @@ internal sealed class Win32SurfaceHost : ISurfaceHost
     {
         lock (WindowTableGate)
         {
-            LiveWindows[window] = surface;
+            if (LiveWindows.TryGetValue(window, out var entry))
+            {
+                entry.Surface = surface;
+            }
         }
     }
 
     /// <summary>Moves the window so it covers <paramref name="bounds"/> of the virtual desktop.</summary>
     internal void PositionWindow(nint window, PixelRect bounds)
     {
-        // A child window is positioned in its parent's client space, which is the whole virtual
-        // desktop, so screen coordinates have to be shifted by the worker's origin.
-        var origin = new NativeMethods.Point();
-        NativeMethods.ClientToScreen(_worker, ref origin);
+        var parent = ParentOf(window);
 
-        // HWND_TOP keeps the surface on top of whatever else draws in the wallpaper layer, while the
-        // icons stay visible because their window is above the worker in the shell's own z-order.
+        // A child window is positioned in its parent's client space, which is the whole virtual
+        // desktop, so screen coordinates have to be shifted by the parent's origin.
+        var origin = new NativeMethods.Point();
+        NativeMethods.ClientToScreen(parent, ref origin);
+
+        // HWND_TOP inserts the window at the top of its parent's children: for a wallpaper host
+        // that keeps the surface above whatever else draws in that layer (the icons stay visible
+        // because their window is a sibling further up), and for an interactive surface it is what
+        // places the window above the icon view.
         if (!NativeMethods.SetWindowPos(
                 window,
                 nint.Zero,
@@ -128,6 +145,28 @@ internal sealed class Win32SurfaceHost : ISurfaceHost
         {
             throw new InvalidOperationException($"The desktop surface window could not be placed (error {Marshal.GetLastWin32Error()}).");
         }
+    }
+
+    /// <summary>
+    /// Re-inserts a window at the top of its parent's children without touching its geometry.
+    /// Explorer can reshuffle the icon host's children; the shell re-asserts the order after it
+    /// checked the desktop state.
+    /// </summary>
+    internal void BringToTop(nint window)
+    {
+        if (!NativeMethods.IsWindow(window))
+        {
+            return;
+        }
+
+        NativeMethods.SetWindowPos(
+            window,
+            nint.Zero,
+            0,
+            0,
+            0,
+            0,
+            NativeMethods.SwpNoMove | NativeMethods.SwpNoSize | NativeMethods.SwpNoActivate);
     }
 
     /// <summary>Destroys the window and stops routing its messages. Does nothing when it is gone.</summary>
@@ -150,12 +189,33 @@ internal sealed class Win32SurfaceHost : ISurfaceHost
         }
     }
 
+    /// <summary>
+    /// Window styles per surface kind. Both kinds stay out of the taskbar and Alt+Tab and never
+    /// steal focus; interactive content draws through the compositor, which needs a window
+    /// without a redirection bitmap.
+    /// </summary>
+    private static uint ExStyleFor(SurfaceKind kind) => kind switch
+    {
+        SurfaceKind.InteractiveOverlay =>
+            NativeMethods.WsExTopmost | NativeMethods.WsExToolWindow | NativeMethods.WsExNoActivate | NativeMethods.WsExNoRedirectionBitmap,
+        _ => NativeMethods.WsExNoActivate | NativeMethods.WsExToolWindow,
+    };
+
+    private static nint ParentOf(nint window)
+    {
+        lock (WindowTableGate)
+        {
+            return LiveWindows.TryGetValue(window, out var entry) ? entry.Parent : nint.Zero;
+        }
+    }
+
     private static nint OnWindowMessage(nint hwnd, uint message, nint wParam, nint lParam)
     {
         DesktopSurface? surface;
         lock (WindowTableGate)
         {
-            LiveWindows.TryGetValue(hwnd, out surface);
+            LiveWindows.TryGetValue(hwnd, out var entry);
+            surface = entry?.Surface;
         }
 
         if (surface is not null)
