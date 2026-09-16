@@ -27,13 +27,31 @@ internal static class NativeMethods
     internal const uint WmDestroy = 0x0002;
     internal const uint WmClose = 0x0010;
     internal const uint WmEraseBackground = 0x0014;
+    internal const uint WmSetCursor = 0x0020;
     internal const uint WmDisplayChange = 0x007E;
     internal const uint WmTimer = 0x0113;
+    internal const uint WmMouseMove = 0x0200;
+    internal const uint WmLButtonDown = 0x0201;
+    internal const uint WmLButtonUp = 0x0202;
+    internal const uint WmCaptureChanged = 0x0215;
+    internal const uint WmMouseLeave = 0x02A3;
     internal const uint WmStopHost = 0x8000 + 1;
     internal const uint WmShellRestarted = 0x8000 + 2;
     internal const uint WmRunWork = 0x8000 + 3;
 
     internal const uint PmNoRemove = 0x0000;
+
+    /// <summary>TrackMouseEvent flags: report when the pointer leaves the window.</summary>
+    internal const uint TmeLeave = 0x00000002;
+
+    /// <summary>WM_SETCURSOR hit test: the pointer is over the client area.</summary>
+    internal const int HtClient = 1;
+
+    /// <summary>CombineRgn mode: union.</summary>
+    internal const int RgnOr = 2;
+
+    internal const int IdcArrow = 32512;
+    internal const int IdcHand = 32649;
 
     internal const uint SmtoNormal = 0x0000;
     internal const uint SpawnWallpaperWorker = 0x052C;
@@ -112,6 +130,16 @@ internal static class NativeMethods
         public Point Point;
     }
 
+    /// <summary>Input for <see cref="TrackMouseEvent"/>: <c>Size</c> must be filled in.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct TrackMouseEventOptions
+    {
+        public int Size;
+        public uint Flags;
+        public nint Track;
+        public uint HoverTime;
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern ushort RegisterClassW(ref WindowClass windowClass);
 
@@ -148,6 +176,45 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool DestroyWindow(nint hWnd);
+
+    /// <summary>
+    /// Shapes a window's input and rendering area: outside the region the window is invisible to
+    /// the mouse walk — other processes included — and composition content is clipped to it.
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern int SetWindowRgn(nint hWnd, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    internal static extern nint CreateRectRgn(int left, int top, int right, int bottom);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    internal static extern int CombineRgn(nint destination, nint source1, nint source2, int mode);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeleteObject(nint handle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetCapture(nint hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorPos(out Point point);
+
+    /// <summary>Requests the leave notification once per call; re-arm after every WM_MOUSELEAVE.</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool TrackMouseEvent(ref TrackMouseEventOptions options);
+
+    [DllImport("user32.dll")]
+    internal static extern nint LoadCursorW(nint instance, nint cursorName);
+
+    [DllImport("user32.dll")]
+    internal static extern nint SetCursor(nint cursor);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern nint FindWindowW(string? className, string? windowName);

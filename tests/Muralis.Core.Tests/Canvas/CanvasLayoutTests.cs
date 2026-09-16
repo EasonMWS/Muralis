@@ -202,7 +202,7 @@ public sealed class CanvasLayoutTests : IDisposable
         clone.Dock.HideDelayMilliseconds = 10;
         clone.Items.RemoveAt(0);
 
-        Assert.Equal(-255, layout.Items[0].OffsetXDip);
+        Assert.Equal(-195, layout.Items[0].OffsetXDip);
         Assert.Equal(1.6, layout.Proximity.MaxScale);
         Assert.Equal(600, layout.Dock.HideDelayMilliseconds);
         Assert.Equal(8, layout.Items.Count);

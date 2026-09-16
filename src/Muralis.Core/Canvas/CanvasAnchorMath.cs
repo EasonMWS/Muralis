@@ -68,6 +68,28 @@ public static class CanvasAnchorMath
     public static (double X, double Y) CenterOf(PixelRect placed) =>
         (placed.X + placed.Width / 2.0, placed.Y + placed.Height / 2.0);
 
+    /// <summary>
+    /// The inverse of <see cref="PlaceItem"/>: the anchor offsets that put an item of
+    /// <paramref name="sizeDip"/> at the given centre. Dragging uses it to turn the drop point
+    /// back into anchor + DIP, so no pixel position is ever persisted.
+    /// </summary>
+    public static (double OffsetXDip, double OffsetYDip) OffsetForCenter(
+        PixelRect bounds,
+        double scaleFactor,
+        CanvasAnchor anchor,
+        double centerX,
+        double centerY,
+        double sizeDip)
+    {
+        var (anchorX, anchorY) = ResolvePoint(anchor, bounds);
+        var (factorX, factorY) = ResolveFactor(anchor);
+        var size = Math.Max(1.0, sizeDip) * scaleFactor;
+
+        return (
+            (centerX - anchorX - size * (0.5 - factorX)) / scaleFactor,
+            (centerY - anchorY - size * (0.5 - factorY)) / scaleFactor);
+    }
+
     private static double ClampInside(double value, double low, double high)
     {
         if (high < low)

@@ -29,12 +29,14 @@ public sealed class CanvasLayout
     public static CanvasLayout CreateSeed()
     {
         var layout = new CanvasLayout();
+        // Neighbours sit 130 DIP apart so hovering the row shows the magnification bell: the item
+        // under the cursor grows the most, its neighbours less, and the far item not at all.
         var row = new (string Id, string Name, string Icon, double Offset)[]
         {
-            ("steam", "Steam", "steam", -255),
-            ("chrome", "Chrome", "chrome", -85),
-            ("blender", "Blender", "blender", 85),
-            ("comfyui", "ComfyUI", "comfyui", 255),
+            ("steam", "Steam", "steam", -195),
+            ("chrome", "Chrome", "chrome", -65),
+            ("blender", "Blender", "blender", 65),
+            ("comfyui", "ComfyUI", "comfyui", 195),
         };
 
         var z = 0;

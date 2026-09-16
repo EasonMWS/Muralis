@@ -236,6 +236,14 @@ internal sealed class Win32SurfaceHost : ISurfaceHost
                     surface.OnWindowDestroyed();
                     return nint.Zero;
             }
+
+            // Everything else belongs to the content when it handles its own input; the window
+            // itself stays owned here.
+            if (surface.Content is ISurfaceMessageSink sink
+                && sink.OnWindowMessage(hwnd, message, wParam, lParam, out var handled))
+            {
+                return handled;
+            }
         }
 
         return NativeMethods.DefWindowProcW(hwnd, message, wParam, lParam);

@@ -19,7 +19,7 @@ public sealed class CanvasProximityOptions
 {
     public double MaxScale { get; set; } = 1.6;
 
-    public double InfluenceRadiusDip { get; set; } = 280;
+    public double InfluenceRadiusDip { get; set; } = 200;
 
     public ProximityFalloff Falloff { get; set; } = ProximityFalloff.Smoothstep;
 

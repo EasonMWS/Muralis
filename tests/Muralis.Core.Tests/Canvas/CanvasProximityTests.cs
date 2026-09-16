@@ -8,7 +8,7 @@ public sealed class CanvasProximityTests
     private static readonly CanvasProximityOptions Options = new()
     {
         MaxScale = 1.6,
-        InfluenceRadiusDip = 280,
+        InfluenceRadiusDip = 200,
         Falloff = ProximityFalloff.Smoothstep,
     };
 
@@ -17,7 +17,7 @@ public sealed class CanvasProximityTests
     [InlineData(ProximityFalloff.Gaussian)]
     public void CursorOnTheItem_ScalesToMax(ProximityFalloff falloff)
     {
-        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 280, Falloff = falloff };
+        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 200, Falloff = falloff };
 
         Assert.Equal(1.6, CanvasProximity.ScaleAt(0, options), precision: 9);
     }
@@ -27,9 +27,9 @@ public sealed class CanvasProximityTests
     [InlineData(ProximityFalloff.Gaussian)]
     public void AtAndBeyondTheRadius_NothingScales(ProximityFalloff falloff)
     {
-        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 280, Falloff = falloff };
+        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 200, Falloff = falloff };
 
-        Assert.Equal(1.0, CanvasProximity.ScaleAt(280, options), precision: 9);
+        Assert.Equal(1.0, CanvasProximity.ScaleAt(200, options), precision: 9);
         Assert.Equal(1.0, CanvasProximity.ScaleAt(600, options), precision: 9);
     }
 
@@ -38,7 +38,7 @@ public sealed class CanvasProximityTests
     [InlineData(ProximityFalloff.Gaussian)]
     public void ScaleNeverIncreasesWithDistance(ProximityFalloff falloff)
     {
-        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 280, Falloff = falloff };
+        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 200, Falloff = falloff };
         var previous = double.MaxValue;
 
         for (var distance = 0.0; distance <= 420; distance += 4)
@@ -64,7 +64,7 @@ public sealed class CanvasProximityTests
     [InlineData(ProximityFalloff.Gaussian)]
     public void CurveIsContinuousAtTheRadius(ProximityFalloff falloff)
     {
-        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 280, Falloff = falloff };
+        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 200, Falloff = falloff };
 
         var justInside = CanvasProximity.ScaleAt(279.999, options);
         Assert.True(Math.Abs(justInside - 1.0) < 1e-4, $"expected an almost settled scale, got {justInside}");
@@ -109,8 +109,8 @@ public sealed class CanvasProximityTests
     {
         // Four items in a row with the cursor just left of the second one: each item grows less
         // than the one before, and the far end of the row is not touched at all.
-        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 280 };
-        double[] offsets = [-255, -85, 85, 255];
+        var options = new CanvasProximityOptions { MaxScale = 1.6, InfluenceRadiusDip = 200 };
+        double[] offsets = [-195, -65, 65, 195];
         var scales = offsets
             .Select(offset => CanvasProximity.ScaleForItem(-120, 0, offset, 0, options))
             .ToList();
