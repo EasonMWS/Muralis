@@ -126,6 +126,45 @@ public sealed class CanvasAnchorMathTests
         Assert.Equal(1040 - 40 - 96, placed.Y);
     }
 
+    [Theory]
+    [InlineData(CanvasAnchor.TopLeft, 40, 40, 1.0)]
+    [InlineData(CanvasAnchor.Center, 0, -220, 1.0)]
+    [InlineData(CanvasAnchor.BottomRight, -40, -40, 1.0)]
+    [InlineData(CanvasAnchor.Center, 0, -220, 1.5)]
+    [InlineData(CanvasAnchor.BottomLeft, 40, -40, 2.0)]
+    public void OffsetForCenter_IsTheInverseOfPlaceItem(CanvasAnchor anchor, double offsetX, double offsetY, double scale)
+    {
+        // Offsets that need no clamping, so PlaceItem gives back exactly what went in.
+        var item = Item(anchor, offsetX, offsetY);
+
+        var placed = CanvasAnchorMath.PlaceItem(item, Bounds, scale);
+        var (centerX, centerY) = CanvasAnchorMath.CenterOf(placed);
+        var (recoveredX, recoveredY) = CanvasAnchorMath.OffsetForCenter(Bounds, scale, anchor, centerX, centerY, item.SizeDip);
+
+        Assert.Equal(item.OffsetXDip, recoveredX, precision: 6);
+        Assert.Equal(item.OffsetYDip, recoveredY, precision: 6);
+    }
+
+    [Theory]
+    [InlineData(1.0, 700, 300)]
+    [InlineData(1.5, 678, 402)]
+    [InlineData(2.0, 520, 640)]
+    public void ADroppedItem_ComesBackWhereItWasDropped(double scale, int x, int y)
+    {
+        // The drag path: the drop point is turned into anchor + DIP offsets, and those offsets are
+        // what the layout file stores. Re-placing the item has to land it back under the pointer.
+        var item = Item(CanvasAnchor.Center, 0, -220);
+        var size = CanvasAnchorMath.PlaceItem(item, Bounds, scale).Width;
+        var dropped = new PixelRect(x, y, size, size);
+
+        var (centerX, centerY) = CanvasAnchorMath.CenterOf(dropped);
+        var (offsetX, offsetY) = CanvasAnchorMath.OffsetForCenter(Bounds, scale, item.Anchor, centerX, centerY, item.SizeDip);
+        item.OffsetXDip = offsetX;
+        item.OffsetYDip = offsetY;
+
+        Assert.Equal(dropped, CanvasAnchorMath.PlaceItem(item, Bounds, scale));
+    }
+
     private static CanvasItem Item(CanvasAnchor anchor, double offsetX, double offsetY) => new()
     {
         Anchor = anchor,

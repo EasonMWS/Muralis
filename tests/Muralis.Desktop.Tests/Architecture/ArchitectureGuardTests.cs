@@ -107,6 +107,37 @@ public sealed class ArchitectureGuardTests
     }
 
     [Fact]
+    public void CanvasContentDoesNotTouchTheDesktopLayer()
+    {
+        // Phase 2: the canvas draws items, lays out and takes input. Finding the desktop layer,
+        // creating the window and recovering from Explorer restarts stay the shell's business.
+        var code = Code(Path.Combine(RepoRoot(), "src", "Muralis.Desktop", "Surfaces", "CanvasSurfaceContent.cs"));
+        foreach (var token in new[]
+                 {
+                     "WorkerW", "SHELLDLL_DefView", "CreateWindowEx", "SetParent",
+                     "TaskbarCreated", "ShellRestarted", "EnumWindows", "FindWindowExW",
+                 })
+        {
+            Assert.True(
+                !code.Contains(token, StringComparison.Ordinal),
+                $"the desktop canvas must not know about the desktop layer, but mentions {token}");
+        }
+    }
+
+    [Fact]
+    public void NothingDrivesOrHidesTheNativeDesktopIcons()
+    {
+        // The non-destructive rule of the canvas prototype: Explorer's icons are left alone, so
+        // hiding them, moving them or scripting the desktop list view is off the table for good.
+        var offenders = SourceFiles("src")
+            .Where(file => new[] { "SysListView32", "LVM_", "SPI_SETICONS" }
+                .Any(token => Code(file).Contains(token, StringComparison.Ordinal)))
+            .Select(Relative)
+            .ToList();
+        Assert.True(offenders.Count == 0, $"the native desktop icons must stay untouched, but icon manipulation appears in: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
     public void TheAppDoesNotTouchTheDesktopLayer()
     {
         var offenders = SourceFiles("src/Muralis.App")
