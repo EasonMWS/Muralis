@@ -1274,3 +1274,114 @@ Phase 0 到此结束。下一动作 = 你批准本文件后，按 §14 的 Commi
 
 验收产物（`artifacts/`，未入库）：`p3c/p3-dock-verify.json`（41 项全通过）、`p3c/p3-perf-verify.json`（18 项全通过）、`p3c/p3-restart-verify.json` 与 `p3c/p3-wake-verify.json`（10 项全通过）。
 
+## 20. Phase 3D 落地记录：Native Desktop Takeover（2026-09-16）
+
+### 20.1 交付内容
+
+- **五个状态，不是一个 bool（spec §一）**：`DesktopTakeoverState`（Native / Enabling / Muralis / Disabling / RecoveryRequired）+ `DesktopMode`（Native / Preview / Takeover，用户的选择）+ `DesktopModeStatus`（把"愿望"与"事实"分开：`Mode` 是用户要的，`Takeover`/`Canvas` 是真的在发生，`EffectiveMode` 把两者合成一个可显示的结论）。`DesktopTakeoverMachine` 是纯函数状态机，合法迁移写死、非法迁移直接拒绝，`Validate()` 拒绝"声称接管过却没写原来什么样"的标记。
+- **优先使用官方 Shell View API（spec §二）**：先探针后设计。`tools/p3d-shell-api-probe.ps1`（604 行）在本机实测了桌面自己的 `IFolderView2`：`FVM_ICON` 模式 1、44 个条目、auto arrange 1、`SetCurrentFolderFlags(FWF_NOICONS)` 被 shell 接受并能读回——所以 `DesktopIconStrategy` 的两级梯子是 `ShellViewFlags`（文档化路径，本机走的就是它）→ `IconWindow`（隐藏图标列表窗口：公开、可逆、不留痕，但 shell 每次重建都要重新施加）。**注册表 `HideIcons` 不是主路径、没有 `SysListView32` 定位改写、没有 Explorer/DLL 注入、没有文档化之外的钩子**，这些由 `ArchitectureGuardTests` 在测试里守着。
+- **绝不修改用户 Desktop 文件（spec §三）**：扫描只读 `Desktop` 与 `Public Desktop`；harness 在每一档前后对两个目录做文件列表比对，全程 `0 difference(s)`。
+- **记录原始状态（spec §四）**：`NativeDesktopVisualState` 记下接管前的图标可见性与**整个 flags 字**（本机 `0x40200224 [FWF_SNAPTOGRID | FWF_DESKTOP]`）；归还时把这个字原样写回，而不是"把图标打开"——用户本来就把图标关着，就还是关着。
+- **Crash-safe Recovery（spec §五）**：`DesktopTakeoverRecord` + `DesktopTakeoverRecordStore`（原子写、校验 schema/kind、读不出来就搁置而不是照着做）。写标记在隐藏图标**之前**，删标记在图标验证回来**之后**——所以文件存在是保守声明：可能多余，绝不会漏。恢复在启动时走（`RecoverIfNeededAsync`），不在 Dispose 里。
+- **正常退出（spec §六）**：`DesktopShutdown`——先还图标并验证，再把画布从桌面上取下来，最后才关 shell 层；顺序反过来就是把画布从一个还藏着自己图标的桌面下抽走。幂等、永不抛出。
+- **Explorer Restart（spec §七）**：`DesktopTakeoverService.AttachTo(IDesktopShell)` 挂在 shell 的重建事件上重新施加接管；**Muralis 不重启 Explorer 来切换模式**（harness 里那次 `taskkill` 是为了验证"重启后自动恢复"，不是切换路径）。
+- **Desktop Import（spec §八、§九、§十）**：`DesktopContentScanner` 读两个桌面目录（程序 / 快捷方式 / 文件 / 文件夹 / 网址），`DesktopContentAdopter` 只做"要不要采纳"的判断，`DesktopItemSyncService` 负责落进文档。身份 = **源路径**（`OrdinalIgnoreCase`），与显示名无关；开启时扫描一次、手动刷新、启动刷新，`FileSystemWatcher` 带防抖且只在画布在时开着，**没有任何按帧或按秒的扫描**。
+- **首次开启体验（spec §十一）**：页面在动手**之前**说清"桌面有多少条目、会采纳多少、哪些不能采纳、现在是什么模式"，模式切换必经一次确认对话框。
+- **Emergency Restore（spec §十二）与托盘保底（spec §十三）**：`IDesktopModeService.RestoreNativeDesktopAsync()` **不读画布、不读布局、不读模式**，直接让接管服务把图标还回去，再把画布摘掉；托盘菜单常驻"关闭接管"与"恢复 Windows 桌面"两条命令（`TrayService`，原生 `Shell_NotifyIcon` 菜单，从自己的消息循环里跑、不 await 桌面），页面在知道自己欠一次归还时给出同一个入口。
+- **Dock 与 Canvas（spec §十四）**：Preview 与 Takeover **共用同一个画布服务**，区别只是图标藏不藏；harness 每次都断言"桌面上的画布窗口数 = 1"，所以不会出现两层各画一遍。
+- **App 侧（spec §十五）**：动态壁纸页新增桌面模式三选一（`DesktopModeRow`）+ 采纳开关 + 手动刷新 + 首次预览信息，中英双语本地化；原来 `settings.json` 里的"画布开关"搬进桌面布局文档，**桌面状态只有一个家**。
+
+### 20.2 关键实现决定
+
+- **顺序就是安全**：`DesktopModeService.ApplyCoreAsync` 先把画布挂上并**验证它真的在**，才轮到隐藏图标——在一个没有替代品的桌面上藏图标是"拿走"而不是"替换"。归还走反方向：图标先回来并验证，才把画布取下。
+- **记的是发生的事，不是被要求的事**：接管失败（图标没藏成）被记成 **Preview 并落盘**，因为它确实发生了（画布在、图标在）；画布没挂上则**什么都不记**，否则每次启动都会再失败一次。欠着归还的桌面**拒绝**任何新的接管（唯一的出路是归还），而要求其它模式时**先归还再动手**。
+- **标记的存在是保守声明**：先写标记后藏图标、先验证恢复后删标记；`recover:` 段整段发生在进程被 kill 之后，先还桌面、再恢复用户要的模式。
+- **恢复写回原值而不是"显示"**：用户桌面本来就藏图标时，接管再归还不能替用户把图标打开。
+- **身份是路径而不是名字**：一个 item 绑它来自哪个文件；改名或移动就是新条目，旧 item 留在原地指着老路径（显示为缺失），**不会被悄悄重新指向，也不会被悄悄丢掉**（三条单测钉住这个语义）。
+- **Explorer 重建由事件驱动**：shell 重建是 `ShellEventSource` 的一条消息，没有任何轮询循环——性能段里 idle 10 秒"桌面相关日志行 = 0"就是这条的实测。
+- **接管只做显示与交互**：桌面文件一个字节都不改；这条写在文档里、写在 CHANGELOG 里，也由每一档 harness 的文件列表比对守着。
+
+### 20.3 逐条验收（spec §十八 的 22 条矩阵）
+
+`tools/p3d-takeover-verify.ps1 -Stage full` 共 **88 项检查全通过**（`artifacts/p3d/full-run.txt`：ui 38 / recover 19 / explorer 10 / tray 20 + harness 1），性能另起 `-Stage perf` **62 项全通过**（`artifacts/p3d/perf-run.txt`）。逐条对照：
+
+| spec §十八 | 实测（节选 harness 文案） |
+| --- | --- |
+| 1 Native 启动 | `ui: the app started in Native, as the document said : remembered mode Native` |
+| 2 Enable Takeover | `ui: the picker moved the desktop to takeover : the document says Takeover` |
+| 3 原生图标消失 | `ui: the native icons are really hidden : 0x40201224 [FWF_SNAPTOGRID \| FWF_DESKTOP \| FWF_NOICONS]` |
+| 4 Muralis items 正常显示 | `takeover: the canvas item is on the desktop with the icons hidden`；`perf 100: every planted item is on the canvas : items 100` |
+| 5 项目数量与 Desktop 内容匹配 | `ui: the user's own items were adopted by reference : 42 item(s) name a source path`、`ui: every adopted item points into a desktop folder : 0 outside`；`perf 50: the icons were resolved from the shell : 47 cached of 47 with a file behind them` |
+| 6 点击/启动正常 | `takeover: a single click picks the item out : selected ui_app`、`takeover: a single click opens nothing : no new process`、`takeover: a double click opens the program it names : pids …` |
+| 7 拖拽布局正常 | `takeover: the drop moved the item and was saved : 0,0 -> 260,-180`、`takeover: the drag and its release opened nothing`、`takeover: the item is really drawn where it was let go : hovered ui_app` |
+| 8 Dock 正常 | dock 本身由 3C 的 `-Stage dock` 41 项覆盖；接管期间只有一层画布：`ui: the canvas is on the desktop : 1 canvas window(s)`。**"接管 + dock 指针"的合体动作没有单独实测**，见 §20.6 |
+| 9 Disable Takeover | `ui: the picker moved the desktop back to native : the document says Native` |
+| 10 原生图标立即恢复 | `ui: the native icons are visible again : 0x40200224 [FWF_SNAPTOGRID \| FWF_DESKTOP]` |
+| 11 原图标文件一个不少 | `ui: not one of the user's desktop files changed : 0 difference(s)`、`explorer/tray/recover: not one of the user's desktop files changed`、`perf: the user's desktop is untouched at every size` |
+| 12 原始 native visibility 状态正确恢复 | `ui: the desktop flags are exactly what they were found with`、`tray: the desktop flags are the ones it was found with`、`recover: the desktop is exactly as it was found` |
+| 13 Takeover ON → Explorer restart → 自动恢复 | `explorer: the takeover is re-applied to the new desktop`、`explorer: the rebuilt desktop hides its icons again : 0x40201224 …`、`explorer: the mode is still the one the user asked for` |
+| 14 Takeover OFF → Explorer restart → 保持 Native | 3C `-Stage dock` 的重启恢复 + 本段 `explorer: the desktop flags are exactly what they were found with`（重启后归还仍精确到 flags） |
+| 15 Takeover ON → 正常 Exit → 原生图标恢复 | `tray: turning the takeover off gives the desktop back`、`tray: no marker is left behind`、`tray: the desktop flags are the ones it was found with`，退出路径即 `DesktopShutdown`（`ui:` 段收尾 `0 canvas window(s) left` + 标记消失） |
+| 16 Takeover ON → 模拟 crash → 下次启动自动 recovery | `recover: a killed run leaves its marker behind`、`recover: the next launch noticed the marker the crash left`、`recover: the desktop was given back before anything was built on it`、`recover: the mode the user asked for came back` |
+| 17 layout.json 损坏 → Windows Desktop 仍可恢复 | `DesktopModeServiceTests.GivingTheDesktopBack_NeedsNoCanvasAndNoLayoutAndNoMode`（布局读不出、画布摘不掉，仍然归还并把画布自己的错误单独报出来）+ `recover: the emergency restore …` 一整段（页面不在画面里时同一入口仍有效） |
+| 18 Canvas mount 失败 → 不隐藏 native icons | `DesktopModeServiceTests.ATakeover_IsNeverAskedForWhileTheCanvasIsNotShowing`（接管一次都没被请求、模式不落盘）+ `ATakeoverThatCannotHideTheIcons_IsRememberedAsAPreview` |
+| 19 连续 Enable/Disable ×20 | `DesktopModeServiceTests.TwentyRoundsOfTakingOverAndGivingBack_LeaveTheDesktopNative`（20 次进出后仍 Native、计数与写入都收敛）+ 真机 3 轮（perf 10/50/100 各一次） |
+| 20 Desktop 有 100 个项目时仍可工作 | `perf 100:` 一段 21 项（enable 5997 ms、disable 3882 ms、idle 218.75 ms/10 s、GPU 0.337 %、97 个图标 24.3 MB） |
+| 21 Tray Emergency Restore 正常 | `recover: the emergency restore was chosen`、`… puts the desktop back`、`… leaves no marker behind`、`… leaves the desktop native`；`tray: the restore command was chosen` 同样一组 |
+| 22 Windows 原生桌面数据 hash / 文件列表切换前后相同 | 每一档收尾的 `0 difference(s)`，含 `perf: the user's desktop is untouched at every size` |
+
+### 20.4 测试与提交
+
+- 新增测试：Core——`Desktop/Takeover/DesktopTakeoverMachineTests`（五态迁移与非法迁移）、`DesktopTakeoverRecordStoreTests`（原子写、坏文件搁置、脏 schema 拒绝）、`DesktopTakeoverOptionsTests`、`DesktopLayoutMigratorTests`（v3→v4 与 `.v3.bak`）、`DesktopContentScannerTests`、`DesktopContentAdoptionTests`（含三条"身份是路径"的用例）；Desktop——`Modes/DesktopModeServiceTests`（10 项：顺序、失败语义、欠归还、紧急归还、20 轮进出）、`Takeover/DesktopTakeoverLiveTests`（真桌面上的接管/归还/崩溃恢复/坏标记）、`Sync/DesktopItemSyncServiceTests`、`Architecture/ArchitectureGuardTests`（禁止注册表 `HideIcons` 主路径、禁止注入、禁止 `SysListView32` 定位）。Core 415 → **485**，Desktop 125 → **150**（共 635）；Debug / Release 双配置 **0 警告 0 错误**。
+- 提交（`architecture-v2` 分支，见 §20.7）。
+- 验收脚本：`tools/p3d-takeover-verify.ps1`（`-Stage probe|ui|recover|explorer|tray|perf|full`）、`tools/p3d-shell-api-probe.ps1`、`tools/p3d-shell-interop.ps1`（PowerShell 侧直接问 shell view 的探针）；`tools/p3-common.ps1` 增加图标 flags/native 状态的读取、桌面前后快照比对、`Read-StateAt` 的角落模式自救与 notepad 基线工具。产物在 `artifacts/p3d/`（未入库）。
+
+### 20.5 性能（接管期间的真实桌面，10 / 50 / 100 个条目）
+
+| 项目 | 10 项 | 50 项 | 100 项 |
+| --- | --- | --- | --- |
+| Takeover enable（其中扫描与规划） | 4151 ms（2223 ms） | 4674 ms（2596 ms） | 5997 ms（3653 ms） |
+| Takeover disable | 3091 ms | 3310 ms | 3882 ms |
+| 一次 takeover 读取桌面的次数 | 2 | 2 | 2 |
+| 解析出图标的条目 | 7 / 7 | 47 / 47 | 97 / 97 |
+| 图标缓存条目 / 内存 | 7 / 1.8 MB | 47 / 11.8 MB | 97 / 24.3 MB |
+| Idle CPU（图标已隐藏，10 s） | 31.25 ms = 单核 **0.31 %** | 109.375 ms = **1.09 %** | 218.75 ms = **2.19 %** |
+| Idle 期间的桌面工作日志行 | **0** | **0** | **0** |
+| 指针扫过整格 CPU | 453.125 ms / 13.9 s = **3.26 %** | 578.125 ms / 15.1 s = **3.82 %** | 250 ms / 15.1 s = **1.66 %** |
+| 扫动 GPU 峰值 | 0.468 % | 0.078 % | 0.337 % |
+| 句柄（扫动前 → 后） | 1685 → 1662 | 1985 → 1937 | 2367 → 2314 |
+| GDI / USER 对象 | 101 / 71 | 121 / 70 | 119 / 73 |
+| 工作集 | 248.6 MB | 294.3 MB | 347.6 MB |
+| 桌面文件差异 | 0 | 0 | 0 |
+| 整段检查 | 21 项全通过 | 21 项全通过 | 21 项全通过 |
+
+spec §十九 的"Takeover 本身不得建立 polling loop"被回答了两次：**idle 10 秒的 CPU 预算**（上表）与 **idle 10 秒内 "The desktop holds …" / "Desktop layout loaded from …" 日志行数 = 0**（真有轮询就一定有日志）。enable 的耗时几乎全部是"扫描桌面 + 规划采纳"（10 项 2223 ms → 100 项 3653 ms），接管本身（问 shell view、读回、写标记）在 1 s 量级。
+
+### 20.6 已知限制 / 诚实记录
+
+- **"接管 + dock 指针"没有合体实测**：dock 交互在 3C 已用 41 项真机检查证明（原生桌面下），接管期间只验证了"画布只有一层"（`1 canvas window(s)`）与"接管后图标仍然藏着"。两者同时发生的指针路径没有单独跑——dock 与画布本来就是同一个画布服务的两层视图，本轮没有为这条组合再造一个 fixture（`Write-Layout` 不写 Dock 段，3D 的 fixture 里 dock 是关的）。
+- **只实现了两级梯子，第二级未在真机触发**：本机走的是 `ShellViewFlags`，`IconWindow` 这一级只有代码与单测，没有实测到（要实测它就得先让第一级失败）。所以"退到第二级仍可恢复"是设计上成立、而不是测过的事实。
+- **接管只在单屏 96 DPI 的单机 Windows 11 上实测**：`monitor  \\.\DISPLAY5 · 2560x1440 at 0,0 · 96 dpi (1x)`；多屏、高 DPI、以及"桌面被第三方工具改过"的组合未覆盖。
+- **多用户 / 非英文桌面文件夹未覆盖**：扫描用的是 shell 报告的路径，没有被测过重定向过的 Desktop（如 OneDrive 接管桌面）——不过那条路径下扫描仍然只读。
+- **接管期间没有"桌面条目实时变化"的自动同步实测**：`FileSystemWatcher` 的防抖路径有单测，真机上没有在接管中往桌面丢文件去验证它。
+- **没有画 hover 名称标签、没有运行指示**（沿用 3C 的缺口）：桌面上的合成层没有文本渲染路径。
+- **性能是一次测量**，不是分布；idle 10 s、扫动 13.9–15.1 s 各一段。CPU 百分比是"单核占比"，且含 harness 自身 `SendInput` 的节奏影响；100 项那档扫动百分比反而最低，因为每个条目小、指针跨越的放大项少。
+- **验收脚本会最小化挡住桌面的窗口（结束恢复）、会关闭自己启动的 notepad、会 `taskkill explorer.exe` 后重启它**（沿用 Phase 1G/3B/3C 已获授权的做法）。它只移动真实指针、只读自家窗口与桌面文档；不读用户屏幕内容、不读凭据。
+- **`feat:` 提交包含了它必须一起带上的测试改动**（`SettingsServiceTests`、`DesktopItemSyncServiceTests`）：设置搬家与同步服务签名变了，不一起带上 `Muralis.slnx` 就编不过；新增的测试类与 harness 在随后的 `test:` 提交里。
+
+### 20.7 提交与验收产物
+
+| 提交 | 内容 |
+| --- | --- |
+| `2dfb5b2` | feat: add the native desktop takeover service and its crash marker（Core 五态模型 + 标记存储 + Desktop shell view 梯子 + 文档 v4 + 探针脚本 + 架构守卫） |
+| `44da80a` | feat: import windows desktop items（内容扫描 + 采纳规划 + 同步服务 + 只读扫描测试） |
+| `fd6a3e0` | feat: add the desktop modes and the tray's desktop commands（模式服务 + 文档 v4 的接管段 + App 页面三选一与确认框 + 托盘两条保底命令 + `DesktopShutdown` + 设置搬家） |
+| `f91ceda` | test: cover desktop takeover lifecycle（`Modes/DesktopModeServiceTests` + 崩溃恢复记录测试 + 身份语义三例 + harness 与探针） |
+| `docs: complete interactive desktop phase` | 本节 + CHANGELOG（就是包含本表的那次提交，哈希见 `git log -1`） |
+
+前四个提交各自都经 Debug 全量构建验证（0 警告 0 错误）；`fd6a3e0` 之前只有生产代码，`f91ceda` 之后 Debug / Release 双配置全量测试通过（Core 485 + Desktop 150）。
+
+验收产物（`artifacts/`，未入库）：`p3d/full-run.txt` 与 `p3d/p3d-takeover-verify.json`（88 项全通过）、`p3d/perf-run.txt`（62 项全通过）、`p3d/residue-*.json.p3d-bak`（被移出用户 app-data 的残留，留档）。
+
+**Phase 3 状态**：Phase 3A（Pointer Router）、3B（真实桌面条目与启动）、3C（交互式边缘 dock）、3D（原生桌面接管）四段全部落地，Phase 3「Interactive Desktop」完成。Muralis 现在可以在三种桌面模式之间切换，接管期间**不拥有用户桌面上的任何文件**——只读、只指、只停画图标，并且无论怎么退出都还得回去。
+

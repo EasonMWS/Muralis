@@ -17,7 +17,60 @@ programs, shortcuts, files, folders and web addresses — imported by hand, draw
 icons the shell shows, opened by double-clicking them, and marked rather than thrown away
 when what they point at goes missing.
 
+The desktop itself can now be handed over and given back. A takeover mode in which Explorer
+stops drawing its own desktop icons and the canvas becomes the layer you use, with the three
+modes — native, preview, takeover — as an explicit choice the page asks for and the document
+remembers; a give-back that puts the icons back the way they were found rather than switching
+them on; a marker on disk so that a crash leaves a desktop that the next launch pays back; an
+emergency restore in the tray that works whatever else is wrong; and a rule that holds
+everywhere in it: **Muralis does not own the user's desktop files.** It reads them, points at
+them, and never copies, moves, renames or deletes one.
+
 ### Added
+
+**The desktop takeover**
+
+- Three desktop modes, asked for on the Dynamic Wallpaper page and remembered in the desktop
+  document: native, where nothing is mounted and the desktop is Windows'; preview, where the
+  canvas is drawn above a desktop whose own icons are untouched; and takeover, where the
+  native icons are hidden and the canvas is the layer you use. The page asks before either
+  canvas mode begins, and the mode survives a restart
+- A takeover that goes through the shell's own view: Muralis asks the desktop's view for the
+  no-icons flag, reads back that the shell answered that way, and records which route worked.
+  The registry is never written, the icon list is never rearranged, Explorer is never injected
+  into and never restarted; a shell that offers none of the documented routes is refused
+  rather than worked around
+- A give-back that restores what was found instead of switching the icons on: what the
+  desktop's icons looked like before the takeover is recorded, and a user who keeps their
+  icons hidden gets them back hidden
+- A data model for handover that is not a flag: native, enabling, Muralis, disabling and
+  recovery-required, with every move out of a state defined. A takeover that fails before the
+  icons were hidden rolls back to native; one that fails after them lands in recovery-required
+  instead of pretending nothing happened, and nothing may be taken over while a give-back is
+  owed
+- A crash-safe marker: a small file that records that the desktop was taken over, when, by
+  which run and what the desktop looked like, written atomically before the icons go. The next
+  launch finds it, gives the desktop back and only then restores the mode the user asked for —
+  no clean exit is required for any of it, and a marker that cannot be read is set aside rather
+  than acted on
+- An emergency restore that works whatever else is wrong: the page offers it when it knows the
+  desktop still needs paying back, and the tray offers it always — including while the desktop
+  is Muralis's and the desktop page is not the page on screen
+- The tray's own desktop commands: turn the takeover off, and restore the Windows desktop.
+  Both end in the same verified give-back, and both are reachable whatever the canvas is doing
+- A restarted Explorer is taken into account: the rebuilt desktop is noticed and the takeover
+  is applied to it again, without Muralis restarting the shell itself
+- The desktop's own content is brought in by reference: the programs, shortcuts, files,
+  folders and addresses already on the desktop and the public desktop are read once and shown
+  as canvas items that point at where those files already are. Nothing is copied, moved,
+  renamed or thrown away, an item turned down is never adopted again, and turning the import
+  off leaves every file exactly where it is
+- An item adopted from the desktop is tied to the path it came from rather than to the name it
+  shows, so the same file is recognised however it is labelled and a file that merely shares its
+  name somewhere else is a different thing; a file that is moved or renamed is a new entry, and
+  the item pointing at where it used to be says so instead of following it
+- A page that says which mode the desktop is in, how many items the desktop holds, how many
+  would be adopted and which ones cannot be, before any of it happens
 
 **The dock**
 
@@ -77,6 +130,12 @@ when what they point at goes missing.
 
 ### Changed
 
+- The desktop layout document is version 4: it carries the takeover — mode, whether the
+  desktop's own items may be adopted, which ones were turned down — and every item remembers
+  the path it came from. A version 3 file is read once and brought forward
+- Whether the canvas is up is no longer a setting in `settings.json`: it is part of the
+  desktop mode, which lives with the desktop document, so the desktop's state has one home
+  instead of two that can disagree
 - The desktop layout document is version 3; a version 2 file is read once, brought forward
   and kept beside the new one as `.v2.bak`
 - Dock items no longer sit in the item list with a placement tag: where an item lives is
@@ -90,12 +149,17 @@ when what they point at goes missing.
 
 ### Fixed
 
+- The choice not to adopt the desktop's own items is honoured while the canvas is mounted
+  too: it was only read on the path where no canvas was up, so a preview or a takeover
+  brought the desktop in anyway
 - Closing Muralis and reopening it within a second could leave the icon apparently doing
   nothing, because the name the second launch found was still held by the process that had
   just exited
 
 ### Removed
 
+- The desktop canvas on/off setting: the desktop mode says which of the three the desktop is
+  in, and a document that still carries the old setting is read into the mode it described
 - The Steam / Chrome / Blender / ComfyUI placeholder tiles: the canvas starts empty and
   shows only what has been pointed at something real
 
