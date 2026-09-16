@@ -29,8 +29,14 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        // Remove the tray icon and stop timers cleanly when the process exits.
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => _host.Dispose();
+        // Remove the tray icon and stop timers cleanly when the process exits. The single-instance
+        // name is let go first, so a launch right after this one exits never waits for the process
+        // to be torn down.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            SingleInstanceGuard.Release();
+            _host.Dispose();
+        };
     }
 
     public static T GetService<T>()

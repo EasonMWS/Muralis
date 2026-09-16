@@ -154,6 +154,12 @@ public sealed partial class MainWindow : Window
             Activate();
             ShellInterop.SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
             _logger.LogInformation("Window brought to the foreground");
+
+            // Answered only now that the window is really up: the launch that asked is told this
+            // instance is here *and* able to show itself. An instance that is closing cannot get
+            // this far, so its silence is what tells the next launch to wait for the name instead
+            // of believing in an instance that is already on its way out.
+            SingleInstanceGuard.AcknowledgeActivation();
         }
         catch (Exception ex)
         {
