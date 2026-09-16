@@ -1,4 +1,5 @@
 using Muralis.Core.Canvas;
+using Muralis.Core.Desktop;
 using Muralis.Core.Models;
 using Xunit;
 
@@ -80,7 +81,7 @@ public sealed class CanvasAnchorMathTests
     [Fact]
     public void ItemLargerThanTheDisplay_StillAnchorsAtTheOrigin()
     {
-        var huge = new CanvasItem { Anchor = CanvasAnchor.Center, SizeDip = 4000 };
+        var huge = Item(CanvasAnchor.Center, 0, 0, sizeDip: 4000);
 
         var placed = CanvasAnchorMath.PlaceItem(huge, Bounds, 1.0);
 
@@ -165,10 +166,12 @@ public sealed class CanvasAnchorMathTests
         Assert.Equal(dropped, CanvasAnchorMath.PlaceItem(item, Bounds, scale));
     }
 
-    private static CanvasItem Item(CanvasAnchor anchor, double offsetX, double offsetY) => new()
+    private static DesktopItem Item(CanvasAnchor anchor, double offsetX, double offsetY, double sizeDip = 96) => new()
     {
         Anchor = anchor,
         OffsetXDip = offsetX,
         OffsetYDip = offsetY,
+        SizeDip = sizeDip,
+        Target = new FolderTarget { Path = @"C:\muralis\anchor-math" },
     };
 }

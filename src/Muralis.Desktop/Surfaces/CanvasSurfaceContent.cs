@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Canvas;
+using Muralis.Core.Desktop;
 using Muralis.Core.Models;
 using Muralis.Desktop.Input;
 using Muralis.Desktop.Interop;
@@ -65,8 +66,8 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private static readonly Color RailFill = Color.FromArgb(150, 28, 32, 40);
 
-    private readonly CanvasLayout _layout;
-    private readonly CanvasLayoutStore _store;
+    private readonly DesktopLayout _layout;
+    private readonly DesktopLayoutStore _store;
     private readonly ILogger _logger;
     private readonly CanvasDockAutoHide _dock;
     private readonly DesktopPointerRouter? _pointer;
@@ -101,7 +102,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private volatile CanvasDiagnosticsSnapshot? _snapshot;
 
-    internal CanvasSurfaceContent(CanvasLayout layout, CanvasLayoutStore store, ILogger logger, DesktopPointerRouter? pointer = null)
+    internal CanvasSurfaceContent(DesktopLayout layout, DesktopLayoutStore store, ILogger logger, DesktopPointerRouter? pointer = null)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(store);
@@ -1150,7 +1151,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private sealed class ItemView
     {
         internal ItemView(
-            CanvasItem item,
+            DesktopItem item,
             ContainerVisual visual,
             SpringVector3NaturalMotionAnimation scaleSpring,
             SpringVector3NaturalMotionAnimation moveSpring,
@@ -1163,7 +1164,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             BaseScale = baseScale;
         }
 
-        internal CanvasItem Item { get; }
+        internal DesktopItem Item { get; }
 
         internal ContainerVisual Visual { get; }
 

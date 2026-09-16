@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Canvas;
+using Muralis.Core.Desktop;
 using Muralis.Core.Models;
 using Muralis.Desktop.Input;
 using Muralis.Desktop.Shell;
@@ -26,7 +27,8 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
     private readonly ILogger<DesktopCanvasServiceAdapter> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IDesktopShell _shell;
-    private readonly CanvasLayoutStore _store;
+    private readonly DesktopLayoutStore _store;
+
     private readonly DesktopPointerRouter _pointer;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
@@ -37,7 +39,7 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
     public DesktopCanvasServiceAdapter(
         ILoggerFactory loggerFactory,
         IDesktopShell shell,
-        CanvasLayoutStore store,
+        DesktopLayoutStore store,
         DesktopPointerRouter pointer)
     {
         ArgumentNullException.ThrowIfNull(loggerFactory);

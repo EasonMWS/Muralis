@@ -1,3 +1,4 @@
+using Muralis.Core.Desktop;
 using Muralis.Core.Models;
 
 namespace Muralis.Core.Canvas;
@@ -45,7 +46,7 @@ public static class CanvasAnchorMath
     /// The pixel rectangle a free item occupies for the given display bounds and DPI scale,
     /// clamped so the whole item stays on the display.
     /// </summary>
-    public static PixelRect PlaceItem(CanvasItem item, PixelRect bounds, double scaleFactor)
+    public static PixelRect PlaceItem(DesktopItem item, PixelRect bounds, double scaleFactor)
     {
         ArgumentNullException.ThrowIfNull(item);
 

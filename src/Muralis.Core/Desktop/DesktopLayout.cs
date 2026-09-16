@@ -1,17 +1,30 @@
-namespace Muralis.Core.Canvas;
+using Muralis.Core.Canvas;
+
+namespace Muralis.Core.Desktop;
 
 /// <summary>
-/// The desktop canvas prototype document: every item plus the parameters that shape hover
-/// magnification, motion and the edge dock. It is persisted on its own, away from application
-/// settings, so the prototype can be reset or hand-edited without touching
-/// <c>settings.json</c>.
+/// The desktop layout document: the items the user put on the desktop, plus the parameters that
+/// shape hover magnification, motion and the edge dock. It is persisted on its own, away from
+/// application settings, so a hand-edit or a reset never touches <c>settings.json</c>.
 /// </summary>
-public sealed class CanvasLayout
+/// <remarks>
+/// The first desktop document that describes real things: every item carries a typed
+/// <see cref="DesktopItem.Target"/>. Version 1 held nothing but prototype tiles, so a migrated
+/// document keeps the parameters and starts with no items — nothing that could not open anything
+/// is carried over.
+/// </remarks>
+public sealed class DesktopLayout
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>Version 2 introduced typed item targets and dropped the prototype tiles.</summary>
+    public const int CurrentSchemaVersion = 2;
+
+    /// <summary>Document marker, so a file that is not a Muralis desktop layout is refused early.</summary>
+    public const string DocumentKind = "muralis.desktopLayout";
 
     /// <summary>Bumped whenever the on-disk shape changes in a breaking way.</summary>
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
+    public string Kind { get; set; } = DocumentKind;
 
     public CanvasProximityOptions Proximity { get; set; } = new();
 
@@ -19,66 +32,18 @@ public sealed class CanvasLayout
 
     public CanvasDockOptions Dock { get; set; } = new();
 
-    /// <summary>All items. Dock items appear in rail order; free items use <see cref="CanvasItem.Z"/>.</summary>
-    public List<CanvasItem> Items { get; set; } = [];
+    /// <summary>All items. Dock items appear in rail order; free items use <see cref="DesktopItem.Z"/>.</summary>
+    public List<DesktopItem> Items { get; set; } = [];
 
     /// <summary>
-    /// The default prototype: four free items in a row around the display centre (so hovering
-    /// the middle of the row shows the magnification bell) and four items in the left dock.
+    /// The layout a fresh install starts from: the parameters that shape the canvas and no items
+    /// at all. Items only ever appear because the user added one.
     /// </summary>
-    public static CanvasLayout CreateSeed()
-    {
-        var layout = new CanvasLayout();
-        // Neighbours sit 130 DIP apart so hovering the row shows the magnification bell: the item
-        // under the cursor grows the most, its neighbours less, and the far item not at all.
-        var row = new (string Id, string Name, string Icon, double Offset)[]
-        {
-            ("steam", "Steam", "steam", -195),
-            ("chrome", "Chrome", "chrome", -65),
-            ("blender", "Blender", "blender", 65),
-            ("comfyui", "ComfyUI", "comfyui", 195),
-        };
-
-        var z = 0;
-        foreach (var (id, name, icon, offset) in row)
-        {
-            layout.Items.Add(new CanvasItem
-            {
-                Id = id,
-                Name = name,
-                IconKey = icon,
-                Placement = CanvasItemPlacement.Free,
-                Anchor = CanvasAnchor.Center,
-                OffsetXDip = offset,
-                OffsetYDip = -220,
-                Z = z++,
-            });
-        }
-
-        foreach (var (id, name, icon) in new (string, string, string)[]
-        {
-            ("files", "Files", "files"),
-            ("music", "Music", "music"),
-            ("settings", "Settings", "settings"),
-            ("terminal", "Terminal", "terminal"),
-        })
-        {
-            layout.Items.Add(new CanvasItem
-            {
-                Id = id,
-                Name = name,
-                IconKey = icon,
-                Placement = CanvasItemPlacement.Dock,
-                Z = z++,
-            });
-        }
-
-        return layout;
-    }
+    public static DesktopLayout CreateEmpty() => new();
 
     /// <summary>
-    /// Checks the facts consumers rely on. Returns an empty list when the layout is coherent;
-    /// the store falls back to the seed layout otherwise.
+    /// Checks the facts consumers rely on. Returns an empty list when the layout is coherent; the
+    /// store falls back to an empty layout otherwise.
     /// </summary>
     public IReadOnlyList<string> Validate()
     {
@@ -87,6 +52,16 @@ public sealed class CanvasLayout
         if (SchemaVersion <= 0)
         {
             problems.Add("The layout schema version must be positive.");
+        }
+
+        if (SchemaVersion > CurrentSchemaVersion)
+        {
+            problems.Add($"The layout was written by a newer version ({SchemaVersion}).");
+        }
+
+        if (!string.Equals(Kind, DocumentKind, StringComparison.Ordinal))
+        {
+            problems.Add($"The layout kind must be '{DocumentKind}'.");
         }
 
         ValidateProximity(Proximity, "proximity", problems);
@@ -131,46 +106,37 @@ public sealed class CanvasLayout
             problems.Add("Dock margin and padding must be 0-512 DIP.");
         }
 
+        if (Items is null)
+        {
+            problems.Add("The layout needs an item list.");
+            return problems;
+        }
+
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in Items)
         {
-            if (string.IsNullOrWhiteSpace(item.Id))
+            if (item is null)
             {
-                problems.Add("Every item needs a non-empty id.");
+                problems.Add("The layout contains a null item.");
+                continue;
             }
-            else if (!ids.Add(item.Id))
+
+            if (!string.IsNullOrWhiteSpace(item.Id) && !ids.Add(item.Id))
             {
                 problems.Add($"The item id '{item.Id}' is used twice.");
             }
 
-            if (string.IsNullOrWhiteSpace(item.Name))
-            {
-                problems.Add($"The item '{item.Id}' needs a name.");
-            }
-
-            if (string.IsNullOrWhiteSpace(item.IconKey))
-            {
-                problems.Add($"The item '{item.Id}' needs an icon key.");
-            }
-
-            if (item.SizeDip is < 16 or > 512)
-            {
-                problems.Add($"The item '{item.Id}' has a size outside 16-512 DIP.");
-            }
-
-            if (!double.IsFinite(item.OffsetXDip) || !double.IsFinite(item.OffsetYDip))
-            {
-                problems.Add($"The item '{item.Id}' has a non-finite offset.");
-            }
+            problems.AddRange(item.Validate());
         }
 
         return problems;
     }
 
     /// <summary>Deep copy, safe to hand to another thread while the canvas keeps editing this one.</summary>
-    public CanvasLayout Clone() => new()
+    public DesktopLayout Clone() => new()
     {
         SchemaVersion = SchemaVersion,
+        Kind = Kind,
         Proximity = Proximity.Clone(),
         Motion = Motion.Clone(),
         Dock = Dock.Clone(),
