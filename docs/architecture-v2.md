@@ -1,7 +1,7 @@
 # Muralis Architecture V2 — Blueprint（Phase 0）
 
-> **状态**：Phase 0 交付物，已按审核意见 R1–R7 修订，等待最终批准进入 Phase 1。
-> **分支**：`architecture-v2` ｜ **日期**：2026-09-15 ｜ **基线**：v0.2.0（`d6bbe17`）
+> **状态**：Phase 0 交付物，已按审核意见 R1–R7 修订；Phase 1（1A–1G）与 Phase 2（Desktop Canvas Prototype，重排后）已落地，记录见 §14、§16。
+> **分支**：`architecture-v2` ｜ **日期**：2026-09-15（v2 重排 2026-09-16）｜ **基线**：v0.2.0（`d6bbe17`）
 > **范围**：本文件只描述设计与迁移计划。Phase 0 不修改任何生产代码。
 
 ### 修订记录
@@ -10,6 +10,7 @@
 | --- | --- |
 | v0 | 初稿：现状盘点、模块关系、Shell/Surface/Monitor/Scene/Canvas/Widget/Media 设计、Roadmap |
 | v1 | 按审核意见修订：**R1** interop 边界改为领域归属规则；**R2** `MonitorIdentity` 与 `MonitorRuntimeInfo` 拆分，Profile 只绑 `StableId`；**R3** Runtime State 必须可删除可重建，新增 Asset Bindings 持久层；**R4** Scene 不是 `BackdropKind`，引入 Scene 编排层；**R5** Canvas/Widget 渲染技术不提前锁定，Phase 1 只实现 Video 内容；**R6** 开放问题 Q1–Q7 已裁决（§15）；**R7** Phase 1 拆为 Commit A–G 且不迁移与 Desktop Shell 无关的 App native 代码 |
+| v2 | 按 2026-09-16 决议重排 Roadmap：**Phase 2 = Desktop Canvas Prototype**（非破坏原型，先把 §9 的坐标模型与 §5.3 的渲染承载在真机上验证）；原 Phase 2（Monitor Model & Multi-monitor Surfaces）整块延后，不再是下一个阶段。§13.2 阶段表保留原文并加注重排说明；落地记录见 §16 |
 
 ---
 
@@ -514,6 +515,7 @@ Phase 0/1 只记录该分层，**不实现 SceneOrchestrator**。
 ## 9. Desktop Canvas 数据模型
 
 > 只定义模型。渲染与接管方式在 Phase 5 原型验证（§9.3 / §5.3）。
+> 2026-09-16 更新：坐标模型与渲染承载已由 Phase 2 的**非破坏原型**（§16）先行验证——WUC Composition 承载在 shell 的 Surface 窗口上，锚点 + DIP 偏移按 §9.1 实现；**接管 Windows 原生图标仍未实施**，本节其余设计不变。
 
 ### 9.1 坐标方案
 
@@ -720,6 +722,8 @@ interface IDesktopBackdropService
 | **8** | **Media Expansion** | `IAudioPlaybackService` + `ISystemMediaIntegration`（SMTC）+ 场景 media 文档 | 音乐播放器 + 媒体键正确路由 | SMTC 抢占（必须与 backdrop 会话隔离）；媒体路径可移植性 | 会话角色分离（§11.3）；媒体项引用场景资产 + Asset Bindings |
 | **9** | **Shell Integration & Cloud（远景）** | 资源管理器右键「设为壁纸/场景」、跳转列表、通知；场景云同步、跨设备 profile | — | 云端凭据 / PII / 冲突合并 | 本阶段不设计细节；`Muralis.Cloud` 仅作为**可选**未来类库（依赖 Core） |
 
+> **2026-09-16 重排（v2）**：上表为原始计划，保留原文备查。事实执行顺序改为：**Phase 2 = Desktop Canvas Prototype**（本表之外的新阶段，落地记录见 §16）——先把 §9 的坐标模型与 §5.3 的渲染承载在真机上做**非破坏原型**，验证自由布局、悬停放大、弹性动画、边缘停靠与 DPI 适配之后再动多显示器。**原 Phase 2（Monitor Model & Multi-monitor Surfaces）整块延后**，不再是下一个阶段；其余阶段编号与范围暂不变（重排不改动 §9.3 的「Preview 先行、接管独立可关闭」顺序）。
+
 ### 13.3 阶段内的「无半迁移」保障
 
 - 每个阶段结束时，任一功能要么完全是旧实现、要么完全是新实现；
@@ -889,7 +893,7 @@ Phase 1G 不做新的架构迁移；本轮把 Phase 1 成果按所有权、线�
 - 测试窗口内出现过一次不可复现的启动异常（进程存活、未写日志、无崩溃记录），其后同类启动 20+ 次全部正常，未再出现；
 - 三个 UI 回归脚本（m4 / m3_verify / m2a）因脚本自身滞后于 UI 演进（导航新增 Downloads / Dynamic wallpaper、语言项本地化、下载完成等待）做了测试侧修正后全绿；应用代码未因测试改动。
 
-**Phase 1 完成条件**：全部达成（构建 / 测试 / 门禁 / 生命周期 / 性能 / 功能回归 / 单屏拓扑）。下一阶段入口 = Phase 2（Monitor Model & Multi-monitor Surfaces）。
+**Phase 1 完成条件**：全部达成（构建 / 测试 / 门禁 / 生命周期 / 性能 / 功能回归 / 单屏拓扑）。下一阶段入口 = Phase 2。（2026-09-16 重排：实际下一阶段为 Desktop Canvas Prototype，见 §16；多显示器阶段延后，见 §13.2。）
 
 ### Phase 1 状态（1A–1G）
 
@@ -929,3 +933,72 @@ Phase 1G 不做新的架构迁移；本轮把 Phase 1 成果按所有权、线�
 ### 15.3 本文件之后
 
 Phase 0 到此结束。下一动作 = 你批准本文件后，按 §14 的 Commit A–G 执行 Phase 1；每一 Commit 单独可回退，且不改变用户可感知行为。
+
+---
+
+## 16. Phase 2 落地记录：Desktop Canvas Prototype（2026-09-16）
+
+> 2026-09-16 决议：Phase 2 重新定义为本落地记录描述的 **Desktop Canvas Prototype**；原 Phase 2（Monitor Model & Multi-monitor Surfaces）整块延后（见 §13.2 重排说明）。本阶段**不做**原生图标接管——目标是先把画布的坐标、渲染、动画、输入在真机上验证为非破坏原型。
+> 结论基于 Debug/Release 双配置 0 警告构建 + 全部测试（Core 281 / Desktop 48）+ 本机真机实测（单屏 2560×1440 @96 DPI，scale 1.0）。
+
+### 16.1 交付内容
+
+- **`CanvasSurface`（`ISurfaceContent` 的第二个实现）**：在 Phase 1 的 `DesktopShell` / `SurfaceHost` 之上新增 `CanvasSurfaceContent`。画布只负责视觉内容、布局、输入、动画、拖拽；桌面层发现、宿主窗口创建、挂载 / 重挂载、显示器信息全部复用 shell——画布**不找 WorkerW、不建 shell 生命周期、不听 Explorer 重启、不做显示器枚举**（由 `ArchitectureGuardTests.CanvasContentDoesNotTouchTheDesktopLayer` 持续断言）。
+- **原型项 8 个**：4 个自由项（Steam / Chrome / Blender / ComfyUI，围绕显示中心一行）+ 4 个 Dock 项（Files / Music / Settings / Terminal）。只有 Id / Name / IconKey / Placement / Anchor / Offset / Size / Z，不扫描 `.lnk`、不启动真实应用。
+- **自由布局 + 拖动 + 重启恢复**：任意位置拖动，落点保存为锚点 + DIP 偏移；布局独立存 `%LOCALAPPDATA%\Muralis\desktop-canvas-prototype.json`（**不进** `settings.json`），删除即回到种子布局。
+- **悬停放大（距离连续）**：`scale = 1 + (MaxScale − 1) · falloff(d / radius)`，默认 `MaxScale 1.6`、`InfluenceRadius 120 DIP`、`smoothstep` 衰减；Dock 轨道用更紧的 `1.5 / 120`。
+- **弹性动画**：Microsoft.UI.Composition 的 `SpringVector3NaturalMotionAnimation`（周期 / 阻尼比在 JSON 里），无逐帧代码。
+- **左边缘 Dock 原型**：触发带（24 DIP）→ 延迟 150 ms 展开；离开 → 延迟 600 ms 收起；收起 / 展开倍率、间距、边距全部来自 JSON，无魔数。
+- **诊断（仅 Debug）**：Dynamic wallpaper 页的折叠面板显示 surface 状态 / mount 次数 / 显示器 / DPI / 画布 DIP / 指针位置 / 项数 / 悬停项与倍率 / Dock 相位与目标倍率 / 更新率 / 布局路径。
+- **非破坏**：不隐藏原生图标、不动桌面 ListView、不 hook Explorer、不注入；开关关闭即完全移除画布窗口与命中区域（`ArchitectureGuardTests.NothingDrivesOrHidesTheNativeDesktopIcons` 与 `TheAppDoesNotTouchTheDesktopLayer` 持续断言）。
+
+### 16.2 关键实现决定
+
+| 决定 | 内容 | 理由 |
+| --- | --- | --- |
+| 渲染技术 | **Microsoft.UI.Composition**（WUC）承载在 shell 提供的 Win32 窗口上 | §5.3 要求渲染技术中立；WUC 自带弹性动画与合成器线程，天然避免「驻留 60 fps 轮询」（§九 禁止项） |
+| 输入模型 | 画布窗口用 **Region** 把可命中区域限制为「项的放大外接矩形 + Dock 轨道 + 触发带」 | 桌面其余位置仍是真正的桌面：原生图标照常双击，画布不吞桌面输入、不抢焦点（`WS_EX_NOACTIVATE`） |
+| 坐标 | 锚点（9 宫格）+ DIP 偏移：`pixel = AnchorPoint + offset · scaleFactor`；拖动落点求逆 | §9.1 的坐标方案落地并被单测覆盖（含 1280×720 / 1920×1080 / 2560×1440 / 1.25x / 1.5x / 2x 矩阵） |
+| 悬停 | 距离驱动、连续；变化时才写合成器动画目标值 | 连续放大无跳变；静止时零更新 |
+| Dock 状态机 | `CanvasDockAutoHide`：纯状态机 + 一次性定时器（Show / Hide Delay），无轮询、无时钟 | §八 参数全部来自 JSON；离开后 600 ms 收起、重新进入即取消收起的截止时间 |
+| 诊断 | 不可变快照值对象，变化时整体替换；显示端跨线程读不需锁画布 | §十三；`DockScale` 报告相位目标值（Composition 属性 getter 只返回基值，读动画中的实际值不可行） |
+| 布局文件 | 独立 JSON + 校验器 + 损坏回退种子 | §三：原型布局与 AppSettings 彻底分开 |
+
+### 16.3 逐条验收（用户下达的 15 步演示，全部实测通过）
+
+| 验收点 | 实测结果 |
+| --- | --- |
+| 开启 → 6–8 个图标项出现 | 8 项挂载为桌面图标宿主的子窗口（z 序在 `SHELLDLL_DefView` 之上），exstyle `0x8200088`（不激活 / 不占任务栏 / 无重定向位图） |
+| 自由拖动 | Steam 从中心锚点拖到 +65 / −60 DIP，落点与保存值逐位一致；其他项不动 |
+| 重启后位置恢复 | 全新进程启动后，该项在完全相同的桌面坐标 (1345, 660) 出现 |
+| 悬停放大 | 指针进入行内：Steam 1.6x，邻居按距离衰减；像素级证据：放大后距中心 55 DIP 的探针点被瓦片覆盖（`27,40,56`），离开后同一探针点无内容（`0,0,0`） |
+| 连续 50 次指针移动的即时读回 | 50/50 全部看到指针在内（测试侧需过滤被覆盖应用触发的系统 WM_MOUSELEAVE，见 16.5） |
+| Dock 自动隐藏 | 隐藏时轨道区域在 Region 之外（不挡桌面）；指针进入触发带 → `Shown`、倍率 1.00、面板可像素级看到（`16,19,23`）；离开 600 ms → `Collapsed`、轨道区域移出 Region、面板消失（`255,255,255`） |
+| 点击 ≠ 移动 | 原地点击不写布局文件 |
+| 非破坏 | 关闭开关：画布窗口消失、静态壁纸不变、WorkerW 数量 11 → 11、图标宿主与图标视图句柄不变、宿主子窗口逐句柄逐一相同 |
+| Explorer 重启恢复 | 杀掉 Explorer：1 次尝试内自动重挂，mount 1 → 2，期间 0 个 `Stopped` 状态事件；重挂后布局 8 项、exstyle、Region、z 序全部保持 |
+| 性能 | 静置 3 s：**0–15.6 ms** CPU（0–0.5 % 单核），静止期仅诊断需要的 ~2 次/秒更新；30 步悬停扫过：**15.6–109.4 ms / 约 1 s 移动**；句柄 352 → 352（无泄漏） |
+| GPU | 画布进程 0 %（低于计数器分辨率）；dwm 仅在一次桌面 churn 中出现单样本 3.2 %，动画本身未产生可测 GPU 负载 |
+| 诊断面板（应用内，Debug） | `surface Running · mount 1 · Active`；`monitor \\.\DISPLAY5 · 2560x1440 at 0,0 · 96 dpi (1x)`；`items 8 · hovered none at 1.00x`；`dock Collapsed at 0.00x` |
+| 应用内开关 | Dynamic wallpaper 页开关打开后画布落到桌面、关闭后移除；`settings.json` 复原后逐字节一致、原型布局文件删除 |
+
+### 16.4 测试与提交
+
+- 新增测试：`CanvasAnchorMathTests`（12）、`CanvasLayoutTests`（18）、`CanvasProximityTests`（9）、`CanvasRailLayoutTests`（10）、`CanvasDockAutoHideTests`（9）——布局序列化 / 校验、锚点与 DIP 往返（含拖动落点求逆）、悬停倍率与衰减、轨道几何、自动隐藏状态机；`ArchitectureGuardTests` 新增 2 条画布门禁；`SettingsServiceTests` 覆盖画布开关的持久化与恢复。Debug / Release 全绿（Core 281 / Desktop 48）。
+- 提交（`architecture-v2` 分支）：`5ce8b44` 布局模型与原型存储 → `0b689d3` 图标层之上的交互面放置 → `1f019c7` 画布原型面 → `2823b59` 应用接线（开关 / 本地化 / 启动恢复）→ `adee81a` 测试 → `0dd4c77` 诊断修复（见 16.5）。
+
+### 16.5 已知限制 / 诚实记录
+
+- **单屏结论**：全部实测在 2560×1440 @96 DPI 单屏上完成；多屏 / 混合 DPI / 热插拔留给后续阶段，未伪造结论。
+- **画布不抢全局输入**：桌面被其它窗口遮住的位置收不到鼠标消息（画布没有全局钩子，也不打算有）。原型接受；实机验收脚本为此在测试侧做了消息过滤（见下条）。
+- **测试侧过滤器**：真实指针停在覆盖应用上时，系统会向画布投递真实的 `WM_MOUSELEAVE`，把所有合成指针状态清掉——验收工具因此在 shell 线程上挂了一个 `WH_GETMESSAGE` 过滤器（把被投递的 leave 改写为 `WM_NULL`）。这是测试工具的行为，**不在产品代码里**。
+- **Dock 只接通 Left 边**：`CanvasDockOptions` 定义了四条边，实际接线与实测只有 Left。
+- **原型图标是占位字形**，不是真实应用图标；不扫描快捷方式、不启动应用、无右键菜单 / 多选 / 框选（本阶段明确不做）。
+- 诊断面板仅 Debug 构建可见（`IsDiagnosticsAvailable`）；快照随变化刷新，可能滞后输入一条消息。
+
+### Phase 2 状态
+
+| 内容 | 状态 |
+| --- | --- |
+| Phase 2 = Desktop Canvas Prototype（重排后） | 完成（见 §16.3；提交见 §16.4） |
+| 原 Phase 2 = Monitor Model & Multi-monitor Surfaces | 延后（§13.2 重排说明） |
