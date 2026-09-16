@@ -35,6 +35,9 @@ internal static class NativeMethods
     internal const uint WmLButtonUp = 0x0202;
     internal const uint WmCaptureChanged = 0x0215;
     internal const uint WmMouseLeave = 0x02A3;
+
+    /// <summary>A raw input report is queued for a window registered with <c>RegisterRawInputDevices</c>.</summary>
+    internal const uint WmInput = 0x00FF;
     internal const uint WmStopHost = 0x8000 + 1;
     internal const uint WmShellRestarted = 0x8000 + 2;
     internal const uint WmRunWork = 0x8000 + 3;
@@ -55,6 +58,22 @@ internal static class NativeMethods
 
     internal const uint SmtoNormal = 0x0000;
     internal const uint SpawnWallpaperWorker = 0x052C;
+
+    /// <summary>Raw input: receive reports even when the app is not in the foreground.</summary>
+    internal const uint RidevInputSink = 0x00000100;
+
+    /// <summary>Raw input: removes a registration; the target must be zero.</summary>
+    internal const uint RidevRemove = 0x00000001;
+
+    /// <summary>Raw input device selector for a mouse (generic desktop page, mouse usage).</summary>
+    internal const ushort HidUsagePageGenericDesktop = 0x0001;
+    internal const ushort HidUsageMouse = 0x0002;
+
+    /// <summary>Ancestor walk step that never leaves the window's own parent chain.</summary>
+    internal const uint GaParent = 1;
+
+    internal const int VkLButton = 0x01;
+    internal const int VkRButton = 0x02;
 
     internal const uint MonitorDefaultToPrimary = 1;
     internal const int MonitorDpiTypeEffective = 0;
@@ -138,6 +157,16 @@ internal static class NativeMethods
         public uint Flags;
         public nint Track;
         public uint HoverTime;
+    }
+
+    /// <summary>One raw input source: the device class, how it is taken, and the window that receives it.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct RawInputDevice
+    {
+        public ushort UsagePage;
+        public ushort Usage;
+        public uint Flags;
+        public nint Target;
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -290,4 +319,30 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern nint DispatchMessageW(ref Message message);
+
+    /// <summary>
+    /// Registers (or removes, with <see cref="RidevRemove"/>) a passive raw input source. The
+    /// reports keep flowing to every other window exactly as before: nothing is captured, consumed
+    /// or suppressed, which is why this is preferred over a low level mouse hook.
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool RegisterRawInputDevices(RawInputDevice[] devices, uint deviceCount, uint deviceSize);
+
+    /// <summary>The window under a screen point, as the mouse walk sees it (region and z-order included).</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint WindowFromPoint(Point point);
+
+    /// <summary>Walks the parent chain; never returns the owner, unlike <c>GetParent</c>.</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint GetAncestor(nint hWnd, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern int GetClassNameW(nint hWnd, [Out] char[] className, int maxCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint GetDesktopWindow();
+
+    /// <summary>Physical button state, readable from a background thread; bit 15 is the down state.</summary>
+    [DllImport("user32.dll")]
+    internal static extern short GetAsyncKeyState(int virtualKey);
 }

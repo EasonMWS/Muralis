@@ -7,7 +7,8 @@ namespace Muralis.Core.Canvas;
 /// the canvas replaces it whenever anything changed, so a reader on another thread always sees a
 /// complete, consistent picture without locking the canvas. <see cref="MonitorId"/> and
 /// <see cref="SurfaceState"/> are filled in by the desktop layer, the only place that knows which
-/// display the canvas sits on and what the host around it is doing.
+/// display the canvas sits on and what the host around it is doing. <see cref="PointerContext"/>
+/// and the pointer counters come from the desktop pointer router the same way.
 /// </summary>
 public sealed record CanvasDiagnosticsSnapshot(
     int MountCount,
@@ -28,4 +29,8 @@ public sealed record CanvasDiagnosticsSnapshot(
     double UpdatesPerSecond,
     long Updates,
     string? MonitorId = null,
-    string? SurfaceState = null);
+    string? SurfaceState = null,
+    string? PointerContext = null,
+    double PointerDispatchesPerSecond = 0,
+    long PointerReports = 0,
+    long PointerDispatches = 0);

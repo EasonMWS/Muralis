@@ -39,14 +39,38 @@ public sealed class ArchitectureGuardTests
         AssertOnlyUses(
             "src/Muralis.Desktop",
             "NativeMethods.CreateWindowExW(",
-            "desktop windows are created by the surface host, and only the shell event source has a window of its own",
+            "desktop windows are created by the surface host; the shell event source and the pointer router each have a hidden window of their own",
             "src/Muralis.Desktop/Surfaces/Win32SurfaceHost.cs",
-            "src/Muralis.Desktop/Shell/ShellEventSource.cs");
+            "src/Muralis.Desktop/Shell/ShellEventSource.cs",
+            "src/Muralis.Desktop/Input/DesktopPointerRouter.cs");
         AssertOnlyUses(
             "src/Muralis.Desktop",
             "NativeMethods.SetParent(",
             "only the surface host may attach a window to the desktop layer",
             "src/Muralis.Desktop/Surfaces/Win32SurfaceHost.cs");
+    }
+
+    [Fact]
+    public void OnlyThePointerRouterRegistersRawInput()
+    {
+        AssertOnlyUses(
+            "src",
+            "NativeMethods.RegisterRawInputDevices(",
+            "raw input is the pointer router's mechanism and no other component may register for it",
+            "src/Muralis.Desktop/Input/DesktopPointerRouter.cs");
+    }
+
+    [Fact]
+    public void NothingInstallsGlobalHooks()
+    {
+        // Phase 3A chose a passive raw-input registration over a hook: Muralis never inserts itself
+        // into the input path of other applications, so a global hook must never appear.
+        var offenders = SourceFiles("src")
+            .Where(file => new[] { "SetWindowsHookEx", "WH_MOUSE_LL", "WH_KEYBOARD_LL", "UnhookWindowsHookEx" }
+                .Any(token => Code(file).Contains(token, StringComparison.Ordinal)))
+            .Select(Relative)
+            .ToList();
+        Assert.True(offenders.Count == 0, $"the desktop must never install a global hook, but hooking appears in: {string.Join(", ", offenders)}");
     }
 
     [Fact]

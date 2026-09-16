@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Models;
+using Muralis.Desktop.Input;
 using Muralis.Desktop.Interop;
 using Muralis.Desktop.Monitors;
 using Muralis.Desktop.Surfaces;
@@ -26,6 +27,7 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
 {
     private readonly ILogger<DesktopShell> _logger;
     private readonly ShellEventSource _shellEvents;
+    private readonly DesktopPointerRouter _pointer;
     private readonly MonitorManager _monitors = new();
     private readonly DesktopLayerHost _layerHost;
     private readonly Win32SurfaceHost _surfaceHost;
@@ -41,13 +43,15 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
     private volatile DesktopShellState _state = DesktopShellState.Stopped;
     private bool _disposed;
 
-    public DesktopShell(ILoggerFactory loggerFactory, ShellEventSource shellEvents)
+    public DesktopShell(ILoggerFactory loggerFactory, ShellEventSource shellEvents, DesktopPointerRouter pointer)
     {
         ArgumentNullException.ThrowIfNull(loggerFactory);
         ArgumentNullException.ThrowIfNull(shellEvents);
+        ArgumentNullException.ThrowIfNull(pointer);
 
         _logger = loggerFactory.CreateLogger<DesktopShell>();
         _shellEvents = shellEvents;
+        _pointer = pointer;
         _layerHost = new DesktopLayerHost(loggerFactory.CreateLogger<DesktopLayerHost>());
         _surfaceHost = new Win32SurfaceHost(loggerFactory.CreateLogger<Win32SurfaceHost>(), OnSurfaceWindowLost);
 
@@ -254,6 +258,10 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
                 NativeMethods.DisplayChangeCheckIntervalMs,
                 nint.Zero);
 
+            // The pointer router's hidden window belongs to this thread, so it starts and ends with
+            // the thread; the router object itself outlives shell thread restarts.
+            _pointer.Attach();
+
             SetState(DesktopShellState.Running);
 
             // Work queued while the thread was coming up is drained by this first wake-up.
@@ -378,6 +386,9 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
         {
             return;
         }
+
+        // The router's window lives on the thread that is ending; it has to go before the thread does.
+        _pointer.Detach();
 
         SetState(DesktopShellState.Stopped);
 

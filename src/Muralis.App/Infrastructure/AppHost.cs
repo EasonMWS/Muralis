@@ -11,6 +11,7 @@ using Muralis.Core.Networking;
 using Muralis.Core.Providers;
 using Muralis.Core.Repositories;
 using Muralis.Core.Services;
+using Muralis.Desktop.Input;
 using Muralis.Desktop.Shell;
 using Muralis.Desktop.Surfaces.Compatibility;
 
@@ -160,6 +161,7 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<IWallpaperService, WindowsWallpaperService>();
         services.AddSingleton<IStartupService, StartupService>();
         services.AddSingleton<ShellEventSource>();
+        services.AddSingleton<DesktopPointerRouter>();
         services.AddSingleton<IDesktopShell, DesktopShell>();
         services.AddSingleton<IVideoWallpaperService, VideoWallpaperServiceAdapter>();
         services.AddSingleton(sp => new CanvasLayoutStore(sp.GetRequiredService<ILogger<CanvasLayoutStore>>()));

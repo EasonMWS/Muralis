@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Canvas;
 using Muralis.Core.Models;
+using Muralis.Desktop.Input;
 using Muralis.Desktop.Shell;
 using Muralis.Desktop.Surfaces;
 
@@ -17,7 +18,8 @@ namespace Muralis.Desktop.Surfaces.Compatibility;
 /// <remarks>
 /// A thin adapter in the house style: no thread, no window and no WorkerW lookup live here. The
 /// shell owns the desktop layer and <see cref="CanvasSurfaceContent"/> owns the visuals and input,
-/// including survival across Explorer restarts, which the shell turns into a fresh mount.
+/// including survival across Explorer restarts, which the shell turns into a fresh mount. The
+/// pointer router is handed to the canvas on creation and reads its stats for the overlay.
 /// </remarks>
 public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
 {
@@ -25,22 +27,29 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
     private readonly ILoggerFactory _loggerFactory;
     private readonly IDesktopShell _shell;
     private readonly CanvasLayoutStore _store;
+    private readonly DesktopPointerRouter _pointer;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
     private CanvasSurfaceContent? _content;
     private IDesktopSurface? _surface;
     private CanvasPrototypeStatus _status = CanvasPrototypeStatus.Disabled;
 
-    public DesktopCanvasServiceAdapter(ILoggerFactory loggerFactory, IDesktopShell shell, CanvasLayoutStore store)
+    public DesktopCanvasServiceAdapter(
+        ILoggerFactory loggerFactory,
+        IDesktopShell shell,
+        CanvasLayoutStore store,
+        DesktopPointerRouter pointer)
     {
         ArgumentNullException.ThrowIfNull(loggerFactory);
         ArgumentNullException.ThrowIfNull(shell);
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(pointer);
 
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<DesktopCanvasServiceAdapter>();
         _shell = shell;
         _store = store;
+        _pointer = pointer;
     }
 
     public CanvasPrototypeStatus Status => Volatile.Read(ref _status);
@@ -52,6 +61,10 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
         {
             MonitorId = _shell.Monitors.Primary?.Runtime.FriendlyName,
             SurfaceState = _shell.State.ToString(),
+            PointerContext = _pointer.Stats.Context.ToString(),
+            PointerDispatchesPerSecond = _pointer.Stats.DispatchesPerSecond,
+            PointerReports = _pointer.Stats.Reports,
+            PointerDispatches = _pointer.Stats.Dispatches,
         }
         : null;
 
@@ -74,7 +87,7 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
             }
 
             var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
-            var content = new CanvasSurfaceContent(layout, _store, _loggerFactory.CreateLogger<CanvasSurfaceContent>());
+            var content = new CanvasSurfaceContent(layout, _store, _loggerFactory.CreateLogger<CanvasSurfaceContent>(), _pointer);
             _content = content;
 
             CanvasPrototypeStatus status;

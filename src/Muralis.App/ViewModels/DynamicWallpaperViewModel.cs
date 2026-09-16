@@ -409,6 +409,7 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         report.AppendLine($"pointer  {(snapshot.PointerInside ? "inside " : "outside")} {snapshot.PointerXDip:0.#}, {snapshot.PointerYDip:0.#} DIP");
         report.AppendLine($"items    {snapshot.ItemCount} · hovered {snapshot.HoveredItemId ?? "none"} at {snapshot.HoveredScale:0.00}x");
         report.AppendLine($"dock     {snapshot.DockPhase} at {snapshot.DockScale:0.00}x");
+        report.AppendLine($"router   {snapshot.PointerContext ?? "?"} · {snapshot.PointerDispatchesPerSecond:0.0}/s · {snapshot.PointerReports} reports · {snapshot.PointerDispatches} dispatches");
         report.AppendLine($"updates  {snapshot.UpdatesPerSecond:0.0}/s · {snapshot.Updates} total");
         report.AppendLine($"layout   {snapshot.LayoutPath}");
         DiagnosticsText = report.ToString().TrimEnd();

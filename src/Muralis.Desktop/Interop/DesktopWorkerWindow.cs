@@ -12,11 +12,22 @@ internal static class DesktopWorkerWindow
 {
     private const string IconViewClass = "SHELLDLL_DefView";
     private const string WorkerClass = "WorkerW";
+    private const string ProgmanClass = "Progman";
 
     private static readonly NativeMethods.EnumWindowsProc FindCallback = OnEnumWindow;
     private static readonly NativeMethods.EnumWindowsProc FindIconHostCallback = OnEnumIconHost;
     private static nint _found;
     private static nint _foundIconHost;
+
+    /// <summary>
+    /// Whether a window class belongs to the shell's desktop layer. The pointer classifier asks
+    /// this instead of carrying the class names itself, so the names of the desktop layer windows
+    /// are known in exactly one place.
+    /// </summary>
+    internal static bool IsDesktopLayerClass(string? className) =>
+        string.Equals(className, IconViewClass, StringComparison.Ordinal)
+        || string.Equals(className, WorkerClass, StringComparison.Ordinal)
+        || string.Equals(className, ProgmanClass, StringComparison.Ordinal);
 
     /// <summary>
     /// The window that directly parents the desktop icons. Interactive surfaces become its

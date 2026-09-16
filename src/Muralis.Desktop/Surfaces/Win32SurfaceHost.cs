@@ -17,7 +17,7 @@ namespace Muralis.Desktop.Surfaces;
 /// </remarks>
 internal sealed class Win32SurfaceHost : ISurfaceHost
 {
-    private const string WindowClassName = "MuralisDesktopHostWindow";
+    internal const string WindowClassName = "MuralisDesktopHostWindow";
 
     private static readonly object WindowTableGate = new();
     private static readonly Dictionary<nint, WindowEntry> LiveWindows = [];

@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Canvas;
 using Muralis.Core.Models;
+using Muralis.Desktop.Input;
 using Muralis.Desktop.Interop;
 using Windows.UI;
 using Windows.UI.Composition;
@@ -26,10 +27,17 @@ namespace Muralis.Desktop.Surfaces;
 /// ends hovering. Dragging lifts the region so the item being moved is not clipped.
 /// </para>
 /// <para>
+/// Hovering follows the <see cref="DesktopPointerRouter"/> while one is available: the window region
+/// is only as large as what the canvas draws, so on its own the canvas would stop seeing the pointer
+/// the moment it crossed a gap between items. The router follows the pointer across the whole
+/// desktop layer instead, while the window messages keep working as they always did for the pixels
+/// inside the region and for the fallback when there is no router.
+/// </para>
+/// <para>
 /// Threads: every method runs on the shell thread — mount, unmount, geometry changes, the window
-/// messages forwarded by the surface host and the dock's one-shot timer. Everything the pointer
-/// does is event-driven: springs are handed to the composition engine, nothing polls, and a canvas
-/// that is not being touched does no work at all.
+/// messages forwarded by the surface host, the router's events (raised on the same thread) and the
+/// dock's one-shot timer. Everything the pointer does is event-driven: springs are handed to the
+/// composition engine, nothing polls, and a canvas that is not being touched does no work at all.
 /// </para>
 /// </remarks>
 internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSink
@@ -61,6 +69,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private readonly CanvasLayoutStore _store;
     private readonly ILogger _logger;
     private readonly CanvasDockAutoHide _dock;
+    private readonly DesktopPointerRouter? _pointer;
     private readonly List<ItemView> _freeViews = [];
     private readonly List<ItemView> _dockViews = [];
     private readonly CanvasUpdateRate _updates = new();
@@ -92,7 +101,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private volatile CanvasDiagnosticsSnapshot? _snapshot;
 
-    internal CanvasSurfaceContent(CanvasLayout layout, CanvasLayoutStore store, ILogger logger)
+    internal CanvasSurfaceContent(CanvasLayout layout, CanvasLayoutStore store, ILogger logger, DesktopPointerRouter? pointer = null)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(store);
@@ -101,6 +110,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _layout = layout;
         _store = store;
         _logger = logger;
+        _pointer = pointer;
         _dock = new CanvasDockAutoHide(layout.Dock);
     }
 
@@ -151,6 +161,13 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             _displayBounds.Height,
             _scaleFactor,
             _mountCount);
+
+        SubscribeToPointer();
+
+        // The pointer may already be resting on the desktop: one read now starts hover from what is
+        // really there instead of waiting for the first move.
+        _pointer?.SampleOnce();
+
         Bump();
         return Task.CompletedTask;
     }
@@ -200,6 +217,8 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     /// <summary>Releases the mount. The window itself belongs to the surface host.</summary>
     private void UnmountCore()
     {
+        UnsubscribeFromPointer();
+
         if (_window != nint.Zero)
         {
             NativeMethods.KillTimer(_window, DockTimerId);
@@ -456,6 +475,80 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         }
     }
 
+    /// <summary>
+    /// Starts following the shared pointer router. Called on every mount, after the visuals exist:
+    /// the router is the canvas' window to the pointer beyond its own region.
+    /// </summary>
+    private void SubscribeToPointer()
+    {
+        if (_pointer is null)
+        {
+            return;
+        }
+
+        _pointer.PointerMoved += OnPointerMoved;
+        _pointer.EnteredDesktopRegion += OnPointerEnteredDesktopRegion;
+        _pointer.LeftDesktopRegion += OnPointerLeftDesktopRegion;
+    }
+
+    private void UnsubscribeFromPointer()
+    {
+        if (_pointer is null)
+        {
+            return;
+        }
+
+        _pointer.PointerMoved -= OnPointerMoved;
+        _pointer.EnteredDesktopRegion -= OnPointerEnteredDesktopRegion;
+        _pointer.LeftDesktopRegion -= OnPointerLeftDesktopRegion;
+    }
+
+    private void OnPointerMoved(object? sender, DesktopPointerEventArgs e) => ApplyPointer(e.State);
+
+    private void OnPointerEnteredDesktopRegion(object? sender, DesktopPointerEventArgs e) => ApplyPointer(e.State);
+
+    /// <summary>The pointer moved onto an ordinary application window: the desktop stops reacting.</summary>
+    private void OnPointerLeftDesktopRegion(object? sender, DesktopPointerEventArgs e)
+    {
+        if (_drag is not null)
+        {
+            // A drag belongs to the captured window messages and keeps running over any window.
+            return;
+        }
+
+        ClearPointer();
+    }
+
+    /// <summary>Feeds a router reading into the hover and dock math, exactly like a window message would.</summary>
+    private void ApplyPointer(DesktopPointerState state)
+    {
+        if (_drag is not null || _root is null || _target is null)
+        {
+            return;
+        }
+
+        var (x, y) = ToCanvasDip(state.X, state.Y);
+        SetPointer(x, y);
+        UpdateHover();
+        UpdateDock(WantsDock(x, y), interactionLocked: false);
+        Bump();
+    }
+
+    /// <summary>The pointer is no longer over the desktop: hover decays back to rest.</summary>
+    private void ClearPointer()
+    {
+        if (_pointerXDip is null && _pointerYDip is null)
+        {
+            return;
+        }
+
+        _pointerXDip = null;
+        _pointerYDip = null;
+        UpdateHover();
+        UpdateDock(wantsExpanded: false, interactionLocked: false);
+        Bump();
+    }
+
     /// <summary>Whether the pointer wants the rail out: inside the trigger band, or on the rail itself.</summary>
     private bool WantsDock(double x, double y)
     {
@@ -578,6 +671,13 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     /// their largest possible scale, the rail while it is out, and the dock's trigger band.
     /// Outside it the window is not hit at all, so the desktop below keeps its clicks.
     /// </summary>
+    /// <remarks>
+    /// The region is the visual area's upper bound, not its current shape: hover only ever scales an
+    /// item up to <c>Proximity.MaxScale</c>, so an item's pixels always stay inside the box the
+    /// region was built from, at every point of the animation. That is what keeps the region static —
+    /// it is rebuilt on mounts, drops, dock phases and display changes, never per frame — and it is
+    /// why an enlargement never gets clipped by the window and never needs a region of its own.
+    /// </remarks>
     private void UpdateRegion()
     {
         if (_window == nint.Zero || !NativeMethods.IsWindow(_window))
@@ -698,6 +798,12 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         return null;
     }
 
+    /// <summary>
+    /// Whether a point is inside the item's clickable box. The box follows the item's full target
+    /// scale — base size times the hover factor it is animating towards — which is the size the
+    /// visual converges on, so the clickable area always covers the pixels being drawn and a
+    /// magnified item is clickable across its whole enlarged face, not just its resting box.
+    /// </summary>
     private static bool InsideItem(ItemView view, double x, double y)
     {
         var half = CanvasIconLibrary.DesignSize * view.Scale / 2.0;
@@ -898,10 +1004,15 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
                 var (moveX, moveY) = ClientDip(lParam);
                 if (_drag is not null)
                 {
+                    // While an item is held the captured window messages are the drag's only driver.
                     DragTo(moveX, moveY);
                 }
                 else
                 {
+                    // The router already saw this movement, but these messages cost nothing inside
+                    // the region and keep hover working if raw input ever stops arriving (injected
+                    // input, a failed registration), so both sources stay in use. The epsilon guards
+                    // in the hover math make the second one a no-op when nothing changed.
                     SetPointer(moveX, moveY);
                     UpdateHover();
                     UpdateDock(WantsDock(moveX, moveY), interactionLocked: false);
@@ -912,11 +1023,14 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
             case NativeMethods.WmMouseLeave:
                 _trackingLeave = false;
-                _pointerXDip = null;
-                _pointerYDip = null;
-                UpdateHover();
-                UpdateDock(wantsExpanded: false, interactionLocked: false);
-                Bump();
+                if (_pointer is not { IsAttached: true })
+                {
+                    ClearPointer();
+                }
+
+                // With a router, leaving the window's region is not leaving the desktop: the region
+                // only covers what the canvas draws, so the pointer is usually still on the desktop
+                // layer there and the router keeps following — a real leave arrives as LeftDesktopRegion.
                 return true;
 
             case NativeMethods.WmLButtonDown:
