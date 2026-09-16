@@ -103,7 +103,7 @@ public sealed class DesktopLayoutStore
         // file says rather than guessed at. Only a version that is really older is brought forward.
         if (version > 1 && version < DesktopLayout.CurrentSchemaVersion)
         {
-            var upgraded = DesktopLayoutMigrator.UpgradeFromVersion2(json);
+            var upgraded = DesktopLayoutMigrator.Upgrade(json, version);
             if (upgraded.Layout is null)
             {
                 _logger.LogError(

@@ -26,13 +26,23 @@ public static class DesktopItemFactory
                 _ => new FileTarget { Path = fullPath },
             };
 
-        return new DesktopItem
-        {
-            Id = NewId(target.Kind),
-            Name = string.IsNullOrWhiteSpace(name) ? fullPath : name,
-            Target = target,
-            IconKey = IconKeyFor(target.Kind),
-        };
+        return Build(target, string.IsNullOrWhiteSpace(name) ? fullPath : name);
+    }
+
+    /// <summary>
+    /// Builds an item for a target that has already been classified, which is how the desktop scan
+    /// hands one in: it reads a <c>.url</c> file's address and a folder's nature itself, and asking the
+    /// path again would be a second, different answer. The source is recorded so a later sync knows the
+    /// item came from a desktop entry rather than from the import box.
+    /// </summary>
+    public static DesktopItem CreateFromTarget(DesktopItemTarget target, string name, string sourcePath)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var item = Build(target, name);
+        item.SourcePath = sourcePath;
+        return item;
     }
 
     /// <summary>
@@ -60,14 +70,17 @@ public static class DesktopItemFactory
 
         var name = parsed.Host is { Length: > 0 } host ? host : trimmed;
 
-        return new DesktopItem
-        {
-            Id = NewId(DesktopItemKind.Url),
-            Name = name,
-            Target = new UrlTarget { Url = trimmed },
-            IconKey = IconKeyFor(DesktopItemKind.Url),
-        };
+        return Build(new UrlTarget { Url = trimmed }, name);
     }
+
+    /// <summary>The one place an item is put together, so every way in produces the same shape.</summary>
+    private static DesktopItem Build(DesktopItemTarget target, string name) => new()
+    {
+        Id = NewId(target.Kind),
+        Name = name,
+        Target = target,
+        IconKey = IconKeyFor(target.Kind),
+    };
 
     /// <summary>The glyph used while a real icon is loading, or when the shell has none to give.</summary>
     private static string IconKeyFor(DesktopItemKind kind) => kind switch

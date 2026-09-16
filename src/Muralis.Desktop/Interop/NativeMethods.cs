@@ -59,6 +59,22 @@ internal static class NativeMethods
     internal const int IdcArrow = 32512;
     internal const int IdcHand = 32649;
 
+    /// <summary>The desktop icon list, the window that draws the icons themselves.</summary>
+    internal const string IconListClass = "SysListView32";
+
+    /// <summary><c>SW_HIDE</c> / <c>SW_SHOW</c>: the last resort for hiding the icons.</summary>
+    internal const int SwHide = 0;
+    internal const int SwShow = 5;
+
+    /// <summary>Single-threaded apartment, for the thread that talks to the shell's own view.</summary>
+    internal const uint CoInitApartmentThreaded = 0x2;
+
+    /// <summary><c>CLSCTX_LOCAL_SERVER</c>: the shell's windows live in a server of their own.</summary>
+    internal const uint ClsCtxLocalServer = 0x4;
+
+    /// <summary>Any context the object can be created in; what a shell object is asked for with.</summary>
+    internal const uint ClsCtxAll = 0x17;
+
     internal const uint SmtoNormal = 0x0000;
     internal const uint SpawnWallpaperWorker = 0x052C;
 
@@ -374,8 +390,43 @@ internal static class NativeMethods
     internal static extern bool KillTimer(nint hWnd, nint timerId);
 
     [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool IsWindow(nint hWnd);
+
+    /// <summary>Whether a window and everything it sits in is set to be drawn at all.</summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindowVisible(nint hWnd);
+
+    /// <summary>
+    /// Shows or hides a window. Used only as the last resort for the desktop's icon list: it is a
+    /// public, reversible window call that leaves nothing behind anywhere, but Explorer builds a new
+    /// list on every restart, so it has to be applied again after one.
+    /// </summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ShowWindow(nint hWnd, int command);
+
+    /// <summary>
+    /// Enters a COM apartment. <c>S_OK</c> means this call created it and must be balanced with
+    /// <see cref="CoUninitialize"/>; <c>S_FALSE</c> means the thread was already in that apartment.
+    /// </summary>
+    [DllImport("ole32.dll", PreserveSig = true)]
+    internal static extern int CoInitializeEx(nint reserved, uint apartment);
+
+    [DllImport("ole32.dll", PreserveSig = true)]
+    internal static extern void CoUninitialize();
+
+    /// <summary>
+    /// Creates an object by its class id. The result arrives as an RCW, which can be cast to any
+    /// interface the object implements — the cast is what asks the object whether it does.
+    /// </summary>
+    [DllImport("ole32.dll", PreserveSig = true)]
+    internal static extern int CoCreateInstance(
+        in Guid classId,
+        [MarshalAs(UnmanagedType.IUnknown)] object? outer,
+        uint context,
+        in Guid interfaceId,
+        [MarshalAs(UnmanagedType.IUnknown)] out object? instance);
 
     /// <summary>Posts to the thread queue: reaches the host even when it has no window.</summary>
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

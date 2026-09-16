@@ -181,16 +181,70 @@ public sealed class ArchitectureGuardTests
     }
 
     [Fact]
-    public void NothingDrivesOrHidesTheNativeDesktopIcons()
+    public void OnlyTheTakeoverNamesTheDesktopIconList()
     {
-        // The non-destructive rule of the canvas prototype: Explorer's icons are left alone, so
-        // hiding them, moving them or scripting the desktop list view is off the table for good.
+        // Phase 3D changed the rule the canvas prototype was built on: hiding the desktop icons is now
+        // exactly what a takeover is, so the window that draws them is named — but only once, in the
+        // interop layer that the desktop layer lookup already goes through. Everything else in the app
+        // works with the shell's view, not with the window.
+        AssertOnlyUses(
+            "src",
+            "SysListView32",
+            "the desktop's icon list is the takeover's last resort and is named in exactly one place",
+            "src/Muralis.Desktop/Interop/NativeMethods.cs");
+    }
+
+    [Fact]
+    public void NoForbiddenWayOfHidingTheDesktopIcons()
+    {
+        // The takeover has to be reversible, verified, and leave nothing behind, which rules out every
+        // well known shortcut: re-arranging or moving the list view's items, the undocumented system
+        // parameter, the registry value that hides the icons, and reaching into Explorer's process to
+        // change it from the inside. None of them can be undone from a record, so none of them is used.
+        var forbidden = new[]
+        {
+            "LVM_", "SPI_SETICONS", "FFlags", "WriteProcessMemory", "ReadProcessMemory",
+            "CreateRemoteThread", "VirtualAllocEx", "OpenProcess",
+        };
+
         var offenders = SourceFiles("src")
-            .Where(file => new[] { "SysListView32", "LVM_", "SPI_SETICONS" }
+            .Where(file => forbidden.Any(token => Code(file).Contains(token, StringComparison.Ordinal)))
+            .Select(Relative)
+            .ToList();
+
+        Assert.True(
+            offenders.Count == 0,
+            $"the desktop icons may only be hidden through the shell's own view, but a forbidden way appears in: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void TheTakeoverNeverWritesTheRegistry()
+    {
+        // The setting that hides the desktop icons is a registry value, and changing it is exactly the
+        // shortcut this phase rejected: it is not reversible from the state the shell reports, and it
+        // outlives the process that wrote it with nothing recording what it was.
+        var offenders = SourceFiles("src/Muralis.Desktop/Takeover")
+            .Concat(SourceFiles("src/Muralis.Core/Desktop/Takeover"))
+            .Where(file => new[] { "Registry", "RegistryKey", "SetValue", "OpenSubKey" }
                 .Any(token => Code(file).Contains(token, StringComparison.Ordinal)))
             .Select(Relative)
             .ToList();
-        Assert.True(offenders.Count == 0, $"the native desktop icons must stay untouched, but icon manipulation appears in: {string.Join(", ", offenders)}");
+
+        Assert.True(offenders.Count == 0, $"the takeover must not touch the registry, but does in: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void TheTakeoverNeverRestartsExplorer()
+    {
+        // Restarting Explorer is how a user gets their desktop back when it is broken; it is not how
+        // Muralis switches a mode. The takeover works while Explorer keeps running.
+        var offenders = SourceFiles("src/Muralis.Desktop/Takeover")
+            .Where(file => new[] { "Process.Start", "Process.Kill", "Process.GetProcesses", "explorer.exe" }
+                .Any(token => Code(file).Contains(token, StringComparison.Ordinal)))
+            .Select(Relative)
+            .ToList();
+
+        Assert.True(offenders.Count == 0, $"the takeover must not restart or end Explorer, but appears in: {string.Join(", ", offenders)}");
     }
 
     [Fact]

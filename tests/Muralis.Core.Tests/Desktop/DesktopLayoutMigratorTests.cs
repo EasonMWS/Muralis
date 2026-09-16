@@ -1,5 +1,6 @@
 using Muralis.Core.Canvas;
 using Muralis.Core.Desktop;
+using Muralis.Core.Desktop.Takeover;
 using Muralis.Core.Dock;
 using Xunit;
 
@@ -303,5 +304,104 @@ public sealed class DesktopLayoutMigratorTests
         Assert.Equal(0, DesktopLayoutMigrator.SchemaVersionOf("""{ "Items": [] }"""));
         Assert.Null(DesktopLayoutMigrator.SchemaVersionOf("{ not json"));
         Assert.Null(DesktopLayoutMigrator.SchemaVersionOf("[ 1, 2 ]"));
+    }
+
+    // ------------------------------------------------------------ version 3
+
+    private const string Version3Document = """
+        {
+          "SchemaVersion": 3,
+          "Kind": "muralis.desktopLayout",
+          "Proximity": { "MaxScale": 1.7 },
+          "Motion": { "Hover": { "PeriodSeconds": 0.35, "DampingRatio": 0.9 } },
+          "Dock": {
+            "Enabled": true,
+            "Edge": "Left",
+            "Entries": [ { "ItemId": "app_1" } ]
+          },
+          "Items": [
+            {
+              "Id": "app_1",
+              "Name": "Editor",
+              "Target": { "kind": "application", "Path": "C:\\apps\\editor.exe" },
+              "Anchor": "Center",
+              "OffsetXDip": 12,
+              "SizeDip": 96,
+              "Z": 1,
+              "IsVisible": true
+            }
+          ]
+        }
+        """;
+
+    [Fact]
+    public void AVersion3Layout_ReadsAsItIsUnderTheCurrentVersion()
+    {
+        var result = DesktopLayoutMigrator.UpgradeFromVersion3(Version3Document);
+
+        Assert.Null(result.Error);
+        Assert.NotNull(result.Layout);
+        Assert.Empty(result.Layout.Validate());
+
+        // Version 4 only added sections, so everything the old file did say is read back unchanged.
+        Assert.Equal(DesktopLayout.CurrentSchemaVersion, result.Layout.SchemaVersion);
+        Assert.Equal(1.7, result.Layout.Proximity.MaxScale);
+        Assert.Equal(0.35, result.Layout.Motion.Hover.PeriodSeconds);
+        Assert.Equal(DockEdge.Left, result.Layout.Dock.Edge);
+        Assert.Equal(["app_1"], result.Layout.Dock.Entries.Select(entry => entry.ItemId));
+        Assert.Equal(12, result.Layout.Items[0].OffsetXDip);
+        Assert.Equal(@"C:\apps\editor.exe", result.Layout.Items[0].Location);
+    }
+
+    [Fact]
+    public void AVersion3Layout_HasNoTakeoverAndNoSources()
+    {
+        // What the old file has no opinion about keeps the default reading: the native desktop, and
+        // items that were not adopted from anywhere.
+        var result = DesktopLayoutMigrator.UpgradeFromVersion3(Version3Document);
+
+        Assert.Equal(DesktopMode.Native, result.Layout!.Takeover.Mode);
+        Assert.True(result.Layout.Takeover.AdoptDesktopItems);
+        Assert.Empty(result.Layout.Takeover.IgnoredSourcePaths);
+        Assert.Equal(string.Empty, result.Layout.Items[0].SourcePath);
+    }
+
+    [Fact]
+    public void AVersion3LayoutWithABrokenTarget_StopsTheUpgrade()
+    {
+        var result = DesktopLayoutMigrator.UpgradeFromVersion3(
+            """{ "SchemaVersion": 3, "Kind": "muralis.desktopLayout", "Items": [ { "Id": "x", "Name": "X" } ] }""");
+
+        Assert.Null(result.Layout);
+        Assert.Contains("needs a target", result.Error!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheDispatch_ChoosesTheStepTheVersionNeeds()
+    {
+        // Version 1 is read as a prototype: nothing of it can be an item.
+        var prototype = DesktopLayoutMigrator.Upgrade(Version2Document.Replace("\"SchemaVersion\": 2", "\"SchemaVersion\": 1"), 1);
+        Assert.Null(prototype.Error);
+        Assert.Empty(prototype.Layout!.Items);
+
+        // Version 2 keeps its items and gains dock entries.
+        var two = DesktopLayoutMigrator.Upgrade(Version2Document, 2);
+        Assert.Null(two.Error);
+        Assert.Equal(3, two.Layout!.Items.Count);
+        Assert.Equal(2, two.Layout.Dock.Entries.Count);
+
+        // Version 3 is the current shape already.
+        var three = DesktopLayoutMigrator.Upgrade(Version3Document, 3);
+        Assert.Null(three.Error);
+        Assert.Equal(DesktopLayout.CurrentSchemaVersion, three.Layout!.SchemaVersion);
+    }
+
+    [Fact]
+    public void TheDispatch_RefusesAVersionItHasNoStepFor()
+    {
+        var result = DesktopLayoutMigrator.Upgrade("""{ "SchemaVersion": 99 }""", 99);
+
+        Assert.Null(result.Layout);
+        Assert.Contains("99", result.Error!, StringComparison.Ordinal);
     }
 }

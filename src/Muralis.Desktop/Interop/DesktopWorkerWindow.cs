@@ -40,6 +40,25 @@ internal static class DesktopWorkerWindow
         return _foundIconHost;
     }
 
+    /// <summary>
+    /// The window that draws the desktop icons themselves: the list inside the icon view. It is what
+    /// the last resort of the takeover hides, and what a take-back shows again. <c>nint.Zero</c> when
+    /// the shell has not built one, which is the case on a desktop with no icons to draw.
+    /// </summary>
+    internal static nint FindIconList()
+    {
+        var iconHost = FindIconHost();
+        if (iconHost == nint.Zero)
+        {
+            return nint.Zero;
+        }
+
+        var iconView = NativeMethods.FindWindowExW(iconHost, nint.Zero, IconViewClass, null);
+        return iconView == nint.Zero
+            ? nint.Zero
+            : NativeMethods.FindWindowExW(iconView, nint.Zero, NativeMethods.IconListClass, null);
+    }
+
     /// <summary>Returns the wallpaper worker, asking the shell to create one only if there is none.</summary>
     internal static nint FindOrCreate()
     {

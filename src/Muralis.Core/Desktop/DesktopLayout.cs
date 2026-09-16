@@ -1,12 +1,14 @@
 using Muralis.Core.Canvas;
+using Muralis.Core.Desktop.Takeover;
 using Muralis.Core.Dock;
 
 namespace Muralis.Core.Desktop;
 
 /// <summary>
-/// The desktop layout document: the items the user put on the desktop, the dock they arranged, and
-/// the parameters that shape hover magnification and motion. It is persisted on its own, away from
-/// application settings, so a hand-edit or a reset never touches <c>settings.json</c>.
+/// The desktop layout document: the items the user put on the desktop, the dock they arranged, the
+/// takeover they asked for, and the parameters that shape hover magnification and motion. It is
+/// persisted on its own, away from application settings, so a hand-edit or a reset never touches
+/// <c>settings.json</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -20,11 +22,16 @@ namespace Muralis.Core.Desktop;
 /// <c>placement</c> field on each item, which made the dock a tag on the canvas rather than a thing
 /// of its own. Both older shapes are read once and brought forward.
 /// </para>
+/// <para>
+/// Version 4 adds <see cref="Takeover"/> and the source path an item was adopted from. Both are
+/// choices about the user's own desktop rather than about the canvas, and both are absent from older
+/// documents, where the defaults — the native desktop, and no source to name — are exactly right.
+/// </para>
 /// </remarks>
 public sealed class DesktopLayout
 {
-    /// <summary>Version 3 made the dock a section of its own, holding the items it shows by id.</summary>
-    public const int CurrentSchemaVersion = 3;
+    /// <summary>Version 4 added the takeover section and the desktop source an item came from.</summary>
+    public const int CurrentSchemaVersion = 4;
 
     /// <summary>Document marker, so a file that is not a Muralis desktop layout is refused early.</summary>
     public const string DocumentKind = "muralis.desktopLayout";
@@ -41,6 +48,9 @@ public sealed class DesktopLayout
     public CanvasMotionOptions Motion { get; set; } = new();
 
     public DockOptions Dock { get; set; } = new();
+
+    /// <summary>Which desktop mode the user chose, and what adopting their own desktop means.</summary>
+    public DesktopTakeoverOptions Takeover { get; set; } = new();
 
     /// <summary>Every item, whether it is on the canvas or in the dock. The dock names the ones it shows.</summary>
     public List<DesktopItem> Items { get; set; } = [];
@@ -101,6 +111,15 @@ public sealed class DesktopLayout
             problems.AddRange(Dock.Validate());
         }
 
+        if (Takeover is null)
+        {
+            problems.Add("The takeover options are missing.");
+        }
+        else
+        {
+            problems.AddRange(Takeover.Validate());
+        }
+
         if (Items is null)
         {
             problems.Add("The layout needs an item list.");
@@ -146,6 +165,7 @@ public sealed class DesktopLayout
         Proximity = Proximity.Clone(),
         Motion = Motion.Clone(),
         Dock = Dock.Clone(),
+        Takeover = Takeover.Clone(),
         Items = Items.Select(item => item.Clone()).ToList(),
     };
 

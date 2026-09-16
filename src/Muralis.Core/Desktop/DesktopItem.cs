@@ -20,6 +20,10 @@ namespace Muralis.Core.Desktop;
 /// shows the rest, so moving an item between the two is one entry changing place rather than a
 /// second field that has to be kept in step with it.
 /// </para>
+/// <para>
+/// <see cref="SourcePath"/> is not where the item lives either, but where it came from: it is empty
+/// for an item the user imported by hand and holds the desktop entry an adopted item was read from.
+/// </para>
 /// </remarks>
 public sealed class DesktopItem
 {
@@ -35,6 +39,14 @@ public sealed class DesktopItem
     /// for it when the shell has none. Empty falls back to the generic placeholder.
     /// </summary>
     public string IconKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The desktop entry this item was adopted from, when it came from the user's own desktop, and
+    /// empty when the user imported it by hand. It is what a later sync compares against: the same
+    /// file is never adopted twice, and the caption the shell gives an entry can change without
+    /// making a second item of it.
+    /// </summary>
+    public string SourcePath { get; set; } = string.Empty;
 
     public CanvasAnchor Anchor { get; set; } = CanvasAnchor.Center;
 
@@ -95,6 +107,13 @@ public sealed class DesktopItem
             problems.Add($"{what} has a non-finite offset.");
         }
 
+        // A source is optional — an item imported by hand has none — but one that is there names a
+        // place on this machine, because it is what a later sync compares against.
+        if (SourcePath.Length > 0)
+        {
+            ValidatePath(what, SourcePath, problems, "source");
+        }
+
         if (Target is null)
         {
             problems.Add($"{what} needs a target.");
@@ -125,6 +144,7 @@ public sealed class DesktopItem
         Name = Name,
         Target = CloneTarget(Target)!,
         IconKey = IconKey,
+        SourcePath = SourcePath,
         Anchor = Anchor,
         OffsetXDip = OffsetXDip,
         OffsetYDip = OffsetYDip,
@@ -143,17 +163,17 @@ public sealed class DesktopItem
         _ => null,
     };
 
-    private static void ValidatePath(string what, string path, List<string> problems)
+    private static void ValidatePath(string what, string path, List<string> problems, string noun = "target")
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            problems.Add($"{what} has an empty target path.");
+            problems.Add($"{what} has an empty {noun} path.");
             return;
         }
 
         if (!Path.IsPathFullyQualified(path))
         {
-            problems.Add($"{what} must point at a fully qualified path.");
+            problems.Add($"{what} must point at a fully qualified {noun} path.");
             return;
         }
 
@@ -162,7 +182,7 @@ public sealed class DesktopItem
         // here instead of at launch time.
         if (path.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
         {
-            problems.Add($"{what} has a path with invalid characters.");
+            problems.Add($"{what} has a {noun} path with invalid characters.");
         }
     }
 

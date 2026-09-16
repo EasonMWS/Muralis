@@ -20,6 +20,9 @@ public sealed record DesktopLayoutMigrationResult(DesktopLayout? Layout, int Dro
 /// <item>Version 2 held real items but tagged the docked ones with a <c>placement</c> field. Version
 /// 3 names them in the dock's own entry list instead, so this step reads the tag once and turns it
 /// into entries, and moves the dock's spring in with the rest of the dock's parameters.</item>
+/// <item>Version 3 is otherwise the shape the document still has. Version 4 only adds sections, so
+/// this step is the current read with the version brought up: what is not in the file is exactly what
+/// the defaults mean there.</item>
 /// </list>
 /// </remarks>
 public static class DesktopLayoutMigrator
@@ -113,6 +116,63 @@ public static class DesktopLayoutMigrator
         }
 
         return new DesktopLayoutMigrationResult(layout, prototype.Items?.Count ?? 0, null);
+    }
+
+    /// <summary>
+    /// Brings a document of the given written version forward to the current shape. The one place that
+    /// knows which older shapes exist: the store reads the version out of the file and hands it here,
+    /// so a version that is added later is a new step rather than another branch in the store.
+    /// </summary>
+    public static DesktopLayoutMigrationResult Upgrade(string json, int fromVersion)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+
+        return fromVersion switch
+        {
+            1 => MigrateFromPrototype(json),
+            2 => UpgradeFromVersion2(json),
+            3 => UpgradeFromVersion3(json),
+            _ => new DesktopLayoutMigrationResult(
+                null,
+                0,
+                $"schema version {fromVersion} is not one this version knows how to bring forward"),
+        };
+    }
+
+    /// <summary>
+    /// Upgrades a version 3 layout: nothing to read differently, because version 4 only added sections
+    /// the old file has no opinion about. The document is read with the current shape and stamped with
+    /// the current version, which is what leaves the takeover at the native desktop and every item with
+    /// no source to name — the right reading of a file written before either existed.
+    /// </summary>
+    public static DesktopLayoutMigrationResult UpgradeFromVersion3(string json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+
+        DesktopLayout? layout;
+        try
+        {
+            layout = JsonSerializer.Deserialize<DesktopLayout>(json, SerializerOptions);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+            return new DesktopLayoutMigrationResult(null, 0, $"it cannot be read as a version 3 layout ({ex.Message})");
+        }
+
+        if (layout is null)
+        {
+            return new DesktopLayoutMigrationResult(null, 0, "the file is empty");
+        }
+
+        layout.SchemaVersion = DesktopLayout.CurrentSchemaVersion;
+
+        var problems = layout.Validate();
+        if (problems.Count > 0)
+        {
+            return new DesktopLayoutMigrationResult(null, 0, string.Join(" ", problems));
+        }
+
+        return new DesktopLayoutMigrationResult(layout, 0, null);
     }
 
     /// <summary>

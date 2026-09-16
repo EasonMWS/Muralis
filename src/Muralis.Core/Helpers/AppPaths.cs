@@ -30,6 +30,13 @@ public static class AppPaths
     /// </summary>
     public static string CanvasPrototypeFile => Path.Combine(RootDirectory, "desktop-canvas-prototype.json");
 
+    /// <summary>
+    /// The desktop takeover marker: written before the native icons are hidden and removed once they
+    /// are verifiably back. Its existence at startup is what tells a fresh process that a previous
+    /// one may have died with the user's desktop still taken over.
+    /// </summary>
+    public static string DesktopTakeoverFile => Path.Combine(DesktopDirectory, "takeover-state.json");
+
     public static string LogsDirectory => Path.Combine(RootDirectory, "logs");
 
     public static string CacheDirectory => Path.Combine(RootDirectory, "cache");
