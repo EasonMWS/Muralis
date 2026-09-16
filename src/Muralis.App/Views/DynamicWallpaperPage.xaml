@@ -224,6 +224,58 @@
                     Text="{x:Bind ViewModel.DiagnosticsText, Mode=OneWay}" />
             </Expander>
 
+            <!--  Edge dock  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Dynamic_Section_Dock], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_Dock_Title], Source={StaticResource Loc}}" />
+                        <TextBlock
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{Binding [Dynamic_Dock_Description], Source={StaticResource Loc}}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleSwitch
+                            HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="CanvasDockEnabled"
+                            AutomationProperties.Name="{Binding [Dynamic_Dock_Enabled], Source={StaticResource Loc}}"
+                            Header="{Binding [Dynamic_Dock_Enabled], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanEditCanvasItems, Mode=OneWay}"
+                            IsOn="{x:Bind ViewModel.DockEnabled, Mode=TwoWay}"
+                            OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                            OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
+                        <ToggleSwitch
+                            Grid.Column="1"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="CanvasDockAutoHide"
+                            AutomationProperties.Name="{Binding [Dynamic_Dock_AutoHide], Source={StaticResource Loc}}"
+                            Header="{Binding [Dynamic_Dock_AutoHide], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanEditCanvasItems, Mode=OneWay}"
+                            IsOn="{x:Bind ViewModel.DockAutoHide, Mode=TwoWay}"
+                            OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                            OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
+                    </Grid>
+                    <ComboBox
+                        MinWidth="180"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="CanvasDockEdge"
+                        AutomationProperties.Name="{Binding [Dynamic_Dock_Edge], Source={StaticResource Loc}}"
+                        DisplayMemberPath="Label"
+                        Header="{Binding [Dynamic_Dock_Edge], Source={StaticResource Loc}}"
+                        IsEnabled="{x:Bind ViewModel.CanEditCanvasItems, Mode=OneWay}"
+                        ItemsSource="{x:Bind ViewModel.DockEdges}"
+                        SelectedIndex="{x:Bind ViewModel.DockEdgeIndex, Mode=TwoWay}" />
+                </StackPanel>
+            </Border>
+
             <!--  Desktop items: the programs, shortcuts, folders and addresses on the canvas  -->
             <TextBlock
                 Margin="0,14,0,4"

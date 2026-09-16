@@ -1,22 +1,30 @@
 using Muralis.Core.Canvas;
+using Muralis.Core.Dock;
 
 namespace Muralis.Core.Desktop;
 
 /// <summary>
-/// The desktop layout document: the items the user put on the desktop, plus the parameters that
-/// shape hover magnification, motion and the edge dock. It is persisted on its own, away from
+/// The desktop layout document: the items the user put on the desktop, the dock they arranged, and
+/// the parameters that shape hover magnification and motion. It is persisted on its own, away from
 /// application settings, so a hand-edit or a reset never touches <c>settings.json</c>.
 /// </summary>
 /// <remarks>
-/// The first desktop document that describes real things: every item carries a typed
-/// <see cref="DesktopItem.Target"/>. Version 1 held nothing but prototype tiles, so a migrated
-/// document keeps the parameters and starts with no items — nothing that could not open anything
-/// is carried over.
+/// <para>
+/// The shape is two lists and their parameters: <see cref="Items"/> holds every item the user
+/// imported, exactly once, and <see cref="Dock"/> holds the ids of the ones that live on the dock,
+/// in dock order. An item therefore appears on the canvas or in the dock depending on nothing but
+/// where it is named, and there is no second copy of an item to keep in step.
+/// </para>
+/// <para>
+/// Version 3 moved dock membership into the dock's own document section; version 2 kept it as a
+/// <c>placement</c> field on each item, which made the dock a tag on the canvas rather than a thing
+/// of its own. Both older shapes are read once and brought forward.
+/// </para>
 /// </remarks>
 public sealed class DesktopLayout
 {
-    /// <summary>Version 2 introduced typed item targets and dropped the prototype tiles.</summary>
-    public const int CurrentSchemaVersion = 2;
+    /// <summary>Version 3 made the dock a section of its own, holding the items it shows by id.</summary>
+    public const int CurrentSchemaVersion = 3;
 
     /// <summary>Document marker, so a file that is not a Muralis desktop layout is refused early.</summary>
     public const string DocumentKind = "muralis.desktopLayout";
@@ -26,20 +34,29 @@ public sealed class DesktopLayout
 
     public string Kind { get; set; } = DocumentKind;
 
+    /// <summary>How the free canvas magnifies items under the pointer.</summary>
     public CanvasProximityOptions Proximity { get; set; } = new();
 
+    /// <summary>The springs the free canvas moves with.</summary>
     public CanvasMotionOptions Motion { get; set; } = new();
 
-    public CanvasDockOptions Dock { get; set; } = new();
+    public DockOptions Dock { get; set; } = new();
 
-    /// <summary>All items. Dock items appear in rail order; free items use <see cref="DesktopItem.Z"/>.</summary>
+    /// <summary>Every item, whether it is on the canvas or in the dock. The dock names the ones it shows.</summary>
     public List<DesktopItem> Items { get; set; } = [];
 
     /// <summary>
-    /// The layout a fresh install starts from: the parameters that shape the canvas and no items
-    /// at all. Items only ever appear because the user added one.
+    /// The layout a fresh install starts from: the parameters and no items at all. Items only ever
+    /// appear because the user added one.
     /// </summary>
     public static DesktopLayout CreateEmpty() => new();
+
+    /// <summary>Whether the item lives in the dock.</summary>
+    public bool IsDocked(string? itemId) => Dock.IsDocked(itemId);
+
+    /// <summary>The items on the canvas, in the order the dock does not decide: the free ones.</summary>
+    public IReadOnlyList<DesktopItem> FreeItems() =>
+        Items.Where(item => !Dock.IsDocked(item.Id)).ToList();
 
     /// <summary>
     /// Checks the facts consumers rely on. Returns an empty list when the layout is coherent; the
@@ -65,45 +82,23 @@ public sealed class DesktopLayout
         }
 
         ValidateProximity(Proximity, "proximity", problems);
-        ValidateProximity(Dock.Proximity, "dock proximity", problems);
 
-        if (Motion.Hover is null || Motion.Dock is null)
+        if (Motion.Hover is null)
         {
-            problems.Add("Both motion springs must be present.");
+            problems.Add("The hover spring must be present.");
         }
         else
         {
             ValidateSpring(Motion.Hover, "hover spring", problems);
-            ValidateSpring(Motion.Dock, "dock spring", problems);
         }
 
-        if (Dock.TriggerSizeDip is < 0 or > 200)
+        if (Dock is null)
         {
-            problems.Add("The dock trigger size must be between 0 and 200 DIP.");
+            problems.Add("The dock options are missing.");
         }
-
-        if (Dock.ShowDelayMilliseconds < 0 || Dock.HideDelayMilliseconds < 0)
+        else
         {
-            problems.Add("Dock delays cannot be negative.");
-        }
-
-        if (Dock.CollapsedScale is < 0 or > 2 || Dock.ExpandedScale is < 0 or > 2)
-        {
-            problems.Add("Dock scales must be between 0 and 2.");
-        }
-        else if (Dock.ExpandedScale <= Dock.CollapsedScale)
-        {
-            problems.Add("The expanded dock scale must exceed the collapsed one.");
-        }
-
-        if (Dock.ItemSizeDip is < 8 or > 512 || Dock.ItemSpacingDip is < 0 or > 512)
-        {
-            problems.Add("Dock item size must be 8-512 DIP and spacing 0-512 DIP.");
-        }
-
-        if (Dock.EdgeMarginDip is < 0 or > 512 || Dock.PaddingDip is < 0 or > 512)
-        {
-            problems.Add("Dock margin and padding must be 0-512 DIP.");
+            problems.AddRange(Dock.Validate());
         }
 
         if (Items is null)
@@ -127,6 +122,17 @@ public sealed class DesktopLayout
             }
 
             problems.AddRange(item.Validate());
+        }
+
+        if (Dock is not null)
+        {
+            foreach (var entry in Dock.Entries.Where(entry => entry is not null))
+            {
+                if (!string.IsNullOrWhiteSpace(entry.ItemId) && !ids.Contains(entry.ItemId))
+                {
+                    problems.Add($"The dock shows '{entry.ItemId}', which is not an item of this layout.");
+                }
+            }
         }
 
         return problems;

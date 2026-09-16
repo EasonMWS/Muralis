@@ -7,12 +7,19 @@ namespace Muralis.Core.Desktop;
 /// One item on the desktop: what it is called, where it sits, and — through
 /// <see cref="Target"/> — what it opens. Data only: the saved position is <see cref="Anchor"/>
 /// plus the DIP offsets, and pixels are recomputed on every layout pass. <see cref="Z"/> orders
-/// the free items (higher draws on top); dock items keep their order in the layout.
+/// the items the canvas shows (higher draws on top).
 /// </summary>
 /// <remarks>
+/// <para>
 /// The item never holds the file it points at, only a reference to it; a target that stops
 /// existing is reported by <see cref="IsMissing"/> and the item itself stays in the layout until
 /// the user takes it away.
+/// </para>
+/// <para>
+/// An item does not say where it lives. The layout's dock names the items it shows and the canvas
+/// shows the rest, so moving an item between the two is one entry changing place rather than a
+/// second field that has to be kept in step with it.
+/// </para>
 /// </remarks>
 public sealed class DesktopItem
 {
@@ -28,8 +35,6 @@ public sealed class DesktopItem
     /// for it when the shell has none. Empty falls back to the generic placeholder.
     /// </summary>
     public string IconKey { get; set; } = string.Empty;
-
-    public CanvasItemPlacement Placement { get; set; } = CanvasItemPlacement.Free;
 
     public CanvasAnchor Anchor { get; set; } = CanvasAnchor.Center;
 
@@ -120,7 +125,6 @@ public sealed class DesktopItem
         Name = Name,
         Target = CloneTarget(Target)!,
         IconKey = IconKey,
-        Placement = Placement,
         Anchor = Anchor,
         OffsetXDip = OffsetXDip,
         OffsetYDip = OffsetYDip,

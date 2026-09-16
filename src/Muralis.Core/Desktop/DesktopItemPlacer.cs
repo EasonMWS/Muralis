@@ -16,10 +16,12 @@ public static class DesktopItemPlacer
     /// <summary>
     /// The anchor offset for a new item, in DIP, measured from the display's centre (the anchor new
     /// items are given). Candidates are walked in rows outwards from the centre, so the first free
-    /// spot is the one closest to where the user is looking.
+    /// spot is the one closest to where the user is looking. Items the dock shows are not in the way:
+    /// they are not on this canvas at all.
     /// </summary>
     public static (double X, double Y) NextFreeSpot(
         IReadOnlyList<DesktopItem> items,
+        IReadOnlyCollection<string>? dockedItemIds,
         double displayWidthDip,
         double displayHeightDip,
         double sizeDip)
@@ -31,7 +33,7 @@ public static class DesktopItemPlacer
         var centreY = displayHeightDip / 2.0;
 
         var taken = items
-            .Where(item => item is { Placement: CanvasItemPlacement.Free })
+            .Where(item => item is not null && !(dockedItemIds?.Contains(item.Id) ?? false))
             .Select(item => CentreOf(item, displayWidthDip, displayHeightDip))
             .ToList();
 

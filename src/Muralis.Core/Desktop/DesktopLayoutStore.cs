@@ -44,7 +44,8 @@ public sealed class DesktopLayoutStore
     /// <summary>
     /// Loads the saved layout, or an empty one when there is nothing valid to load. A file that does
     /// not parse or does not validate is set aside (renamed to <c>.bad</c>) rather than deleted, so a
-    /// hand-edited mistake can be recovered.
+    /// hand-edited mistake can be recovered. A file written by an older version is brought forward
+    /// and written back in the current shape, with the original kept beside it.
     /// </summary>
     public async Task<DesktopLayout> LoadAsync(CancellationToken cancellationToken = default)
     {
@@ -53,17 +54,81 @@ public sealed class DesktopLayoutStore
             return await MigrateOrStartEmptyAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        DesktopLayout? loaded;
+        string json;
         try
         {
-            await using var stream = File.OpenRead(_filePath);
-            loaded = await JsonSerializer
-                .DeserializeAsync<DesktopLayout>(stream, SerializerOptions, cancellationToken)
-                .ConfigureAwait(false);
+            json = await File.ReadAllTextAsync(_filePath, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogError(ex, "Could not read the desktop layout at {Path}; starting from an empty layout", _filePath);
+            return DesktopLayout.CreateEmpty();
+        }
+
+        var reported = DesktopLayoutMigrator.SchemaVersionOf(json);
+        if (reported is null)
+        {
+            _logger.LogError("The desktop layout at {Path} is not readable as a document; starting from an empty layout", _filePath);
+            SetAsideCorruptFile();
+            return DesktopLayout.CreateEmpty();
+        }
+
+        var version = reported.Value;
+
+        if (version == 1)
+        {
+            // A prototype document that was renamed or moved here: the same read as the prototype
+            // file itself, and nothing about it can be written back as it was.
+            var prototype = DesktopLayoutMigrator.MigrateFromPrototype(json);
+            if (prototype.Layout is null)
+            {
+                _logger.LogError(
+                    "The desktop layout at {Path} could not be brought forward ({Error}); starting from an empty layout",
+                    _filePath,
+                    prototype.Error);
+                SetAsideCorruptFile();
+                return DesktopLayout.CreateEmpty();
+            }
+
+            await SaveAsync(prototype.Layout, cancellationToken).ConfigureAwait(false);
+            return prototype.Layout;
+        }
+
+        // A version that is not there at all is read as the current shape: the document is meant to
+        // be edited by hand, and a hand edit that drops the number should still be judged by what the
+        // file says rather than guessed at. Only a version that is really older is brought forward.
+        if (version > 1 && version < DesktopLayout.CurrentSchemaVersion)
+        {
+            var upgraded = DesktopLayoutMigrator.UpgradeFromVersion2(json);
+            if (upgraded.Layout is null)
+            {
+                _logger.LogError(
+                    "The desktop layout at {Path} could not be brought forward from version {Version} ({Error}); starting from an empty layout",
+                    _filePath,
+                    version,
+                    upgraded.Error);
+                SetAsideCorruptFile();
+                return DesktopLayout.CreateEmpty();
+            }
+
+            KeepAsCopy(_filePath + $".v{version}.bak", version);
+            await SaveAsync(upgraded.Layout, cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation(
+                "The version {Version} desktop layout was brought forward: {Docked} of its {Count} items are in the dock",
+                version,
+                upgraded.Layout.Dock.Entries.Count,
+                upgraded.Layout.Items.Count);
+            return upgraded.Layout;
+        }
+
+        DesktopLayout? loaded;
+        try
+        {
+            loaded = JsonSerializer.Deserialize<DesktopLayout>(json, SerializerOptions);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
@@ -71,11 +136,6 @@ public sealed class DesktopLayoutStore
             // unknown arrives as a shape the serialiser will not map rather than as broken JSON.
             _logger.LogError(ex, "The desktop layout at {Path} is corrupt; starting from an empty layout", _filePath);
             SetAsideCorruptFile();
-            return DesktopLayout.CreateEmpty();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogError(ex, "Could not read the desktop layout at {Path}; starting from an empty layout", _filePath);
             return DesktopLayout.CreateEmpty();
         }
 
@@ -209,6 +269,22 @@ public sealed class DesktopLayoutStore
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning(ex, "Could not set aside the invalid desktop layout file");
+        }
+    }
+
+    /// <summary>
+    /// Keeps a copy of the document that is about to be written over, so a version that was brought
+    /// forward can always be read back in the shape the user's own version wrote.
+    /// </summary>
+    private void KeepAsCopy(string backupPath, int version)
+    {
+        try
+        {
+            File.Copy(_filePath, backupPath, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "The version {Version} desktop layout could not be kept as {Backup}", version, backupPath);
         }
     }
 }

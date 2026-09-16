@@ -953,6 +953,41 @@
     <value>无法修改该项目：{0}</value>
   </data>
 
+  <!--  Edge dock  -->
+  <data name="Dynamic_Section_Dock" xml:space="preserve">
+    <value>边缘 Dock</value>
+  </data>
+  <data name="Dynamic_Dock_Title" xml:space="preserve">
+    <value>Dock</value>
+  </data>
+  <data name="Dynamic_Dock_Description" xml:space="preserve">
+    <value>贴在屏幕某一条边上的条栏，放着你最常用的桌面项目。把项目从画布拖进去即可加入，沿条栏拖动可调整顺序，拖出条栏则放回画布。你自己的桌面图标不会因此改变。</value>
+  </data>
+  <data name="Dynamic_Dock_Enabled" xml:space="preserve">
+    <value>显示 Dock</value>
+  </data>
+  <data name="Dynamic_Dock_AutoHide" xml:space="preserve">
+    <value>指针离开时收起</value>
+  </data>
+  <data name="Dynamic_Dock_Edge" xml:space="preserve">
+    <value>边缘</value>
+  </data>
+  <data name="Dynamic_Dock_Edge_Left" xml:space="preserve">
+    <value>左</value>
+  </data>
+  <data name="Dynamic_Dock_Edge_Right" xml:space="preserve">
+    <value>右</value>
+  </data>
+  <data name="Dynamic_Dock_Edge_Top" xml:space="preserve">
+    <value>上</value>
+  </data>
+  <data name="Dynamic_Dock_Edge_Bottom" xml:space="preserve">
+    <value>下</value>
+  </data>
+  <data name="Dynamic_Dock_Status_Changed" xml:space="preserve">
+    <value>Dock 已更新。</value>
+  </data>
+
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">
     <value>Muralis — 壁纸工作室</value>

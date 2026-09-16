@@ -8,16 +8,19 @@ public static class CanvasProximity
 {
     /// <summary>
     /// The scale an item renders at when the cursor is <paramref name="distanceDip"/> away. Zero
-    /// distance gives <see cref="CanvasProximityOptions.MaxScale"/>, distances at or beyond the
-    /// influence radius give 1, and everything in between follows the configured falloff.
+    /// distance gives <paramref name="maxScale"/>, distances at or beyond
+    /// <paramref name="influenceRadiusDip"/> give 1, and everything in between follows
+    /// <paramref name="falloff"/>.
     /// </summary>
-    public static double ScaleAt(double distanceDip, CanvasProximityOptions options)
+    public static double ScaleAt(
+        double distanceDip,
+        double maxScale,
+        double influenceRadiusDip,
+        ProximityFalloff falloff)
     {
-        ArgumentNullException.ThrowIfNull(options);
-
-        var radius = options.InfluenceRadiusDip;
-        var maxScale = Math.Max(1.0, options.MaxScale);
-        if (radius <= 0 || maxScale <= 1.0)
+        var ceiling = Math.Max(1.0, maxScale);
+        var radius = influenceRadiusDip;
+        if (radius <= 0 || ceiling <= 1.0)
         {
             return 1.0;
         }
@@ -30,13 +33,20 @@ public static class CanvasProximity
 
         // t: 1 at the cursor, 0 at the rim. Both curves are 0 at the rim by construction.
         var t = 1.0 - distance / radius;
-        var curve = options.Falloff switch
+        var curve = falloff switch
         {
             ProximityFalloff.Gaussian => NormalizedGaussian(t),
             _ => Smoothstep(t),
         };
 
-        return 1.0 + (maxScale - 1.0) * curve;
+        return 1.0 + (ceiling - 1.0) * curve;
+    }
+
+    /// <summary>The same curve, read from an options object.</summary>
+    public static double ScaleAt(double distanceDip, CanvasProximityOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return ScaleAt(distanceDip, options.MaxScale, options.InfluenceRadiusDip, options.Falloff);
     }
 
     /// <summary>The scale for an item whose centre is at (<paramref name="centerXDip"/>, <paramref name="centerYDip"/>).</summary>

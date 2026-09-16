@@ -155,6 +155,5 @@ public sealed class DesktopItemSerializationTests
         Assert.Equal(CanvasAnchor.BottomRight, restored.Anchor);
         Assert.Equal(-40, restored.OffsetXDip);
         Assert.Equal(96, restored.SizeDip);
-        Assert.Equal(CanvasItemPlacement.Free, restored.Placement);
     }
 }

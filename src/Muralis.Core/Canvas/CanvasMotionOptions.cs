@@ -17,18 +17,18 @@ public sealed class CanvasSpring
     };
 }
 
-/// <summary>Springs the canvas animates with, one per kind of motion.</summary>
+/// <summary>
+/// The springs the free canvas moves with, one per kind of motion. The dock keeps its own spring
+/// next to the rest of its parameters, where the size it magnifies to and the radius it magnifies
+/// over live.
+/// </summary>
 public sealed class CanvasMotionOptions
 {
     /// <summary>Item growth and shrink under the cursor: quick and nearly bounce-free.</summary>
     public CanvasSpring Hover { get; set; } = new() { PeriodSeconds = 0.30, DampingRatio = 0.85 };
 
-    /// <summary>Dock expand and retract: a little slower, with a slight elastic settle.</summary>
-    public CanvasSpring Dock { get; set; } = new() { PeriodSeconds = 0.40, DampingRatio = 0.75 };
-
     public CanvasMotionOptions Clone() => new()
     {
         Hover = Hover.Clone(),
-        Dock = Dock.Clone(),
     };
 }

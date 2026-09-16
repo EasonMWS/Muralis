@@ -17,7 +17,7 @@ public sealed class DesktopItemPlacerTests
     [Fact]
     public void AnEmptyDisplay_ReceivesTheFirstItemInTheMiddle()
     {
-        var spot = DesktopItemPlacer.NextFreeSpot([], DisplayWidth, DisplayHeight, SizeDip);
+        var spot = DesktopItemPlacer.NextFreeSpot([], null, DisplayWidth, DisplayHeight, SizeDip);
 
         Assert.Equal((0.0, 0.0), spot);
     }
@@ -25,18 +25,18 @@ public sealed class DesktopItemPlacerTests
     [Fact]
     public void AnItemInTheMiddle_PushesTheNextOneAside()
     {
-        var spot = DesktopItemPlacer.NextFreeSpot([Free(0, 0)], DisplayWidth, DisplayHeight, SizeDip);
+        var spot = DesktopItemPlacer.NextFreeSpot([Free(0, 0)], null, DisplayWidth, DisplayHeight, SizeDip);
 
         Assert.Equal((0.0, -DesktopItemPlacer.SpacingDip), spot);
     }
 
     [Fact]
-    public void ADockedItem_DoesNotOccupyASpot()
+    public void AnItemTheDockShows_DoesNotOccupyASpot()
     {
+        // A docked item is not on this canvas at all, so the middle of the display is still free.
         var docked = Free(0, 0);
-        docked.Placement = CanvasItemPlacement.Dock;
 
-        var spot = DesktopItemPlacer.NextFreeSpot([docked], DisplayWidth, DisplayHeight, SizeDip);
+        var spot = DesktopItemPlacer.NextFreeSpot([docked], [docked.Id], DisplayWidth, DisplayHeight, SizeDip);
 
         Assert.Equal((0.0, 0.0), spot);
     }
@@ -44,7 +44,7 @@ public sealed class DesktopItemPlacerTests
     [Fact]
     public void ADisplayWithNoRoom_StillGivesAUsableOffset()
     {
-        var spot = DesktopItemPlacer.NextFreeSpot([Free(0, 0)], 100, 100, 96);
+        var spot = DesktopItemPlacer.NextFreeSpot([Free(0, 0)], null, 100, 100, 96);
 
         Assert.Equal((0.0, 0.0), spot);
     }
@@ -56,7 +56,7 @@ public sealed class DesktopItemPlacerTests
         var items = new List<DesktopItem>();
         for (var index = 0; index < 5; index++)
         {
-            var (x, y) = DesktopItemPlacer.NextFreeSpot(items, DisplayWidth, DisplayHeight, SizeDip);
+            var (x, y) = DesktopItemPlacer.NextFreeSpot(items, null, DisplayWidth, DisplayHeight, SizeDip);
             items.Add(Free(x, y));
         }
 

@@ -39,4 +39,7 @@ public sealed record CanvasDiagnosticsSnapshot(
     IReadOnlyList<string>? MissingItemIds = null,
     string? SelectedItemId = null,
     string? LastLaunchId = null,
-    string? LastLaunchOutcome = null);
+    string? LastLaunchOutcome = null,
+    int DockItemCount = 0,
+    string? DockEdge = null,
+    bool DockEnabled = false);

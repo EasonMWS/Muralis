@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Canvas;
 using Muralis.Core.Desktop;
+using Muralis.Core.Dock;
 using Muralis.Core.Models;
 using Muralis.Desktop.Input;
 using Muralis.Desktop.Shell;
@@ -238,6 +239,58 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
             layout.Items.Remove(item);
             await _store.SaveAsync(layout).ConfigureAwait(false);
             _logger.LogInformation("The item {Id} was removed from the saved layout", id);
+            return true;
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
+    public async Task<DockOptions> GetDockAsync(CancellationToken cancellationToken = default)
+    {
+        var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return layout.Dock.Clone();
+    }
+
+    public async Task<bool> UpdateDockAsync(DockOptions dock, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dock);
+
+        await _mutex.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // An entry that names an item the layout does not hold would make the whole document
+            // invalid, and the next load would set it aside. Nothing else in the dock is touched.
+            if (_content is { } content)
+            {
+                var held = content.Items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+                dock.Entries.RemoveAll(entry => entry is null || !held.Contains(entry.ItemId));
+                content.UpdateDockOptions(dock);
+                _logger.LogInformation(
+                    "The desktop dock is now on the {Edge} edge{State} with {Count} items",
+                    dock.Edge,
+                    dock.Enabled ? string.Empty : " and switched off",
+                    dock.Entries.Count);
+                return true;
+            }
+
+            var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            dock.Entries.RemoveAll(entry => entry is null || !layout.Items.Any(item => string.Equals(item.Id, entry.ItemId, StringComparison.Ordinal)));
+            layout.Dock.CopyFrom(dock);
+            var problems = layout.Validate();
+            if (problems.Count > 0)
+            {
+                _logger.LogWarning("The dock change was refused ({Problems})", string.Join(" ", problems));
+                return false;
+            }
+
+            await _store.SaveAsync(layout).ConfigureAwait(false);
+            _logger.LogInformation(
+                "The saved desktop dock is now on the {Edge} edge{State} with {Count} items",
+                dock.Edge,
+                dock.Enabled ? string.Empty : " and switched off",
+                dock.Entries.Count);
             return true;
         }
         finally

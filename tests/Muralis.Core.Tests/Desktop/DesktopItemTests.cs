@@ -201,12 +201,10 @@ public sealed class DesktopItemTests : IDisposable
         var clone = item.Clone();
         clone.Name = "renamed";
         clone.OffsetXDip = 999;
-        clone.Placement = CanvasItemPlacement.Dock;
         ((ShortcutTarget)clone.Target).Path = @"C:\links\other.lnk";
 
         Assert.Equal("editor", item.Name);
         Assert.Equal(-195, item.OffsetXDip);
-        Assert.Equal(CanvasItemPlacement.Free, item.Placement);
         Assert.Equal(@"C:\links\editor.lnk", item.Location);
         Assert.NotSame(item.Target, clone.Target);
     }

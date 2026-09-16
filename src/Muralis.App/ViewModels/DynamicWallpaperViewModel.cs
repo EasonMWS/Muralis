@@ -7,6 +7,7 @@ using Microsoft.UI.Dispatching;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Desktop;
+using Muralis.Core.Dock;
 using Muralis.Core.Models;
 
 namespace Muralis.App.ViewModels;
@@ -27,6 +28,7 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     private readonly ILogger<DynamicWallpaperViewModel> _logger;
     private bool _applyingSettings = true;
     private bool _applyingCanvasStatus;
+    private bool _applyingDock;
     private VideoWallpaperState _state;
     private (string Key, object?[] Args)? _message;
     private DispatcherQueueTimer? _diagnosticsTimer;
@@ -72,6 +74,18 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsCanvasItemsBusy { get; set; }
 
+    /// <summary>Whether the edge dock is switched on. It lives in the desktop layout, not in settings.</summary>
+    [ObservableProperty]
+    public partial bool DockEnabled { get; set; }
+
+    /// <summary>Whether the rail retracts when the pointer is away from it.</summary>
+    [ObservableProperty]
+    public partial bool DockAutoHide { get; set; }
+
+    /// <summary>Which of <see cref="DockEdges"/> the dock hugs.</summary>
+    [ObservableProperty]
+    public partial int DockEdgeIndex { get; set; }
+
     /// <summary>Whether the development diagnostics panel is expanded.</summary>
     [ObservableProperty]
     public partial bool IsDiagnosticsOpen { get; set; }
@@ -97,7 +111,13 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         CanvasItems = [];
+        DockEdges = [];
         NewItemUrl = string.Empty;
+
+        foreach (var edge in DockEdgeInfo.All)
+        {
+            DockEdges.Add(new DesktopDockEdgeRow(edge, localization));
+        }
 
         var saved = settingsService.Current.VideoWallpaper;
         VideoPath = saved.VideoPath;
@@ -138,6 +158,9 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
 
     /// <summary>The items on the canvas, in the order the canvas keeps them.</summary>
     public ObservableCollection<DesktopItemRow> CanvasItems { get; }
+
+    /// <summary>The four display edges, in the order the picker offers them.</summary>
+    public ObservableCollection<DesktopDockEdgeRow> DockEdges { get; }
 
     /// <summary>Whether there is anything to list yet; the empty hint shows until there is.</summary>
     public bool HasCanvasItems => CanvasItems.Count > 0;
@@ -308,6 +331,81 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     partial void OnIsCanvasBusyChanged(bool value) => OnPropertyChanged(nameof(CanToggleCanvas));
 
     partial void OnIsCanvasItemsBusyChanged(bool value) => OnPropertyChanged(nameof(CanEditCanvasItems));
+
+    partial void OnDockEnabledChanged(bool value) => ApplyDock();
+
+    partial void OnDockAutoHideChanged(bool value) => ApplyDock();
+
+    partial void OnDockEdgeIndexChanged(int value) => ApplyDock();
+
+    /// <summary>
+    /// Writes the dock's settings back. The dock lives in the desktop layout document, so nothing
+    /// here touches <c>settings.json</c>; the change is saved whether the canvas is showing or not.
+    /// </summary>
+    private void ApplyDock()
+    {
+        if (_applyingSettings || _applyingDock)
+        {
+            return;
+        }
+
+        _ = ApplyDockAsync();
+    }
+
+    private async Task ApplyDockAsync()
+    {
+        var edge = DockEdgeIndex >= 0 && DockEdgeIndex < DockEdges.Count
+            ? DockEdges[DockEdgeIndex].Edge
+            : Muralis.Core.Dock.DockEdge.Left;
+
+        try
+        {
+            var dock = await _canvas.GetDockAsync();
+            dock.Enabled = DockEnabled;
+            dock.AutoHide = DockAutoHide;
+            dock.Edge = edge;
+
+            if (!await _canvas.UpdateDockAsync(dock))
+            {
+                SetMessage("Dynamic_Canvas_Status_ChangeFailed", isError: true, "dock");
+                await ReloadDockAsync();
+                return;
+            }
+
+            SetMessage("Dynamic_Dock_Status_Changed", isError: false, _canvas.Status.ItemCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The dock settings could not be written");
+            SetMessage("Dynamic_Canvas_Status_ChangeFailed", isError: true, ex.Message);
+        }
+    }
+
+    /// <summary>Reads the dock back, so the controls show what the document really says.</summary>
+    private async Task ReloadDockAsync()
+    {
+        try
+        {
+            var dock = await _canvas.GetDockAsync();
+
+            _applyingDock = true;
+            try
+            {
+                DockEnabled = dock.Enabled;
+                DockAutoHide = dock.AutoHide;
+                var index = DockEdges.ToList().FindIndex(row => row.Edge == dock.Edge);
+                DockEdgeIndex = index >= 0 ? index : 0;
+            }
+            finally
+            {
+                _applyingDock = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The dock settings could not be read");
+        }
+    }
 
     partial void OnIsDiagnosticsOpenChanged(bool value)
     {
@@ -500,6 +598,9 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(HasCanvasItems));
+
+        // The dock's settings live in the same layout document, so they are read back with it.
+        await ReloadDockAsync();
     }
 
     private void OnCanvasStatusChanged(object? sender, CanvasPrototypeStatus status)
@@ -587,7 +688,7 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         report.AppendLine($"missing  {snapshot.MissingItemIds?.Count ?? 0} · selected {snapshot.SelectedItemId ?? "none"}");
         report.AppendLine($"launch   {snapshot.LastLaunchId ?? "none"} → {snapshot.LastLaunchOutcome ?? "never"}");
         report.AppendLine($"icons    {snapshot.IconCacheEntries} cached · {snapshot.IconCacheBytes / (1024.0 * 1024.0):0.0} MB");
-        report.AppendLine($"dock     {snapshot.DockPhase} at {snapshot.DockScale:0.00}x");
+        report.AppendLine($"dock     {snapshot.DockPhase} · {snapshot.DockItemCount} items · {(snapshot.DockEnabled ? "on" : "off")} · {snapshot.DockEdge ?? "?"} edge · reveal {snapshot.DockScale:0.#}");
         report.AppendLine($"router   {snapshot.PointerContext ?? "?"} · {snapshot.PointerDispatchesPerSecond:0.0}/s · {snapshot.PointerReports} reports · {snapshot.PointerDispatches} dispatches");
         report.AppendLine($"updates  {snapshot.UpdatesPerSecond:0.0}/s · {snapshot.Updates} total");
         report.AppendLine($"layout   {snapshot.LayoutPath}");

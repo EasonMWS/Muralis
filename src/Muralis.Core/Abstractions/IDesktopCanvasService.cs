@@ -1,5 +1,6 @@
 using Muralis.Core.Canvas;
 using Muralis.Core.Desktop;
+using Muralis.Core.Dock;
 using Muralis.Core.Models;
 
 namespace Muralis.Core.Abstractions;
@@ -54,6 +55,19 @@ public interface IDesktopCanvasService
     /// layout does not hold the item.
     /// </summary>
     Task<bool> RemoveItemAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The dock as it is configured right now, as a copy the caller may keep. Answered whether the
+    /// canvas is showing or not.
+    /// </summary>
+    Task<DockOptions> GetDockAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes the dock: whether it is on, which edge it hugs, whether it hides itself, and what it
+    /// holds. Entries the items no longer support are dropped. Returns false when the change does not
+    /// make a coherent dock.
+    /// </summary>
+    Task<bool> UpdateDockAsync(DockOptions dock, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The canvas as it looked at its last change, for the development overlay; readable from any

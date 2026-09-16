@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Canvas;
 using Muralis.Core.Desktop;
+using Muralis.Core.Dock;
 using Muralis.Core.Models;
 using Muralis.Desktop.Icons;
 using Muralis.Desktop.Input;
@@ -17,11 +18,12 @@ namespace Muralis.Desktop.Surfaces;
 
 /// <summary>
 /// The desktop canvas: a free-form layer of items above the desktop icons that the pointer can
-/// reach. It owns what the desktop layer cannot know — where items sit, how they grow as the
-/// pointer comes close, how they are dragged and how the edge dock retracts — and nothing about the
-/// desktop itself: no window creation, no Explorer lifecycle, no display discovery. The shell
-/// mounts it on a window it placed above the icons and hands over a target; Explorer restarts
-/// simply look like a fresh mount.
+/// reach, and the edge dock the user put some of those items in. It owns what the desktop layer
+/// cannot know — where items sit, how they grow as the pointer comes close, how the dock reveals
+/// itself and magnifies, how items are dragged between the two — and nothing about the desktop
+/// itself: no window creation, no Explorer lifecycle, no display discovery. The shell mounts it on a
+/// window it placed above the icons and hands over a target; Explorer restarts simply look like a
+/// fresh mount.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -35,7 +37,15 @@ namespace Muralis.Desktop.Surfaces;
 /// is only as large as what the canvas draws, so on its own the canvas would stop seeing the pointer
 /// the moment it crossed a gap between items. The router follows the pointer across the whole
 /// desktop layer instead, while the window messages keep working as they always did for the pixels
-/// inside the region and for the fallback when there is no router.
+/// inside the region and for the fallback when there is no router. The router only publishes what is
+/// over the desktop layer or over a surface of ours, so a pointer over an ordinary window never
+/// reaches the dock at all.
+/// </para>
+/// <para>
+/// The dock: a rail on one display edge that holds items by reference, magnifies the ones near the
+/// pointer, and reveals itself from its edge when the pointer comes to it. Its geometry, its
+/// magnification and its reveal are all computed in <see cref="Muralis.Core.Dock"/> from the layout's
+/// dock options; what happens here is the visuals, the springs and the gestures.
 /// </para>
 /// <para>
 /// Threads: every method runs on the shell thread — mount, unmount, geometry changes, the window
@@ -49,10 +59,12 @@ namespace Muralis.Desktop.Surfaces;
 /// decides is which items have an icon of their own and at what size it is read.
 /// </para>
 /// <para>
-/// Gestures: one click picks an item out, a second one close enough in place and time opens it, and
-/// a press that ever wanders beyond the system's drag rectangle is a drag for good — a drag never
-/// opens anything. Opening is the launcher's business and nothing here builds a command line. An
-/// item whose target is gone is dimmed, badged, and otherwise left exactly where the user put it.
+/// Gestures: on the canvas one click picks an item out and a second one close enough in place and
+/// time opens it; the dock opens an item on a single click, because a rail is a launcher and
+/// waiting for a second click there would only make it feel slow. A press that ever wanders beyond
+/// the system's drag rectangle is a drag for good — a drag never opens anything, and what it moves
+/// depends on where the item lives: a canvas item can be dropped on the dock and a dock item can be
+/// reordered along it or dragged out onto the canvas.
 /// </para>
 /// </remarks>
 internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSink
@@ -65,9 +77,6 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     /// <summary>Pixel margin around an item's largest possible extent in the window region.</summary>
     private const int RegionSlackPixels = 2;
-
-    /// <summary>Below this the rail counts as invisible: it neither draws nor takes input.</summary>
-    private const double VisibleEpsilon = 0.01;
 
     /// <summary>An offset change smaller than this is not worth a new animation.</summary>
     private const double OffsetEpsilonDip = 0.25;
@@ -83,7 +92,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private readonly DesktopLayout _layout;
     private readonly DesktopLayoutStore _store;
     private readonly ILogger _logger;
-    private readonly CanvasDockAutoHide _dock;
+    private readonly DockAutoHide _dock;
     private readonly DesktopPointerRouter? _pointer;
     private readonly IDesktopItemLauncher? _launcher;
     private readonly IconBitmapCache _iconCache;
@@ -106,16 +115,26 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private ContainerVisual? _rail;
     private ShapeVisual? _railBackdrop;
     private SpringVector3NaturalMotionAnimation? _railSpring;
-    private double? _railSettlesAt;
+    private double? _dockSettlesAt;
+
+    /// <summary>The pointer's position along the rail, or null when it is nowhere near the dock.</summary>
+    private double? _dockPointerAlongDip;
 
     private double? _pointerXDip;
     private double? _pointerYDip;
     private bool _trackingLeave;
 
     private ItemView? _drag;
+    private ItemView? _dockDrag;
     private ItemView? _pressed;
     private double _grabXDip;
     private double _grabYDip;
+    private double _dockGrabAlongDip;
+    private double _dockGrabDepthDip;
+
+    /// <summary>Where the item being carried along the dock would land; null when nothing is being carried.</summary>
+    private int? _dockInsertIndex;
+
     private string? _selectedId;
     private string? _lastLaunchId;
     private string? _lastLaunchOutcome;
@@ -144,7 +163,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _logger = logger;
         _pointer = pointer;
         _launcher = launcher;
-        _dock = new CanvasDockAutoHide(layout.Dock);
+        _dock = new DockAutoHide(layout.Dock);
         _iconCache = new IconBitmapCache(logger);
         _iconCache.BitmapArrived += OnIconArrived;
 
@@ -254,7 +273,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         if (_drag is not null)
         {
             // The display changed under the drag: keep the item where it was put, then follow.
-            CommitDrag(_drag);
+            CommitCanvasDrag(_drag, _drag.CenterXDip, _drag.CenterYDip);
             EndDragCapture();
         }
 
@@ -262,6 +281,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _scaleFactor = scale > 0 ? scale : 1.0;
         _pointerXDip = null;
         _pointerYDip = null;
+        _dockPointerAlongDip = null;
 
         ApplyLayout();
         UpdateHover();
@@ -286,7 +306,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
         if (_drag is not null)
         {
-            CommitDrag(_drag);
+            CommitCanvasDrag(_drag, _drag.CenterXDip, _drag.CenterYDip);
             EndDragCapture();
         }
 
@@ -300,10 +320,14 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _rail = null;
         _railBackdrop = null;
         _railSpring = null;
-        _railSettlesAt = null;
+        _dockSettlesAt = null;
+        _dockPointerAlongDip = null;
         _freeViews.Clear();
         _dockViews.Clear();
         _pressed = null;
+        _drag = null;
+        _dockDrag = null;
+        _dockInsertIndex = null;
         _gestures.Cancel();
         _pointerXDip = null;
         _pointerYDip = null;
@@ -347,7 +371,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _itemsLayer.RelativeSizeAdjustment = new Vector2(1, 1);
         _root.Children.InsertAtTop(_itemsLayer);
 
-        _railSpring = Spring(compositor, _layout.Motion.Dock);
+        _railSpring = Spring(compositor, _layout.Dock.Spring);
 
         foreach (var item in _layout.Items)
         {
@@ -357,6 +381,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             }
         }
 
+        OrderDockViews();
         OrderFreeViews();
         ApplySelection();
 
@@ -387,9 +412,9 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         visual.CenterPoint = new Vector3(design / 2f, design / 2f, 0);
         visual.Children.InsertAtTop(icon);
 
-        var docked = item.Placement == CanvasItemPlacement.Dock;
+        var docked = _layout.IsDocked(item.Id);
         var baseScale = docked ? _layout.Dock.ItemSizeDip / design : item.SizeDip / design;
-        var view = new ItemView(item, visual, icon, Spring(compositor, _layout.Motion.Hover), Spring(compositor, _layout.Motion.Dock), baseScale);
+        var view = new ItemView(item, visual, icon, Spring(compositor, _layout.Motion.Hover), Spring(compositor, _layout.Dock.Spring), baseScale);
 
         // The authored box is always 96 units; the base scale is what turns it into the item's size.
         visual.Scale = new Vector3((float)baseScale, (float)baseScale, 1);
@@ -408,7 +433,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         RequestIcon(
             view,
             docked ? _layout.Dock.ItemSizeDip : item.SizeDip,
-            docked ? _layout.Dock.Proximity.MaxScale : _layout.Proximity.MaxScale);
+            docked ? _layout.Dock.MaxScale : _layout.Proximity.MaxScale);
         return view;
     }
 
@@ -538,11 +563,94 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     }
 
     /// <summary>
+    /// Takes on new dock settings — which edge, whether it hides, whether it is on, and what it holds —
+    /// and shows them. Called from any thread; the visuals belong to the shell thread.
+    /// </summary>
+    internal void UpdateDockOptions(DockOptions dock)
+    {
+        ArgumentNullException.ThrowIfNull(dock);
+        var copy = dock.Clone();
+        Post(() => UpdateDockOptionsCore(copy));
+    }
+
+    /// <summary>
     /// The items as they are right now, copies the caller may keep. Published on the shell thread
     /// whenever the layout changes, so a reader on another thread sees a whole list and never a
     /// halfway-edited one.
     /// </summary>
     internal IReadOnlyList<DesktopItem> Items => _items;
+
+    private void UpdateDockOptionsCore(DockOptions dock)
+    {
+        if (_root is null)
+        {
+            // Nothing is mounted: the next mount reads the layout, so there is nothing to show yet.
+            return;
+        }
+
+        // The same options object the state machine was built with, changed in place: the dock
+        // machine and the geometry both read it, so they cannot end up disagreeing about the edge.
+        _layout.Dock.CopyFrom(dock);
+
+        ReloadDockMembership();
+        ApplyLayout();
+        UpdateHover();
+        UpdateRegion();
+        SaveLayout();
+        Bump();
+        _logger.LogInformation(
+            "The dock now holds {Count} items on the {Edge} edge ({State})",
+            _dockViews.Count,
+            _layout.Dock.Edge,
+            _layout.Dock.Enabled ? "switched on" : "switched off");
+    }
+
+    /// <summary>
+    /// Puts every item's visuals where the dock says it lives: in the rail for the items the dock
+    /// names, on the canvas layer for the rest, each drawn at the size its new home uses. The one
+    /// place membership is read from is the layout's own dock, so a hand-edited document and a
+    /// settings change end up in exactly the same state.
+    /// </summary>
+    private void ReloadDockMembership()
+    {
+        if (_rail is null || _itemsLayer is null)
+        {
+            return;
+        }
+
+        foreach (var view in _freeViews.Concat(_dockViews).ToList())
+        {
+            var docked = _layout.IsDocked(view.Item.Id);
+            var wanted = docked ? _layout.Dock.ItemSizeDip : view.Item.SizeDip;
+            if (Math.Abs(wanted - (view.BaseScale * CanvasIconLibrary.DesignSize)) > 0.5)
+            {
+                view.BaseScale = wanted / CanvasIconLibrary.DesignSize;
+                StartScale(view, view.Hover);
+            }
+
+            if (docked == _dockViews.Contains(view))
+            {
+                continue;
+            }
+
+            view.Visual.Parent?.Children.Remove(view.Visual);
+            if (docked)
+            {
+                _freeViews.Remove(view);
+                _rail.Children.InsertAtTop(view.Visual);
+                _dockViews.Add(view);
+            }
+            else
+            {
+                _dockViews.Remove(view);
+                _itemsLayer.Children.InsertAtTop(view.Visual);
+                _freeViews.Add(view);
+            }
+        }
+
+        OrderDockViews();
+        OrderFreeViews();
+    }
 
     private void AddItemCore(DesktopItem item)
     {
@@ -551,13 +659,14 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             return;
         }
 
-        // A new item that is free to move gets the free spot closest to the middle of the display, so
-        // imports do not land on top of each other. The placer answers in anchor offsets, which is
+        // A new item that is not in the dock gets the free spot closest to the middle of the display,
+        // so imports do not land on top of each other. The placer answers in anchor offsets, which is
         // exactly what the layout saves.
-        if (item.Placement == CanvasItemPlacement.Free && _displayBounds.Width > 0)
+        if (!_layout.IsDocked(item.Id) && _displayBounds.Width > 0)
         {
             var (offsetX, offsetY) = DesktopItemPlacer.NextFreeSpot(
                 _layout.Items,
+                _layout.Dock.DockedItemIds(),
                 _displayBounds.Width / _scaleFactor,
                 _displayBounds.Height / _scaleFactor,
                 item.SizeDip);
@@ -577,6 +686,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         }
 
         // A new item may be docked, which moves the rail and every dock slot with it.
+        OrderDockViews();
         ApplyLayout();
         RefreshItems();
         SaveLayout();
@@ -598,6 +708,10 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         {
             _layout.Items.Remove(item);
         }
+
+        // An item taken away cannot stay named by the dock: a document that names an item it does not
+        // hold is not valid, and the next load would set the whole layout aside.
+        _layout.Dock.Entries.RemoveAll(entry => string.Equals(entry.ItemId, id, StringComparison.Ordinal));
 
         if (view is not null)
         {
@@ -672,37 +786,24 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             view.Visual.Offset = new Vector3((float)(dipX - design / 2), (float)(dipY - design / 2), 0);
         }
 
-        var railDip = ToDipRect(CanvasRailLayout.RailRect(_layout.Dock, _displayBounds, _scaleFactor, _dockViews.Count, expanded: true));
-        var railSize = new Vector2((float)railDip.Width, (float)railDip.Height);
-        _rail.Offset = new Vector3((float)railDip.X, (float)railDip.Y, 0);
-        _rail.Size = railSize;
-        _rail.CenterPoint = RailCenterPoint(_layout.Dock.Edge, railSize);
-        _rail.Scale = new Vector3(
-            (float)(_dock.Phase == CanvasDockPhase.Shown ? _layout.Dock.ExpandedScale : _layout.Dock.CollapsedScale),
-            (float)(_dock.Phase == CanvasDockPhase.Shown ? _layout.Dock.ExpandedScale : _layout.Dock.CollapsedScale),
-            1);
+        ApplyDockVisuals(animate: false);
 
-        _railBackdrop!.Size = railSize;
-        _railBackdrop.Shapes.Clear();
-        _railBackdrop.Shapes.Add(CanvasIconLibrary.Panel(_compositor!, railSize.X, railSize.Y, 24, RailFill));
-
-        var slots = CanvasRailLayout.SlotCenters(_layout.Dock, _displayBounds, _scaleFactor, _dockViews.Count);
-        for (var i = 0; i < _dockViews.Count; i++)
-        {
-            var view = _dockViews[i];
-            var (dipX, dipY) = ToCanvasDip(slots[i].X, slots[i].Y);
-            view.CenterXDip = dipX;
-            view.CenterYDip = dipY;
-            view.RenderedXDip = dipX;
-            view.RenderedYDip = dipY;
-            PlaceDockVisual(view, railDip.X, railDip.Y, design, animate: false);
-        }
+        // The rail is where it belongs for the state the dock is in right now, without animating from
+        // wherever the last mount left it.
+        PlaceRail(animate: false);
     }
 
+    /// <summary>The dock's own frame: which edge, on which display, at which scale.</summary>
+    private DockFrame Frame() => new(_layout.Dock.Edge, _displayBounds, _scaleFactor);
+
+    /// <summary>The dock's rail length for the layout it is showing right now.</summary>
+    private double RailLengthDip(double runLengthDip) =>
+        DockGeometry.RailLengthDip(_layout.Dock, runLengthDip);
+
     /// <summary>
-    /// Where each item should be drawn for the current pointer position. Free items only change
-    /// size; dock items also slide apart so magnified neighbours do not overlap, and the whole run
-    /// stays centred on the rail.
+    /// Where every dock item should be drawn for the current pointer position, and how large. Free
+    /// items only change size; dock items slide apart so magnified neighbours do not overlap, the run
+    /// stays centred on the rail, and an item being carried along the dock follows the pointer.
     /// </summary>
     private void UpdateHover()
     {
@@ -718,36 +819,95 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             StartScale(view, hover);
         }
 
-        if (_dockViews.Count > 0)
+        ApplyDockVisuals(animate: true);
+    }
+
+    /// <summary>
+    /// Lays the dock's items out for where the pointer is: the magnification comes from the core's
+    /// own layout, and the rail is resized to the run it is showing.
+    /// </summary>
+    private void ApplyDockVisuals(bool animate)
+    {
+        if (_rail is null || _dockViews.Count == 0)
         {
-            var options = _layout.Dock.Proximity;
-            var hoverScales = new double[_dockViews.Count];
+            return;
+        }
+
+        var dock = _layout.Dock;
+        var frame = Frame();
+        var resting = DockGeometry.RestingCentres(dock, frame.AlongCentreDip, _dockViews.Count);
+        var pointerAlong = _dockPointerAlongDip;
+
+        // An item being carried is not part of the run: it is under the pointer, and the others make
+        // room for where it would land.
+        var carried = _dockDrag is null ? -1 : _dockViews.IndexOf(_dockDrag);
+        var scales = new double[_dockViews.Count];
+        var centres = new double[_dockViews.Count];
+        if (carried >= 0)
+        {
+            var preview = DockReorder.PreviewCentres(resting, carried, _dockInsertIndex ?? carried);
             for (var i = 0; i < _dockViews.Count; i++)
             {
-                var view = _dockViews[i];
-                hoverScales[i] = hasPointer
-                    ? CanvasProximity.ScaleForItem(pointerX!.Value, pointerY!.Value, view.CenterXDip, view.CenterYDip, options)
-                    : 1.0;
-                StartScale(view, hoverScales[i]);
-            }
-
-            // The slot centres stay the reference for the distance math — measuring against the
-            // displaced centres would feed the packing back into the magnification.
-            var railDip = ToDipRect(CanvasRailLayout.RailRect(_layout.Dock, _displayBounds, _scaleFactor, _dockViews.Count, expanded: true));
-            var slots = CanvasRailLayout.SlotCenters(_layout.Dock, _displayBounds, _scaleFactor, _dockViews.Count);
-            var packed = CanvasRailLayout.DisplacedCenters(_layout.Dock, slots, hoverScales, _scaleFactor);
-            var design = (double)CanvasIconLibrary.DesignSize;
-
-            for (var i = 0; i < _dockViews.Count; i++)
-            {
-                var view = _dockViews[i];
-                var (dipX, dipY) = ToCanvasDip(packed[i].X, packed[i].Y);
-                var moved = Math.Abs(dipX - view.RenderedXDip) + Math.Abs(dipY - view.RenderedYDip) > OffsetEpsilonDip;
-                view.RenderedXDip = dipX;
-                view.RenderedYDip = dipY;
-                PlaceDockVisual(view, railDip.X, railDip.Y, design, animate: moved);
+                scales[i] = 1.0;
+                centres[i] = preview[i];
             }
         }
+        else
+        {
+            var layout = DockMagnification.Compute(pointerAlong, resting, frame.AlongCentreDip, dock);
+            for (var i = 0; i < _dockViews.Count; i++)
+            {
+                scales[i] = layout.Items[i].Scale;
+                centres[i] = layout.Items[i].CenterAlongDip;
+            }
+        }
+
+        var runLength = carried >= 0
+            ? DockGeometry.RestingRunDip(dock, _dockViews.Count)
+            : RunLengthOf(dock, scales);
+        var railLength = RailLengthDip(runLength);
+        var railRect = DockGeometry.RailRect(dock, _displayBounds, _scaleFactor, railLength, _dock.RevealTarget);
+        var (railX, railY) = ToCanvasDip(railRect.X, railRect.Y);
+        var depth = DockGeometry.ItemCentreDepthDip(dock);
+
+        for (var i = 0; i < _dockViews.Count; i++)
+        {
+            var view = _dockViews[i];
+            var place = frame.PointAt(centres[i], depth);
+
+            // The item in the hand is placed by the drag itself, not by the run.
+            if (view == _dockDrag)
+            {
+                continue;
+            }
+
+            var moved = Math.Abs(place.X - view.RenderedXDip) + Math.Abs(place.Y - view.RenderedYDip) > OffsetEpsilonDip;
+            view.RenderedXDip = place.X;
+            view.RenderedYDip = place.Y;
+            StartScale(view, scales[i]);
+            PlaceDockVisual(view, railX, railY, (double)CanvasIconLibrary.DesignSize, animate && moved);
+        }
+
+        // The rail grows and shrinks with its run, so a magnified dock is not drawn against a rail
+        // it no longer fits in. Its length follows the pointer continuously, which is smoother than
+        // any animation of it would be.
+        SizeRail(railRect);
+    }
+
+    /// <summary>The length of a run of items at the given scales, gaps included.</summary>
+    private static double RunLengthOf(DockOptions dock, IReadOnlyList<double> scales)
+    {
+        var length = 0.0;
+        for (var i = 0; i < scales.Count; i++)
+        {
+            length += dock.ItemSizeDip * Math.Max(1.0, scales[i]);
+            if (i + 1 < scales.Count)
+            {
+                length += dock.SpacingDip * (Math.Max(1.0, scales[i]) + Math.Max(1.0, scales[i + 1])) / 2.0;
+            }
+        }
+
+        return length;
     }
 
     private void StartScale(ItemView view, double hover)
@@ -782,6 +942,85 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         spring.InitialValue = view.Visual.Offset;
         spring.FinalValue = offset;
         view.Visual.StartAnimation("Offset", spring);
+    }
+
+    /// <summary>
+    /// Puts the rail where the dock's reveal puts it — against the edge when it is out, pushed off
+    /// past the edge to leave only its peek when it is away — and springs it there.
+    /// </summary>
+    private void PlaceRail(bool animate)
+    {
+        if (_rail is null || _railBackdrop is null)
+        {
+            return;
+        }
+
+        var runLength = DockGeometry.RestingRunDip(_layout.Dock, _dockViews.Count);
+        var railLength = RailLengthDip(runLength);
+        var rect = DockGeometry.RailRect(_layout.Dock, _displayBounds, _scaleFactor, railLength, _dock.RevealTarget);
+
+        SizeRail(rect);
+
+        var (dipX, dipY) = ToCanvasDip(rect.X, rect.Y);
+        var offset = new Vector3((float)dipX, (float)dipY, 0);
+        if (!animate || _railSpring is null)
+        {
+            _rail.Offset = offset;
+            return;
+        }
+
+        _railSpring.InitialValue = _rail.Offset;
+        _railSpring.FinalValue = offset;
+        _rail.StartAnimation("Offset", _railSpring);
+    }
+
+    /// <summary>Resizes the rail and its backdrop to the run it is showing.</summary>
+    private void SizeRail(PixelRect rect)
+    {
+        if (_rail is null || _railBackdrop is null || _compositor is null)
+        {
+            return;
+        }
+
+        var (_, _, width, height) = ToDipRect(rect);
+        var size = new Vector2((float)Math.Max(1, width), (float)Math.Max(1, height));
+        _rail.Size = size;
+
+        // The backdrop is rebuilt only when its size really changed: a pointer event that does not
+        // change the run costs nothing here.
+        if (_railBackdrop.Size != size || _railBackdrop.Shapes.Count == 0)
+        {
+            _railBackdrop.Size = size;
+            _railBackdrop.Shapes.Clear();
+            _railBackdrop.Shapes.Add(CanvasIconLibrary.Panel(_compositor, size.X, size.Y, 22, RailFill));
+        }
+    }
+
+    /// <summary>Puts the dock's views in the order the dock holds them.</summary>
+    private void OrderDockViews()
+    {
+        if (_rail is null)
+        {
+            return;
+        }
+
+        var ordered = _layout.Dock.Entries
+            .Select(entry => _dockViews.FirstOrDefault(view => string.Equals(view.Item.Id, entry.ItemId, StringComparison.Ordinal)))
+            .Where(view => view is not null)
+            .Select(view => view!)
+            .ToList();
+
+        // A view whose entry has gone missing stays, at the end, rather than vanishing from the dock.
+        foreach (var view in _dockViews)
+        {
+            if (!ordered.Contains(view))
+            {
+                ordered.Add(view);
+            }
+        }
+
+        _dockViews.Clear();
+        _dockViews.AddRange(ordered);
     }
 
     private void OrderFreeViews()
@@ -979,15 +1218,16 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     /// <summary>Feeds a router reading into the hover and dock math, exactly like a window message would.</summary>
     private void ApplyPointer(DesktopPointerState state)
     {
-        if (_drag is not null || _root is null || _target is null)
+        if (_drag is not null || _dockDrag is not null || _root is null || _target is null)
         {
             return;
         }
 
         var (x, y) = ToCanvasDip(state.X, state.Y);
         SetPointer(x, y);
+        UpdateDockPointer();
         UpdateHover();
-        UpdateDock(WantsDock(x, y), interactionLocked: false);
+        UpdateDock(interactionLocked: false);
         Bump();
     }
 
@@ -1001,77 +1241,146 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
         _pointerXDip = null;
         _pointerYDip = null;
+        _dockPointerAlongDip = null;
         UpdateHover();
-        UpdateDock(wantsExpanded: false, interactionLocked: false);
+        UpdateDock(interactionLocked: false);
         Bump();
     }
 
-    /// <summary>Whether the pointer wants the rail out: inside the trigger band, or on the rail itself.</summary>
-    private bool WantsDock(double x, double y)
+    /// <summary>
+    /// Reads the pointer against the dock's own edge: the position along the rail, and whether it is
+    /// anywhere near it. A pointer that is not within the dock's own band of the display counts as
+    /// nowhere near it, which is what keeps a dock on the left edge from magnifying while the pointer
+    /// crosses the middle of the screen.
+    /// </summary>
+    private void UpdateDockPointer()
     {
-        if (_dockViews.Count == 0)
+        _dockPointerAlongDip = null;
+
+        var dock = _layout.Dock;
+        if (!dock.Enabled || !_dock.IsOut)
+        {
+            // A rail that is away magnifies nothing: its items are off the display, and a dock that is
+            // not being used should not be doing work either.
+            return;
+        }
+
+        if (_pointerXDip is not { } x || _pointerYDip is not { } y)
+        {
+            return;
+        }
+
+        var (along, depth) = DockGeometry.ToAlongAndDepth(Frame(), x, y);
+        if (depth >= 0 && depth <= dock.EdgeMarginDip + dock.RailThicknessDip)
+        {
+            _dockPointerAlongDip = along;
+        }
+    }
+
+    /// <summary>Whether the pointer is on the dock's own band of the display, rail or strip.</summary>
+    private bool IsPointerOnDock(double x, double y)
+    {
+        var dock = _layout.Dock;
+        if (!dock.Enabled)
         {
             return false;
         }
 
+        var (_, depth) = DockGeometry.ToAlongAndDepth(Frame(), x, y);
+        return depth >= 0 && depth <= dock.EdgeMarginDip + dock.RailThicknessDip;
+    }
+
+    /// <summary>
+    /// Whether the pointer wants the rail out: inside the trigger strip, or on a rail that is already
+    /// out. The dock is the only thing that can answer this, which is why the router's own
+    /// discrimination between the desktop, a surface of ours and an ordinary window comes first: a
+    /// pointer over someone else's window never reaches here at all.
+    /// </summary>
+    private bool WantsDock(double x, double y)
+    {
         var dock = _layout.Dock;
-        var width = _displayBounds.Width / _scaleFactor;
-        var height = _displayBounds.Height / _scaleFactor;
-
-        var inBand = dock.Edge switch
+        if (!dock.Enabled || !IsPointerOnDock(x, y))
         {
-            CanvasDockEdge.Left => x <= dock.TriggerSizeDip,
-            CanvasDockEdge.Right => x >= width - dock.TriggerSizeDip,
-            CanvasDockEdge.Top => y <= dock.TriggerSizeDip,
-            _ => y >= height - dock.TriggerSizeDip,
-        };
+            return false;
+        }
 
-        if (inBand)
+        if (DockGeometry.InTriggerBand(dock, _displayBounds, _scaleFactor, x, y))
         {
             return true;
         }
 
-        if (_dock.Phase != CanvasDockPhase.Shown)
+        if (_dockViews.Count == 0 || !_dock.IsOut)
         {
+            // An empty dock has nothing to reveal; a retracted one answers from its strip alone.
             return false;
         }
 
-        var rail = ToDipRect(CanvasRailLayout.RailRect(dock, _displayBounds, _scaleFactor, _dockViews.Count, expanded: true));
-        return x >= rail.X && x <= rail.X + rail.Width && y >= rail.Y && y <= rail.Y + rail.Height;
+        return DockGeometry.RailContains(
+            dock,
+            _displayBounds,
+            _scaleFactor,
+            CurrentRailLengthDip(),
+            reveal: 1.0,
+            x,
+            y);
     }
 
-    private void UpdateDock(bool wantsExpanded, bool interactionLocked)
+    /// <summary>The rail's length for the run it is showing right now.</summary>
+    private double CurrentRailLengthDip() =>
+        RailLengthDip(_dockViews.Count == 0 ? 0 : DockGeometry.RestingRunDip(_layout.Dock, _dockViews.Count));
+
+    /// <summary>
+    /// Where an item let go at this point would land in the dock, or null when the pointer is too far
+    /// from the dock's edge for the drop to mean the dock at all.
+    /// </summary>
+    private int? DockDropIndex(double x, double y)
+    {
+        var dock = _layout.Dock;
+        if (!dock.Enabled || dock.Entries.Count == 0 || !IsPointerOnDock(x, y))
+        {
+            // An empty dock takes the item as its first entry: the run it is dropped into is empty.
+            return dock.Enabled && IsPointerOnDock(x, y) ? 0 : null;
+        }
+
+        var (along, _) = DockGeometry.ToAlongAndDepth(Frame(), x, y);
+        var centres = DockGeometry.RestingCentres(dock, Frame().AlongCentreDip, _dockViews.Count);
+        return DockReorder.TargetIndex(along, centres, draggedIndex: -1);
+    }
+
+    /// <summary>
+    /// Advances the dock's own state machine and, when it changed, moves the rail. The machine owns
+    /// the delays and the five states; what it is told here is only what the pointer is doing and
+    /// whether the rail has finished moving.
+    /// </summary>
+    private void UpdateDock(bool interactionLocked)
     {
         var now = Environment.TickCount64;
-        if (_dock.Advance(now, wantsExpanded, interactionLocked))
+        var wants = _pointerXDip is { } x && _pointerYDip is { } y && WantsDock(x, y);
+
+        if (_dock.Advance(now, wants, interactionLocked, DockRevealSettled(now)))
         {
-            ApplyDockPhase(now);
+            ApplyDockState(now);
         }
-        else if (_railSettlesAt is { } settles && now >= settles)
+        else if (_dockSettlesAt is { } settles && now >= settles)
         {
             // The rail has come to rest: the region can shrink back to what is really there.
-            _railSettlesAt = null;
+            _dockSettlesAt = null;
             UpdateRegion();
         }
 
         ArmDockTimer(now);
     }
 
-    private void ApplyDockPhase(long now)
+    /// <summary>Whether the rail has stopped moving towards wherever the dock last sent it.</summary>
+    private bool DockRevealSettled(long now) => _dockSettlesAt is null || now >= _dockSettlesAt;
+
+    private void ApplyDockState(long now)
     {
-        var expanded = _dock.Phase == CanvasDockPhase.Shown;
-        var target = expanded ? _layout.Dock.ExpandedScale : _layout.Dock.CollapsedScale;
-        _railSettlesAt = now + (long)(_layout.Motion.Dock.PeriodSeconds * RailSettlePeriods * 1000);
+        _dockSettlesAt = now + (long)(_layout.Dock.Spring.PeriodSeconds * RailSettlePeriods * 1000);
 
-        if (_rail is not null)
-        {
-            _railSpring!.InitialValue = _rail.Scale;
-            _railSpring.FinalValue = new Vector3((float)target, (float)target, 1);
-            _rail.StartAnimation("Scale", _railSpring);
-        }
-
+        PlaceRail(animate: true);
         UpdateRegion();
-        _logger.LogInformation("The desktop dock {Action}", expanded ? "expanded" : "retracted");
+        _logger.LogInformation("The desktop dock {State}", _dock.State.ToString().ToLowerInvariant());
     }
 
     /// <summary>Arms the one-shot timer for the next thing the dock will need on its own, if anything.</summary>
@@ -1083,7 +1392,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         }
 
         var delay = _dock.PendingChangeDelayMilliseconds(now);
-        if (delay is null && _railSettlesAt is { } settles)
+        if (delay is null && _dockSettlesAt is { } settles)
         {
             delay = Math.Max(0, settles - now);
         }
@@ -1102,25 +1411,11 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private void OnDockTimer()
     {
-        var now = Environment.TickCount64;
-        var wants = _pointerXDip is { } x && _pointerYDip is { } y && WantsDock(x, y);
+        UpdateDock(interactionLocked: _drag is not null || _dockDrag is not null);
 
-        if (_dock.Advance(now, wants, interactionLocked: _drag is not null))
-        {
-            ApplyDockPhase(now);
-
-            // The phase changed with no input behind it: the diagnostics must not wait for the next
-            // pointer message to tell that story.
-            Bump();
-        }
-
-        if (_railSettlesAt is { } settles && now >= settles)
-        {
-            _railSettlesAt = null;
-            UpdateRegion();
-        }
-
-        ArmDockTimer(now);
+        // The dock may have decided something with no input behind it: the diagnostics must not wait
+        // for the next pointer message to tell that story.
+        Bump();
     }
 
     /// <summary>
@@ -1158,19 +1453,22 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
                 AddItemExtent(region, view, _layout.Proximity.MaxScale);
             }
 
-            var railVisible = _dock.Phase == CanvasDockPhase.Shown
-                || _railSettlesAt is not null
-                || _layout.Dock.CollapsedScale > VisibleEpsilon;
-            if (railVisible && _dockViews.Count > 0)
+            var dock = _layout.Dock;
+            if (dock.Enabled && _dockViews.Count > 0 && (_dock.IsOut || _dockSettlesAt is not null))
             {
-                AddRect(region, RailRegionRect());
-                foreach (var view in _dockViews)
-                {
-                    AddItemExtent(region, view, _layout.Dock.Proximity.MaxScale);
-                }
+                // Everything the dock can draw, at its largest, in one rectangle: the region never has
+                // to change while the pointer moves along the rail, so a magnified item is never
+                // clipped and no error can leave a hole in the dock's own strip.
+                AddRect(region, DockGeometry.Extent(dock, _displayBounds, _scaleFactor, _dockViews.Count));
             }
 
-            AddRect(region, TriggerBandRect());
+            if (dock.Enabled)
+            {
+                // The strip stays hittable in every state, including while the rail is away: it is the
+                // only way the pointer can summon it, and the only way an item can be dropped on an
+                // empty dock.
+                AddRect(region, DockGeometry.TriggerBand(dock, _displayBounds, _scaleFactor));
+            }
 
             if (NativeMethods.SetWindowRgn(_window, region, false) == 0)
             {
@@ -1204,23 +1502,6 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             (int)Math.Ceiling(half * 2)));
     }
 
-    /// <summary>The rail rectangle while it is out; generous for the time it takes to retract.</summary>
-    private PixelRect RailRegionRect() =>
-        CanvasRailLayout.RailRect(_layout.Dock, _displayBounds, _scaleFactor, _dockViews.Count, expanded: true);
-
-    /// <summary>The strip along the dock's edge that summons the rail; always part of the region.</summary>
-    private PixelRect TriggerBandRect()
-    {
-        var band = Math.Max(1, (int)Math.Round(_layout.Dock.TriggerSizeDip * _scaleFactor));
-        return _layout.Dock.Edge switch
-        {
-            CanvasDockEdge.Left => new PixelRect(_displayBounds.X, _displayBounds.Y, band, _displayBounds.Height),
-            CanvasDockEdge.Right => new PixelRect(_displayBounds.X + _displayBounds.Width - band, _displayBounds.Y, band, _displayBounds.Height),
-            CanvasDockEdge.Top => new PixelRect(_displayBounds.X, _displayBounds.Y, _displayBounds.Width, band),
-            _ => new PixelRect(_displayBounds.X, _displayBounds.Y + _displayBounds.Height - band, _displayBounds.Width, band),
-        };
-    }
-
     /// <summary>Adds a rectangle, given in display pixels, to a window region given in window pixels.</summary>
     private void AddRect(nint region, PixelRect rect)
     {
@@ -1230,10 +1511,14 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         NativeMethods.DeleteObject(piece);
     }
 
-    /// <summary>The item under the pointer, front to back. Every centre here is canvas DIP.</summary>
+    /// <summary>
+    /// The item under the pointer, front to back. Every centre here is canvas DIP. A rail that is away
+    /// is not under the pointer at all: its items are off the display, and a click there belongs to
+    /// whatever the desktop has underneath.
+    /// </summary>
     private ItemView? HitTest(double x, double y)
     {
-        if (_dock.Phase == CanvasDockPhase.Shown && _dockViews.Count > 0)
+        if (_dock.IsOut && _dockViews.Count > 0)
         {
             foreach (var view in _dockViews)
             {
@@ -1290,27 +1575,23 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         // pointer travels first.
         NativeMethods.SetCapture(_window);
 
-        if (_pressed.Item.Placement != CanvasItemPlacement.Free)
+        // A press never moves anything by itself. Whether it was a click or the start of a drag is
+        // decided by what happens next — the release, or travel past the system's drag rectangle —
+        // which is what keeps a slightly shaky click from being taken for a drag.
+        _grabXDip = x - _pressed.RenderedXDip;
+        _grabYDip = y - _pressed.RenderedYDip;
+
+        if (_layout.IsDocked(_pressed.Item.Id))
         {
-            // Dock items are clicked, not dragged: the press only waits to see what the release says.
-            Bump();
-            return;
+            // Where the press landed inside the item, measured along the rail and across its depth:
+            // a dock item is carried by the point that was grabbed, so it never jumps under the hand.
+            var frame = Frame();
+            var (along, depth) = DockGeometry.ToAlongAndDepth(frame, x, y);
+            var (itemAlong, itemDepth) = DockGeometry.ToAlongAndDepth(frame, _pressed.RenderedXDip, _pressed.RenderedYDip);
+            _dockGrabAlongDip = along - itemAlong;
+            _dockGrabDepthDip = depth - itemDepth;
         }
 
-        _drag = _pressed;
-        _grabXDip = x - _pressed.CenterXDip;
-        _grabYDip = y - _pressed.CenterYDip;
-        Raise(_pressed);
-
-        // Everything calms down while one item is being moved: the drag is the only motion.
-        foreach (var other in _freeViews.Concat(_dockViews))
-        {
-            StartScale(other, 1.0);
-        }
-
-        // The item may travel anywhere on the display before the button comes up, so while it is
-        // held the window takes the whole display and nothing is clipped.
-        ClearRegion();
         Bump();
     }
 
@@ -1321,7 +1602,12 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     /// </summary>
     private void DragTo(double x, double y)
     {
-        var view = _drag!;
+        var held = _pressed;
+        if (held is null)
+        {
+            return;
+        }
+
         var wasDragging = _gestures.IsDragging;
         var (pixelX, pixelY) = ToDisplayPixels(x, y);
         if (!_gestures.Move(pixelX, pixelY))
@@ -1331,19 +1617,77 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
         if (!wasDragging)
         {
-            _logger.LogDebug("Canvas drag started on {Id}", view.Item.Id);
+            _logger.LogInformation(
+                "{Place} drag started on {Id}",
+                _layout.IsDocked(held.Item.Id) ? "A dock" : "A canvas",
+                held.Item.Id);
+        }
+
+        if (_layout.IsDocked(held.Item.Id))
+        {
+            DragDockItem(held, x, y);
+            return;
+        }
+
+        if (_drag is null)
+        {
+            _drag = held;
+            Raise(held);
+
+            // Everything calms down while one item is being moved: the drag is the only motion.
+            foreach (var other in _freeViews)
+            {
+                StartScale(other, 1.0);
+            }
+
+            // The item may travel anywhere on the display before the button comes up, so while it is
+            // held the window takes the whole display and nothing is clipped.
+            ClearRegion();
         }
 
         // The item stays fully on the display, which is also what a saved offset reproduces later.
         var design = (double)CanvasIconLibrary.DesignSize;
-        var half = view.Item.SizeDip / 2.0;
+        var half = held.Item.SizeDip / 2.0;
         var maxX = (_displayBounds.Width / _scaleFactor) - half;
         var maxY = (_displayBounds.Height / _scaleFactor) - half;
-        view.CenterXDip = Math.Clamp(x - _grabXDip, Math.Min(half, maxX), Math.Max(half, maxX));
-        view.CenterYDip = Math.Clamp(y - _grabYDip, Math.Min(half, maxY), Math.Max(half, maxY));
-        view.RenderedXDip = view.CenterXDip;
-        view.RenderedYDip = view.CenterYDip;
-        view.Visual.Offset = new Vector3((float)(view.CenterXDip - design / 2), (float)(view.CenterYDip - design / 2), 0);
+        held.CenterXDip = Math.Clamp(x - _grabXDip, Math.Min(half, maxX), Math.Max(half, maxX));
+        held.CenterYDip = Math.Clamp(y - _grabYDip, Math.Min(half, maxY), Math.Max(half, maxY));
+        held.RenderedXDip = held.CenterXDip;
+        held.RenderedYDip = held.CenterYDip;
+        held.Visual.Offset = new Vector3((float)(held.CenterXDip - design / 2), (float)(held.CenterYDip - design / 2), 0);
+
+        // Carrying an item towards the edge is what brings the dock out to meet it.
+        UpdateDock(interactionLocked: IsPointerOnDock(x, y));
+        Bump();
+    }
+
+    /// <summary>
+    /// Carries a dock item: along the rail it takes the place its neighbours are making room for, and
+    /// away from the rail it is drawn under the pointer, ready to be let go on the canvas.
+    /// </summary>
+    private void DragDockItem(ItemView view, double x, double y)
+    {
+        var dock = _layout.Dock;
+        var frame = Frame();
+        var (along, depth) = DockGeometry.ToAlongAndDepth(frame, x, y);
+        var index = _dockViews.IndexOf(view);
+
+        _dockDrag = view;
+        _dockInsertIndex = index >= 0
+            ? DockReorder.TargetIndex(along, DockGeometry.RestingCentres(dock, frame.AlongCentreDip, _dockViews.Count), index)
+            : null;
+
+        // The item follows the pointer exactly, keeping the point that was grabbed under it: over the
+        // rail it is the item being reordered, past the rail it is on its way to the canvas.
+        var place = frame.PointAt(along - _dockGrabAlongDip, depth - _dockGrabDepthDip);
+        view.RenderedXDip = place.X;
+        view.RenderedYDip = place.Y;
+        view.CenterXDip = place.X;
+        view.CenterYDip = place.Y;
+
+        // The rail is out for the whole drag, so a dock item can always be put back on it.
+        UpdateDock(interactionLocked: true);
+        UpdateHover();
         Bump();
     }
 
@@ -1355,7 +1699,15 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         var (pixelX, pixelY) = ToDisplayPixels(x, y);
         var gesture = _gestures.Release(pixelX, pixelY, Environment.TickCount64);
 
-        if (_drag is not null)
+        if (_dockDrag is not null)
+        {
+            var carried = _dockDrag;
+            _dockDrag = null;
+            _dockInsertIndex = null;
+            NativeMethods.ReleaseCapture();
+            CommitDockDrag(carried, x, y);
+        }
+        else if (_drag is not null)
         {
             var dragged = _drag;
             _drag = null;
@@ -1366,13 +1718,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
             if (gesture == DesktopGesture.DragEnd)
             {
-                CommitDrag(dragged);
-                _logger.LogInformation(
-                    "The canvas item {Id} was dropped at {X:0} / {Y:0} DIP from its {Anchor} anchor",
-                    dragged.Item.Id,
-                    dragged.Item.OffsetXDip,
-                    dragged.Item.OffsetYDip,
-                    dragged.Item.Anchor);
+                CommitCanvasDrag(dragged, x, y);
             }
 
             // The whole display was hittable while the item was held; the region goes back to what
@@ -1382,24 +1728,35 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         else if (view is not null)
         {
             NativeMethods.ReleaseCapture();
-        }
 
-        switch (gesture)
-        {
-            case DesktopGesture.Click:
-                // The first click picks the item out; the second one opens it.
-                Select(view);
-                break;
+            switch (gesture)
+            {
+                case DesktopGesture.Click:
+                    // The dock is a launcher: one click opens what it holds. On the canvas the first
+                    // click only picks the item out, and a second one opens it.
+                    if (_layout.IsDocked(view.Item.Id))
+                    {
+                        _logger.LogInformation("The dock item {Id} ({Name}) was clicked", view.Item.Id, view.Item.Name);
+                        Launch(view.Item);
+                    }
+                    else
+                    {
+                        Select(view);
+                    }
 
-            case DesktopGesture.DoubleClick:
-                Launch(view);
-                break;
+                    break;
+
+                case DesktopGesture.DoubleClick:
+                    Launch(view.Item);
+                    break;
+            }
         }
 
         _trackingLeave = false;
         SetPointer(x, y);
+        UpdateDockPointer();
         UpdateHover();
-        UpdateDock(WantsDock(x, y), interactionLocked: false);
+        UpdateDock(interactionLocked: false);
         Bump();
     }
 
@@ -1445,13 +1802,15 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     }
 
     /// <summary>
-    /// Opens the item the user double-clicked, provided it is the item the first click selected.
-    /// The launcher is the only thing that starts anything — the canvas never builds a command line
-    /// — and it runs on the pool, with the outcome posted back to the shell thread.
+    /// Opens an item. The dock opens on a single click and the canvas on a double one, so the caller
+    /// has already decided; what this adds is that the item must be the canvas' selected one when the
+    /// open came from a double click, which is what <paramref name="requireSelection"/> says. The
+    /// launcher is the only thing that starts anything — the canvas never builds a command line — and
+    /// it runs on the pool, with the outcome posted back to the shell thread.
     /// </summary>
-    private void Launch(ItemView? view)
+    private void Launch(DesktopItem item, bool requireSelection = false)
     {
-        if (view is null || view.Item.Id != _selectedId)
+        if (requireSelection && item.Id != _selectedId)
         {
             return;
         }
@@ -1459,18 +1818,18 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         var launcher = _launcher;
         if (launcher is null)
         {
-            _logger.LogDebug("The desktop item {Id} was double-clicked, but the canvas has no launcher", view.Item.Id);
+            _logger.LogDebug("The desktop item {Id} was clicked, but the canvas has no launcher", item.Id);
             return;
         }
 
         // A copy, so the launcher reads one item's facts while the canvas keeps editing its own.
-        var item = view.Item.Clone();
+        var copy = item.Clone();
         var mount = _mountCount;
-        _lastLaunchId = item.Id;
+        _lastLaunchId = copy.Id;
         _lastLaunchOutcome = "Opening";
-        _logger.LogInformation("The desktop item {Id} ({Name}) is being opened", item.Id, item.Name);
+        _logger.LogInformation("The desktop item {Id} ({Name}) is being opened", copy.Id, copy.Name);
 
-        _ = OpenAsync(launcher, item, mount);
+        _ = OpenAsync(launcher, copy, mount);
     }
 
     private async Task OpenAsync(IDesktopItemLauncher launcher, DesktopItem item, int mount)
@@ -1514,9 +1873,18 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         Bump();
     }
 
-    /// <summary>Turns the drop point back into the anchor + DIP offsets the layout stores.</summary>
-    private void CommitDrag(ItemView view)
+    /// <summary>
+    /// Ends a canvas drag: an item let go over the dock joins it, and an item let go anywhere else
+    /// keeps the anchor offset the layout stores.
+    /// </summary>
+    private void CommitCanvasDrag(ItemView view, double x, double y)
     {
+        if (DockDropIndex(x, y) is { } index)
+        {
+            MoveIntoDock(view, index);
+            return;
+        }
+
         var (centerX, centerY) = ToDisplayPixels(view.CenterXDip, view.CenterYDip);
         var (offsetX, offsetY) = CanvasAnchorMath.OffsetForCenter(
             _displayBounds,
@@ -1528,11 +1896,119 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         view.Item.OffsetXDip = offsetX;
         view.Item.OffsetYDip = offsetY;
         SaveLayout();
+        _logger.LogInformation(
+            "The canvas item {Id} was dropped at {X:0} / {Y:0} DIP from its {Anchor} anchor",
+            view.Item.Id,
+            view.Item.OffsetXDip,
+            view.Item.OffsetYDip,
+            view.Item.Anchor);
+    }
+
+    /// <summary>
+    /// Ends a dock drag: an item let go on the rail keeps its place in the dock, in whatever order the
+    /// drag left it, and an item let go away from the rail is put down on the canvas where it was
+    /// released. Nothing is written until this moment.
+    /// </summary>
+    private void CommitDockDrag(ItemView view, double x, double y)
+    {
+        if (!IsPointerOnDock(x, y))
+        {
+            MoveOutOfDock(view, x, y);
+            return;
+        }
+
+        // Where the item was let go decides the place it takes, rather than whatever the last frame of
+        // the drag had worked out: the release is the moment the order really changes.
+        var dock = _layout.Dock;
+        var frame = Frame();
+        var (along, _) = DockGeometry.ToAlongAndDepth(frame, x, y);
+        var from = _dockViews.IndexOf(view);
+        var target = from >= 0
+            ? DockReorder.TargetIndex(along, DockGeometry.RestingCentres(dock, frame.AlongCentreDip, _dockViews.Count), from)
+            : 0;
+
+        var ids = _layout.Dock.Entries.Select(entry => entry.ItemId).ToList();
+        var current = ids.IndexOf(view.Item.Id);
+        if (current >= 0)
+        {
+            ids.RemoveAt(current);
+            ids.Insert(Math.Clamp(target, 0, ids.Count), view.Item.Id);
+        }
+
+        _layout.Dock.Entries.Clear();
+        foreach (var id in ids)
+        {
+            _layout.Dock.Entries.Add(new DockEntry { ItemId = id });
+        }
+
+        OrderDockViews();
+        SaveLayout();
+        _logger.LogInformation("The dock item {Id} was moved to place {Place}", view.Item.Id, target);
+    }
+
+    /// <summary>
+    /// Moves an item from the canvas into the dock: the same item, the same file behind it, and one
+    /// entry more in the dock. Its visuals move from the canvas layer to the rail's.
+    /// </summary>
+    private void MoveIntoDock(ItemView view, int index)
+    {
+        var ids = _layout.Dock.Entries.Select(entry => entry.ItemId).ToList();
+        if (!ids.Contains(view.Item.Id))
+        {
+            ids.Insert(Math.Clamp(index, 0, ids.Count), view.Item.Id);
+        }
+
+        _layout.Dock.Enabled = true;
+        _layout.Dock.Entries.Clear();
+        foreach (var id in ids)
+        {
+            _layout.Dock.Entries.Add(new DockEntry { ItemId = id });
+        }
+
+        // Nothing about the item itself changes: only where it is drawn, and how large it is drawn.
+        ReloadDockMembership();
+        ApplySelection();
+        ApplyLayout();
+        UpdateRegion();
+        SaveLayout();
+        _logger.LogInformation("The canvas item {Id} was dropped on the dock at place {Place}", view.Item.Id, index);
+    }
+
+    /// <summary>
+    /// Moves an item out of the dock and back onto the canvas, where it was let go. The layout keeps
+    /// the same item; only the dock stops naming it.
+    /// </summary>
+    private void MoveOutOfDock(ItemView view, double x, double y)
+    {
+        _layout.Dock.Entries.RemoveAll(entry => string.Equals(entry.ItemId, view.Item.Id, StringComparison.Ordinal));
+
+        // Where it was let go is where it lands, and the anchor offset is what the layout stores.
+        view.CenterXDip = x - _grabXDip;
+        view.CenterYDip = y - _grabYDip;
+        var (centerX, centerY) = ToDisplayPixels(view.CenterXDip, view.CenterYDip);
+        var (offsetX, offsetY) = CanvasAnchorMath.OffsetForCenter(
+            _displayBounds,
+            _scaleFactor,
+            view.Item.Anchor,
+            centerX,
+            centerY,
+            view.Item.SizeDip);
+        view.Item.OffsetXDip = offsetX;
+        view.Item.OffsetYDip = offsetY;
+
+        ReloadDockMembership();
+        ApplySelection();
+        ApplyLayout();
+        UpdateRegion();
+        SaveLayout();
+        _logger.LogInformation("The dock item {Id} was dropped on the canvas", view.Item.Id);
     }
 
     private void EndDragCapture()
     {
         _drag = null;
+        _dockDrag = null;
+        _dockInsertIndex = null;
         _pressed = null;
         _gestures.Cancel();
         _trackingLeave = false;
@@ -1596,9 +2072,10 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         {
             case NativeMethods.WmMouseMove:
                 var (moveX, moveY) = ClientDip(lParam);
-                if (_drag is not null)
+                if (_pressed is not null)
                 {
-                    // While an item is held the captured window messages are the drag's only driver.
+                    // While a press is held the captured window messages are the drag's only driver:
+                    // this is where a press that travels far enough becomes a drag.
                     DragTo(moveX, moveY);
                 }
                 else
@@ -1608,8 +2085,9 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
                     // input, a failed registration), so both sources stay in use. The epsilon guards
                     // in the hover math make the second one a no-op when nothing changed.
                     SetPointer(moveX, moveY);
+                    UpdateDockPointer();
                     UpdateHover();
-                    UpdateDock(WantsDock(moveX, moveY), interactionLocked: false);
+                    UpdateDock(interactionLocked: false);
                     Bump();
                 }
 
@@ -1642,11 +2120,25 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
                 // held, is dropped where it stands. No gesture is reported — nobody released here.
                 _pressed = null;
                 _gestures.Cancel();
-                if (_drag is not null)
+                if (_dockDrag is not null)
+                {
+                    var carried = _dockDrag;
+                    _dockDrag = null;
+                    _dockInsertIndex = null;
+
+                    // Wherever it was when the capture went is where it stays: a reorder or a move
+                    // out, decided by the same rule the release uses.
+                    var (carriedX, carriedY) = (carried.RenderedXDip, carried.RenderedYDip);
+                    CommitDockDrag(carried, carriedX, carriedY);
+                    UpdateHover();
+                    UpdateRegion();
+                    Bump();
+                }
+                else if (_drag is not null)
                 {
                     var dropped = _drag;
                     _drag = null;
-                    CommitDrag(dropped);
+                    CommitCanvasDrag(dropped, dropped.CenterXDip, dropped.CenterYDip);
                     ClearRegion();
                     UpdateRegion();
                     UpdateHover();
@@ -1686,6 +2178,8 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private void RefreshSnapshot(long now)
     {
+        // The magnification factor, not the drawn size: the two items' natural sizes differ (the dock
+        // draws its own smaller), so only the factor is comparable between them.
         var hovered = _freeViews
             .Concat(_dockViews)
             .Where(view => view.Hover > 1.0 + HoverEpsilon)
@@ -1705,9 +2199,12 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             PointerInside: _pointerXDip is not null,
             ItemCount: _freeViews.Count + _dockViews.Count,
             HoveredItemId: hovered?.Item.Id,
-            HoveredScale: hovered?.Scale ?? 1.0,
-            DockPhase: _dock.Phase.ToString(),
-            DockScale: _dock.Phase == CanvasDockPhase.Shown ? _layout.Dock.ExpandedScale : _layout.Dock.CollapsedScale,
+            HoveredScale: hovered?.Hover ?? 1.0,
+            DockPhase: _dock.State.ToString(),
+            DockScale: _dock.RevealTarget,
+            DockItemCount: _dockViews.Count,
+            DockEdge: _layout.Dock.Edge.ToString(),
+            DockEnabled: _layout.Dock.Enabled,
             UpdatesPerSecond: _updates.PerSecond(now),
             Updates: _updates.Total,
             MissingItemIds: _missingIds,
@@ -1736,14 +2233,6 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         (rect.Y - _displayBounds.Y) / _scaleFactor,
         rect.Width / _scaleFactor,
         rect.Height / _scaleFactor);
-
-    private static Vector3 RailCenterPoint(CanvasDockEdge edge, Vector2 size) => edge switch
-    {
-        CanvasDockEdge.Right => new Vector3(size.X, size.Y / 2, 0),
-        CanvasDockEdge.Top => new Vector3(size.X / 2, 0, 0),
-        CanvasDockEdge.Bottom => new Vector3(size.X / 2, size.Y, 0),
-        _ => new Vector3(0, size.Y / 2, 0),
-    };
 
     private static SpringVector3NaturalMotionAnimation Spring(Compositor compositor, CanvasSpring spring)
     {
@@ -1796,7 +2285,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         internal SpringVector3NaturalMotionAnimation MoveSpring { get; }
 
         /// <summary>The item's resting size in design units; the hover factor sits on top of it.</summary>
-        internal double BaseScale { get; }
+        internal double BaseScale { get; set; }
 
         /// <summary>Where the item rests: the distance math for magnification measures against this.</summary>
         internal double CenterXDip { get; set; }
