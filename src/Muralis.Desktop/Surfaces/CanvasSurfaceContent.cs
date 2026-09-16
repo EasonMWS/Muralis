@@ -558,6 +558,10 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         if (_dock.Advance(now, wants, interactionLocked: _drag is not null))
         {
             ApplyDockPhase(now);
+
+            // The phase changed with no input behind it: the diagnostics must not wait for the next
+            // pointer message to tell that story.
+            Bump();
         }
 
         if (_railSettlesAt is { } settles && now >= settles)
@@ -988,7 +992,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             HoveredItemId: hovered?.Item.Id,
             HoveredScale: hovered?.Scale ?? 1.0,
             DockPhase: _dock.Phase.ToString(),
-            DockScale: _rail?.Scale.X ?? 0,
+            DockScale: _dock.Phase == CanvasDockPhase.Shown ? _layout.Dock.ExpandedScale : _layout.Dock.CollapsedScale,
             UpdatesPerSecond: _updates.PerSecond(now),
             Updates: _updates.Total);
     }
