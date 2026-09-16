@@ -1002,3 +1002,73 @@ Phase 0 到此结束。下一动作 = 你批准本文件后，按 §14 的 Commi
 | --- | --- |
 | Phase 2 = Desktop Canvas Prototype（重排后） | 完成（见 §16.3；提交见 §16.4） |
 | 原 Phase 2 = Monitor Model & Multi-monitor Surfaces | 延后（§13.2 重排说明） |
+
+## 17. Phase 3A 落地记录：Desktop Input Foundation（2026-09-16）
+
+> 2026-09-16：Phase 3 的第一段，**只做输入基础设施**——画布此前只在自己窗口的命中区域里稳定收到指针消息，一旦指针跨过项之间的空隙、或离开区域，悬停 / Dock 邻近 / 自动隐藏轨迹就断掉。本阶段把这件事从根上换掉：先审计现有指针路径与 Windows 的几种输入方案，再落地统一的 `DesktopPointerRouter`，并验证它与 WUC 视觉、命中区域、普通应用窗口、Explorer 重启、资源释放的关系。
+> **本阶段不做**：真实 `.lnk` 扫描、启动真实应用、隐藏 Windows 原生图标、改 Explorer 的 ListView、正式 Dock、Scene / Widget / Music / FFT、多屏扩展。**Phase 3B 未开始。**
+> 结论基于 Debug / Release 双配置 0 警告构建 + 全部测试（Core 281 / Desktop 84）+ 本机真机实测（单屏 2560×1440 @96 DPI，scale 1.0）：45 项真机检查全部通过。
+
+### 17.1 交付内容
+
+- **方案审计与选型**：对比了四条路——(a) 现状：只靠画布窗口的 `WM_MOUSEMOVE`；(b) `GetCursorPos` + `WindowFromPoint` 高频轮询；(c) `WH_MOUSE_LL` 全局钩子；(d) 原始输入 `RIDEV_INPUTSINK` + 隐藏窗口定位读取。选定 (d)，理由与代价见 17.2。
+- **`DesktopPointerRouter`（新目录 `src/Muralis.Desktop/Input/`，12 个文件）**：整个桌面唯一监听指针的地方。在 shell 线程的隐藏顶层窗口上注册鼠标原始输入，读取光标与按键，判断指针所落上下文并发布。消费者只有三个事件：`PointerMoved` / `EnteredDesktopRegion` / `LeftDesktopRegion`，外加 `Current` 与 `Stats`。
+- **三种上下文**：`Foreign`（普通应用、任务栏等）/ `Desktop`（`SHELLDLL_DefView` / `WorkerW` / `Progman` 链）/ `Surface`（我们自己的 `MuralisDesktopHostWindow`）。**Foreign 期间不发布任何移动事件**，只发一次 `LeftDesktopRegion`。
+- **合并与节流**：原始报告只当"该读了"的信号，读取发生在一次性 flush 定时器里；突发在一次读取中合并，两次发布之间至少 6 ms（`PointerDispatchGate`）；burst 未结束则补一次尾包读取（见 17.2）。
+- **画布接线（`CanvasSurfaceContent`）**：挂载时订阅 + `SampleOnce()`（挂载瞬间指针可能已经停在画布上），卸载时退订；窗口消息保留为区域内的第二条路径与无路由器时的回退，`WM_MOUSELEAVE` 在路由器在线时不再清空状态。
+- **命中区域与命中测试**：窗口 region 仍是"各项 `Proximity.MaxScale` 外接矩形 + 轨道（可见时）+ 24 DIP 触发带"的**静态**并集；`InsideItem` 按**动画中的倍率**判定，两者不再互相将就（见 17.2）。
+- **诊断**：Debug 面板新增 `router <上下文> · N.N/s · N reports · N dispatches`（`CanvasDiagnosticsSnapshot` 新增四个字段，仍由适配器读取，画布不碰路由器统计）。
+- **架构门禁**：`OnlyThePointerRouterRegistersRawInput`（全仓只有路由器能注册原始输入）、`NothingInstallsGlobalHooks`（仓库里不允许出现任何 `SetWindowsHookEx` / `WH_MOUSE_LL` / `WH_KEYBOARD_LL`）。
+- **真机验收脚本 `tools/p3a-pointer-verify.ps1`**：用 `SendInput` 驱动真实指针（与物理鼠标走同一套输入栈，原始输入同样收得到），用 UI Automation 读诊断面板，覆盖 14 组场景（启动 / 前置检查 / Test 1–12）共 45 项检查。
+
+### 17.2 关键实现决定
+
+| 决定 | 内容 | 理由 |
+| --- | --- | --- |
+| 指针方案 | **原始输入 `RIDEV_INPUTSINK`**，注册在 shell 线程的隐藏顶层窗口上 | 被动注册：不捕获、不消费、不改变任何其它窗口收到的输入；公共文档 API，无注入无驱动，Store / 杀软零红灯；`WM_INPUT` 之后照常走 `DefWindowProc`，系统才会释放原始输入缓冲 |
+| 不用全局钩子 | 明确不装 `WH_MOUSE_LL`，并用门禁测试锁死 | 钩子在输入路径上拦截，可能拖慢或干扰其它应用的输入，风险与本阶段收益不成比例 |
+| 不用高频轮询 | `GetCursorPos` 只作为事件驱动的补充（`SampleOnce`），仓库里没有 60 fps 循环 | 静止时零读取、零 CPU；`Idle` 实测 5 s 内 0 个报告、0.0 ms CPU |
+| 一次报告 ≠ 一次读取 | 报告只触发一次"flush"（`SetTimer` 请求 6 ms，系统取整到 ≈15.6 ms）；**读取只发生在 flush 回调里**，绝不在 `WM_INPUT` 处理中读 | 报告可能先于系统应用该次移动到达：在 `WM_INPUT` 里读会永远慢一拍（本阶段真机复现过，见 17.5） |
+| burst 尾包复读 | flush 时若仍有报告被吞（burst 未结束），发布后再补一次读取 | 读取仍可能与 burst 最后一次移动竞争：真机 40 回合里曾出现 19/20 的尾包丢失；补一次后 40/40，代价是每个 burst 最多多一次读取（位置没变就不发布） |
+| 桌面判别 | 从 `WindowFromPoint` 沿父链上行（≤32 层）：先认自家窗口 → `Surface`，再认 shell 桌面类 → `Desktop`，其余 → `Foreign` | 画布窗口是图标宿主的**子**窗口，必须先于桌面类被认出来；类名只在 `DesktopWorkerWindow.IsDesktopLayerClass` 一处定义 |
+| 普通应用窗口 | 上下文一变 `Foreign` 就停止发布移动，并只补一次 `LeftDesktopRegion` | 用户在浏览器里移动不应该让桌面付出任何代价（用户明确要求） |
+| 无订阅者 | 没有订阅者时连报告都不计数、不读取 | 开关关闭后桌面上没有画布，指针成本严格为零 |
+| 命中区域 vs WUC 视觉 | region = 各项 **max-scale** 外接矩形的并集（+ 轨道 + 触发带），只在挂载 / 落点 / Dock 相位 / 显示器变化时重建；点击判定用**动画中的** `view.Scale` | 视觉永远不会越出 region（悬停最多放大到 `MaxScale`），所以 region 不需要逐帧重建；反过来放大中的项在整个放大面上都可点，不会出现"图标看着大、可点区域还是原来的小框" |
+| 线程模型 | 全部在 shell 线程上：注册、窗口过程、每次发布与每次 `SampleOnce` | 与 §1G 的线程模型一致；事件按顺序发布，消费者无需自己加锁；Explorer 重启不销毁 shell 线程，路由器因此原地不变 |
+
+### 17.3 逐条验收（用户下达的真机清单 + 本阶段补充，全部实测通过）
+
+| 验收点 | 实测结果 |
+| --- | --- |
+| 快速扫过一行，悬停连续、从不归零 | 行内 28 个采样：1.43 → 1.60（四个项中心）→ 1.47（项之间谷底）→ 1.39（区域边缘）；相邻最大跳变 **0.080**（阈值 0.12） |
+| 同一扫掠抬到行上方 120 DIP（窗口 region 之外） | 28/28 采样上下文仍是 `Desktop`；悬停 1.11–1.21，与几何期望的 1.21 逐位一致 —— 这正是本阶段要修的那件事 |
+| 离开画布 | 三个空白探针全部 `hover none / 1.00x`，Dock 保持 `Collapsed` |
+| 左边缘触发带 | 进入触发带 → `Shown`；离开 600 ms → `Collapsed` |
+| 普通应用窗口 | 指针移到应用窗口上：上下文 `Foreign`、画布悬停清空；任务栏同样 `Foreign`；指针回到桌面立即恢复 1.21x |
+| 命中测试 | region 外 (1615,500) 命中桌面本体（root `Progman`）；放大后的项框内按下拖动 → 落点写入布局文件；region 外按下 → 布局文件不变 |
+| ≥30 s 连续快速移动 | 1150 次移动 / 30.45 s；进程 CPU **1296.9 ms**（42.59 ms/s = 单核 **0.177 %**，24 核机器）；GPU 最大 **0.0 %**；报告 1006 → 发布 1006；发布率 avg **42.7/s**、max **64.0/s** |
+| 静止 | 5 s 内 **0 个报告**；进程 CPU **0.0 ms**（面板打开）/ 15.6 ms（面板关闭，一次系统 tick 的杂项） |
+| Explorer 重启 | `mount 1 → 2`，画布自动重挂；路由器窗口类名不变（**同一个窗口，未重挂**），重启后悬停正常 |
+| 退出释放 | 原始输入注册已释放、**0** 个路由器窗口、**0** 个画布窗口；日志：attach 恰好 1 次、release 恰好 1 次 |
+| 突发不丢尾包 | 40 回合 × 41 次连续移动，最终位置 **40/40** 命中 |
+
+### 17.4 测试与提交
+
+- 新增测试：`DesktopPointerRouterTests`（20）、`PointerWindowClassifierTests`（9）、`PointerDispatchGateTests`（5）——报告 / flush 契约、合并与尾包、三种上下文与父链判别、发布门限；`ArchitectureGuardTests` 新增 2 条门禁。Desktop 测试 48 → **84**，Core 281，Debug / Release 均 0 警告 0 错误。
+- 提交（`architecture-v2` 分支）：`63e15f3` feat: add desktop pointer routing（含验收脚本 `tools/p3a-pointer-verify.ps1`）+ 本文件。
+
+### 17.5 已知限制 / 诚实记录
+
+- **单屏结论**：与 Phase 2 相同，全部实测在 2560×1440 @96 DPI 单屏上完成；多屏 / 混合 DPI 未测。
+- **"latency" 的读法**：验收脚本读的是诊断面板文本，面板按 250 ms 刷新，因此 3–289 ms 的观测值是**面板节奏**，不是路由延迟。路由延迟由构造保证：报告 → 读取 ≤ 一个计时器 tick（≈15.6 ms），尾包再多一个 tick；发布率上限由闸门（6 ms）与计时器粒度共同限制在 ≈64/s（实测 max 64.0/s）。
+- **曾经慢一拍**：第一版在 `WM_INPUT` 处理里直接读光标，真机上每个点都读到上一个位置（离区域越远越明显）。这是本阶段最重要的修复，flush 机制与 `TheReadingIsTakenWhenTheFlushFiresNotWhenTheReportArrives` 测试都为此存在。
+- **原始输入注册失败时**：路由器降级为"只有窗口消息"，画布仍然可用但重新受 region 边界限制；日志会记一条 warning（`Attach` 永不抛出）。
+- **只有鼠标**：键盘、触摸、笔不在此阶段范围内。
+- **验收脚本会最小化挡住画布的窗口**：结束时逐个恢复（本轮已获得授权）；它只移动真实指针，不读取用户屏幕内容。
+
+### Phase 3 状态
+
+| 内容 | 状态 |
+| --- | --- |
+| Phase 3A = Desktop Input Foundation | 完成（见 §17.3；提交见 §17.4） |
+| Phase 3B 及以后 | 未开始（按指令停在 3A） |
