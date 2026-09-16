@@ -89,12 +89,28 @@ function Assert-MuralisNotRunning {
     if (-not (Test-Path $exePath)) { throw "Executable not found: $exePath" }
 }
 
+# The app keeps itself to one instance with a named mutex. The name is the one SingleInstanceGuard
+# owns; a probe that can open it means some instance is still holding the slot.
+function Test-SingleInstanceFree {
+    try {
+        $mutex = [System.Threading.Mutex]::OpenExisting('Local\Muralis.SingleInstance')
+        $mutex.Dispose()
+        return $false
+    } catch {
+        $inner = $_.Exception.InnerException
+        return ($inner -is [System.Threading.WaitHandleCannotBeOpenedException])
+    }
+}
+
 function Start-App {
     Write-Host ("Launching {0}" -f $exePath)
     $script:process = Start-Process -FilePath $exePath -PassThru
     $processId = [int]$script:process.Id
 
     $windowUp = Wait-Until { [P3Win]::FindWindowByClass($processId, 'WinUIDesktopWin32WindowClass') -ne [IntPtr]::Zero } 60 'the main window'
+    if (-not $windowUp -and $script:process.HasExited) {
+        Write-Host '  (the launched process exited without a window: it only woke another instance)'
+    }
     $canvasUp = Wait-Until { ([P3Win]::ClassesWithPrefix('MuralisDesktopHostWindow')).Count -ge 1 } 60 'the canvas mount'
     $routerUp = Wait-Until { ([P3Win]::ClassesWithPrefix('MuralisPointerRouter_')).Count -ge 1 } 60 'the router attach'
 
@@ -122,6 +138,12 @@ function Stop-App {
 
     $script:process = $null
     $script:window = [IntPtr]::Zero
+
+    # The process object reports the exit before Windows has let go of what the process held: its
+    # single-instance mutex can outlive the exit by up to a second. A launch in that gap is taken for
+    # a second instance and only wakes the dying one, so the harness waits for the slot itself.
+    Wait-Until { Test-SingleInstanceFree } 15 'the single-instance slot to be free' | Out-Null
+
     Start-Sleep -Milliseconds 700
     return $closed
 }
@@ -527,9 +549,23 @@ function Invoke-DemoDesktop($layout, [string]$appId, [string]$folderId, [string]
     $hoverDropped = Read-StateAt $droppedCentre[0] $droppedCentre[1]
     Add-Check 'drag: the item is really drawn at its new place' ($hoverDropped.HoverId -eq $folderId) ("hovered {0}" -f $hoverDropped.HoverId)
 
+    # --- the shortcut opens what it points at, through the shell
+    $lnkNow = Get-ItemById $draggedLayout $lnkId
+    $lnkCentre = Get-ItemCentre $lnkNow
+    $blocked = Clear-TheDesktop @($lnkCentre[0]) @($lnkCentre[1]) ' (for the shortcut)'
+    Move-Pointer ($lnkCentre[0] - 60) ($lnkCentre[1] - 60)
+    Start-Sleep -Milliseconds 250
+    Move-And-Settle $lnkCentre[0] $lnkCentre[1] 300
+    DoubleClick-Pointer
+    $fromShortcut = Wait-NewNotepad 15
+    Add-Check 'shortcut: double clicking it starts what it points at' ($fromShortcut.Count -gt 0) ("pids {0}" -f ($fromShortcut -join ', '))
+    $lnkOpened = Wait-Diag { param($s) $s.LaunchId -eq $lnkId -and $s.LaunchOutcome -eq 'Launched' } 10 'the shortcut launch outcome'
+    Add-Check 'shortcut: the shell took the shortcut' ($null -ne $lnkOpened) ("launch {0} -> {1}" -f $lnkOpened.LaunchId, $lnkOpened.LaunchOutcome)
+    Close-FixtureNotepads $fromShortcut
+    Start-Sleep -Milliseconds 500
+
     # --- a target that is taken away marks its item and nothing else
     Move-Pointer $droppedCentre[0] $droppedCentre[1]
-    $lnkCentre = Get-ItemCentre (Get-ItemById $draggedLayout $lnkId)
     Rename-Item -Force $script:fixture.Link "$($script:fixture.Link).away"
     Start-Sleep -Milliseconds 400
     Move-And-Settle $lnkCentre[0] $lnkCentre[1] 300
