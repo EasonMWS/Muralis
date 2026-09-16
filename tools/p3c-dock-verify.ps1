@@ -328,11 +328,6 @@ function Invoke-WakeStage {
 
 # ---------------------------------------------------------------- the dock on the real desktop
 
-# The notepads already running, so the ones a launch starts are told apart from the user's own.
-function Get-NotepadIds {
-    return @(Get-Process -Name notepad -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-}
-
 # The dock's own numbers, as the harness plants them in the layout. Everything the pointer is aimed
 # at is derived from these, so the same run works on another display or at another scale.
 $script:dockSetup = @{

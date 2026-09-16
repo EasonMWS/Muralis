@@ -181,30 +181,6 @@ function New-Fixtures {
     return $script:fixture
 }
 
-function Get-NotepadIds {
-    return @(Get-Process -Name notepad -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-}
-
-# Waits for a Notepad that was not running before the harness's own launch, so the user's own
-# windows are never touched.
-function Wait-NewNotepad([int]$timeoutSeconds = 15) {
-    $baseline = $script:notepadBaseline
-    $deadline = (Get-Date).AddSeconds($timeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
-        $now = Get-NotepadIds
-        $new = @($now | Where-Object { $baseline -notcontains $_ })
-        if ($new.Count -gt 0) { return $new }
-        Start-Sleep -Milliseconds 300
-    }
-    return @()
-}
-
-function Close-FixtureNotepads([int[]]$ids) {
-    foreach ($id in $ids) {
-        try { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue } catch { }
-    }
-}
-
 function Get-DefaultBrowserProcess {
     try {
         $progId = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice' -ErrorAction SilentlyContinue).ProgId
@@ -256,23 +232,6 @@ function Get-LatestItem($layout) {
     $items = @($layout.Items)
     if ($items.Count -eq 0) { return $null }
     return $items[$items.Count - 1]
-}
-
-# The canvas resolves every item from the display's centre: with the anchor it is given, the item's
-# centre in pixels is the display centre plus its DIP offset times the scale.
-function Get-ItemCentre($item) {
-    $x = $script:monitor[0] + ($script:monitor[2] / 2) + ($item.OffsetXDip * $script:scale)
-    $y = $script:monitor[1] + ($script:monitor[3] / 2) + ($item.OffsetYDip * $script:scale)
-    return @([int][math]::Round($x), [int][math]::Round($y))
-}
-
-function Read-Geometry {
-    $state = Read-State
-    if ($null -ne $state.ScaleFactor) { $script:scale = $state.ScaleFactor }
-    if ($null -ne $state.MonitorW) {
-        $script:monitor = @($state.MonitorX, $state.MonitorY, $state.MonitorW, $state.MonitorH)
-    }
-    return $state
 }
 
 # ---------------------------------------------------------------- the page
@@ -729,50 +688,11 @@ function Invoke-DemoRemove($layout, [string]$folderId) {
 
 # ---------------------------------------------------------------- perf
 
-function New-PerfItems([int]$count) {
-    $exes = @(Get-ChildItem (Join-Path $env:SystemRoot 'System32') -Filter '*.exe' |
-        Where-Object { $_.Length -gt 4096 } | Sort-Object Name | Select-Object -First ([math]::Max($count - 6, 1)))
-    $folders = @($env:SystemRoot, (Join-Path $env:SystemRoot 'System32'), $env:TEMP)
-    $urls = @('https://example.com/', 'https://example.org/', 'https://example.net/')
-
-    $items = @()
-    $index = 0
-    $z = 0
-    foreach ($exe in $exes) {
-        $items += New-LayoutItem -Id ("app_p{0:d2}" -f $index) -Name $exe.BaseName -Kind 'application' -Path $exe.FullName `
-            -OffsetX 0 -OffsetY 0 -Z $z
-        $index++; $z++
-    }
-    foreach ($folder in $folders) {
-        $items += New-LayoutItem -Id ("dir_p{0:d2}" -f $index) -Name (Split-Path $folder -Leaf) -Kind 'folder' -Path $folder `
-            -OffsetX 0 -OffsetY 0 -IconKey 'folder' -Z $z
-        $index++; $z++
-    }
-    foreach ($url in $urls) {
-        $items += New-LayoutItem -Id ("url_p{0:d2}" -f $index) -Name ([Uri]$url).Host -Kind 'url' -Path $url `
-            -OffsetX 0 -OffsetY 0 -IconKey 'url' -Z $z
-        $index++; $z++
-    }
-
-    # The same grid the app's own placer walks: columns and rows around the display centre, 130 DIP
-    # apart, so fifty real items land the way fifty imported ones would.
-    $columns = 10
-    $rows = [int][math]::Ceiling($count / $columns)
-    for ($i = 0; $i -lt $items.Count; $i++) {
-        $column = $i % $columns
-        $row = [int][math]::Floor($i / $columns)
-        $items[$i].OffsetXDip = (($column - (($columns - 1) / 2)) * 130)
-        $items[$i].OffsetYDip = (($row - (($rows - 1) / 2)) * 130)
-    }
-
-    return $items
-}
-
 function Invoke-Perf {
     Write-Host ''
     Write-Host ("=== Phase 3B performance: {0} real items ===" -f $PerfItemCount)
 
-    $items = New-PerfItems $PerfItemCount
+    $items = New-GridFixtureItems $PerfItemCount
     Write-Layout $items
     Write-Host ("planted {0} items in {1}" -f $items.Count, $script:layoutPath)
     Add-Sample 'perf.items' $items.Count

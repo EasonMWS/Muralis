@@ -134,9 +134,10 @@ public class P3Win {
   public static void LeftDown() { SendOne(MOUSEEVENTF_LEFTDOWN, 0, 0); }
   public static void LeftUp() { SendOne(MOUSEEVENTF_LEFTUP, 0, 0); }
 
-  private static void SendKey(ushort scan, uint flags) {
+  private static void SendKey(ushort virtualKey, ushort scan, uint flags) {
     INPUTK[] inputs = new INPUTK[1];
     inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].u.ki.wVk = virtualKey;
     inputs[0].u.ki.wScan = scan;
     inputs[0].u.ki.dwFlags = flags;
     uint sent = SendInputKeys(1, inputs, Marshal.SizeOf(typeof(INPUTK)));
@@ -147,14 +148,17 @@ public class P3Win {
   // reaches the window the user's own typing would reach.
   public static void TypeText(string text) {
     foreach (char c in text) {
-      SendKey(c, KEYEVENTF_UNICODE);
-      SendKey(c, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP);
+      SendKey(0, c, KEYEVENTF_UNICODE);
+      SendKey(0, c, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP);
     }
   }
 
+  // A real key press. A virtual key goes in wVk, and wScan stays empty: with neither the Unicode nor
+  // the scancode flag set it is wVk the system reads, and an event that carries the key in wScan
+  // instead is an event with no key in it at all.
   public static void PressKey(ushort virtualKey) {
-    SendKey(virtualKey, 0);
-    SendKey(virtualKey, KEYEVENTF_KEYUP);
+    SendKey(virtualKey, 0, 0);
+    SendKey(virtualKey, 0, KEYEVENTF_KEYUP);
   }
 
   public static string ClassOf(IntPtr h) {
@@ -332,12 +336,18 @@ $layoutPath = Join-Path $appData 'desktop\layout.json'
 $prototypePath = Join-Path $appData 'desktop-canvas-prototype.json'
 
 $script:backupSuffix = $null
+$script:layoutParkRan = $false
+$script:layoutHadDocument = $false
+$script:settingsBackedUp = $false
 
 function Set-BackupPaths([string]$Suffix) {
     $script:backupSuffix = $Suffix
     $script:settingsBackup = "$script:settingsPath.$Suffix.bak"
     $script:layoutBackup = "$script:layoutPath.$Suffix.bak"
     $script:prototypeBackup = "$script:prototypePath.$Suffix.bak"
+    $script:settingsBackedUp = $false
+    $script:layoutParkRan = $false
+    $script:layoutHadDocument = $false
 }
 
 # The nav item and the diagnostics expander are found by name, and the app runs in Chinese on this
@@ -595,6 +605,33 @@ function Drag-Pointer([int]$fromX, [int]$fromY, [int]$toX, [int]$toY, [int]$step
     Start-Sleep -Milliseconds 250
 }
 
+# The notepads already running, so the ones a launch starts are told apart from the user's own. A
+# harness that is about to launch something records the baseline first, and closes only what it
+# started.
+$script:notepadBaseline = @()
+
+function Get-NotepadIds {
+    return @(Get-Process -Name notepad -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+}
+
+function Wait-NewNotepad([int]$timeoutSeconds = 15) {
+    $baseline = $script:notepadBaseline
+    $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $now = Get-NotepadIds
+        $new = @($now | Where-Object { $baseline -notcontains $_ })
+        if ($new.Count -gt 0) { return $new }
+        Start-Sleep -Milliseconds 300
+    }
+    return @()
+}
+
+function Close-FixtureNotepads([int[]]$ids) {
+    foreach ($id in $ids) {
+        try { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue } catch { }
+    }
+}
+
 function Measure-GpuOnce([int]$processId) {
     try {
         $sample = Get-Counter -Counter '\GPU Engine(*)\Utilization Percentage' -MaxSamples 1 -ErrorAction Stop
@@ -718,6 +755,13 @@ function Open-DynamicPage {
     $nav.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
     Start-Sleep -Milliseconds 900
 
+    Open-DiagnosticsPanel
+}
+
+# The panel the canvas reports through is opened separately from the page it sits on: a stage that only
+# reads the document has no use for it, and one that reads item counts, icon caches or the router's rate
+# has no other way in.
+function Open-DiagnosticsPanel {
     $root = Get-AppRoot
     $expander = $null
     $named = Find-ByName $root $diagTitle $null
@@ -758,9 +802,20 @@ function Show-AppWindow([int]$x, [int]$y, [int]$w, [int]$h) {
     [P3Win]::MoveWindow($script:window, $x, $y, $w, $h, $true) | Out-Null
     [P3Win]::SetForegroundWindow($script:window) | Out-Null
     $script:diagMode = 'corner'
-    Start-Sleep -Milliseconds 700
-    $script:diagElement = Get-DiagElement (Get-AppRoot)
-    if ($null -eq $script:diagElement) { throw 'The diagnostics text was lost when the window came back.' }
+
+    # A window coming back from being minimised rebuilds its visual tree, so the panel inside it takes a
+    # moment to answer again — a fixed pause before the first look is a guess, and a wrong one whenever
+    # the page is a little slower than last time. The look is repeated instead, and where it still finds
+    # nothing the panel is opened again the same way it was opened the first time: that path knows how
+    # to find the expander, and a panel that came back collapsed is the other way this can go wrong.
+    $deadline = (Get-Date).AddSeconds(10)
+    while ($true) {
+        Start-Sleep -Milliseconds 400
+        $script:diagElement = Get-DiagElement (Get-AppRoot)
+        if ($null -ne $script:diagElement) { return }
+        if ((Get-Date) -ge $deadline) { throw 'The diagnostics text was lost when the window came back.' }
+        try { Open-DiagnosticsPanel; return } catch { }
+    }
 }
 
 function Read-Diag {
@@ -778,6 +833,19 @@ function Read-Diag {
     if ($script:diagMode -eq 'minimize') {
         Write-Host '  (diagnostics went quiet while minimised; switching to corner mode)'
         Show-AppWindow 1750 900 780 500
+
+        # The reading that found the panel quiet is the reading that had to restore the window, so it is
+        # not the reading the caller asked for: what it gets back is what the panel says now, or the
+        # caller is told there is nothing rather than being handed a state the panel never reported.
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+                $text = $script:diagElement.GetCurrentPropertyValue([System.Windows.Automation.AutomationElement]::NameProperty)
+                if ($text -is [string] -and $text.Length -gt 0) { return $text }
+            } catch {
+                $script:diagElement = Get-DiagElement (Get-AppRoot)
+            }
+            Start-Sleep -Milliseconds 100
+        }
     }
 
     return ''
@@ -869,27 +937,65 @@ function Wait-Diag([scriptblock]$predicate, [int]$timeoutSeconds = 20, [string]$
     return $null
 }
 
-# ---------------------------------------------------------------- settings, layout, restore
+# ---------------------------------------------------------------- the canvas' geometry
 
-function Backup-Settings {
-    if (-not (Test-Path $script:settingsPath)) { throw "settings.json was not found at $script:settingsPath" }
-    Copy-Item -Force $script:settingsPath $script:settingsBackup
+# Until the panel describes a display, the canvas' geometry is the primary one at its own scale.
+$script:scale = 1.0
+$script:monitor = @(0, 0, [P3Win]::GetSystemMetrics(0), [P3Win]::GetSystemMetrics(1))
+
+# The canvas resolves every item from the display's centre: with the anchor it is given, the item's
+# centre in pixels is the display centre plus its DIP offset times the scale. Which display, and at what
+# scale, is what the panel says — and a display the panel has not described yet is the primary one.
+function Read-Geometry {
+    $state = Read-State
+    if ($null -ne $state.ScaleFactor) { $script:scale = $state.ScaleFactor }
+    if ($null -ne $state.MonitorW) {
+        $script:monitor = @($state.MonitorX, $state.MonitorY, $state.MonitorW, $state.MonitorH)
+    }
+    return $state
 }
 
-# Enables the desktop canvas and turns off close-to-tray, so the harness can close the window for
-# real. Every other setting is left exactly as the user had it.
+function Get-ItemCentre($item) {
+    $x = $script:monitor[0] + ($script:monitor[2] / 2) + ($item.OffsetXDip * $script:scale)
+    $y = $script:monitor[1] + ($script:monitor[3] / 2) + ($item.OffsetYDip * $script:scale)
+    return @([int][math]::Round($x), [int][math]::Round($y))
+}
+
+# ---------------------------------------------------------------- settings, layout, restore
+
+# Backs the user's settings up, once per run. Every stage of a run changes the same file, so a second
+# backup would take the copy of the file this run had already changed, and the way back would hand the
+# user the harness's own settings instead of their own.
+function Backup-Settings {
+    if ($script:settingsBackedUp) { return }
+    if (-not (Test-Path $script:settingsPath)) { throw "settings.json was not found at $script:settingsPath" }
+    Copy-Item -Force $script:settingsPath $script:settingsBackup
+    $script:settingsBackedUp = $true
+}
+
+# Keeps the window closing for real, so the harness can close it and wait for the exit. Every other
+# setting is left exactly as the user had it. The desktop mode is not a setting: it lives in the
+# desktop layout document, and Write-Layout is what asks for the one these runs need.
 function Enable-CanvasInSettings {
     $settings = Get-Content $script:settingsPath -Raw | ConvertFrom-Json
-    $settings | Add-Member -NotePropertyName DesktopCanvas -NotePropertyValue ([pscustomobject]@{ Enabled = $true }) -Force
     $settings.CloseToTray = $false
     $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $script:settingsPath -Encoding UTF8
 }
 
 # Parks the layout documents: the user's own desktop layout must come back untouched, and the Phase 2
-# prototype file must not be there while a harness plants a document of its own.
+# prototype file must not be there while a harness plants a document of its own. What was found is
+# remembered, because the way back has to tell the user's own document from one the harness planted.
+#
+# Once per run, for the same reason the settings are backed up once: a second park would take the
+# document this run had already planted, and the way back would hand the user that instead of their own.
 function Park-LayoutFiles {
+    if ($script:layoutParkRan) { return }
     New-Item -ItemType Directory -Force -Path (Split-Path $script:layoutPath -Parent) | Out-Null
-    if (Test-Path $script:layoutPath) { Move-Item -Force $script:layoutPath $script:layoutBackup }
+    $script:layoutParkRan = $true
+    if (Test-Path $script:layoutPath) {
+        Move-Item -Force $script:layoutPath $script:layoutBackup
+        $script:layoutHadDocument = $true
+    }
     if (Test-Path $script:prototypePath) { Move-Item -Force $script:prototypePath $script:prototypeBackup }
 }
 
@@ -941,14 +1047,73 @@ function New-LayoutItem {
     }
 }
 
-function Write-Layout($items) {
+# The document as the harness plants it: the shape the app writes, and the desktop mode asked for on
+# the way in. Preview is the mode the canvas runs under while Explorer's own icons are still the
+# user's, which is what most of these runs are about: the canvas and the dock, not the takeover. A
+# stage that wants to watch a mode change happen asks for the mode it is starting from instead.
+#
+# Everything the sections can be left out of is left out, because an absent node is read as the app's
+# own default and a section written here by hand would be a second copy of those defaults to keep in
+# step. Adoption is the exception: it is off by default so a run starts from exactly the items it
+# planted, and a stage that wants the user's own desktop brought in alongside the fixture asks for it.
+function Write-Layout($items, [string]$Mode = 'Preview', [bool]$AdoptDesktopItems = $false) {
     $layout = [pscustomobject]@{
-        SchemaVersion = 2
+        SchemaVersion = 4
         Kind = 'muralis.desktopLayout'
+        Proximity = [pscustomobject]@{ MaxScale = 1.6; InfluenceRadiusDip = 200; Falloff = 'Smoothstep' }
+        Motion = [pscustomobject]@{ Hover = [pscustomobject]@{ PeriodSeconds = 0.30; DampingRatio = 0.85 } }
+        Dock = [pscustomobject]@{ Enabled = $false; Entries = @() }
+        Takeover = [pscustomobject]@{
+            Mode = $Mode
+            AdoptDesktopItems = $AdoptDesktopItems
+            IgnoredSourcePaths = @()
+        }
         Items = @($items)
     }
     $json = $layout | ConvertTo-Json -Depth 12
     [IO.File]::WriteAllText($script:layoutPath, $json, [Text.UTF8Encoding]::new($false))
+}
+
+# Real items of every kind the app knows, the way its own importer would bring them in: programs from
+# the system folder, folders that exist, and addresses — laid out on the grid the app's own placer
+# walks, ten columns around the display centre, so a hundred of them land the way a hundred imported
+# ones would and a hover sweep can walk the whole set.
+function New-GridFixtureItems([int]$count) {
+    $programs = [math]::Max($count - 6, 1)
+    $exes = @(Get-ChildItem (Join-Path $env:SystemRoot 'System32') -Filter '*.exe' |
+        Where-Object { $_.Length -gt 4096 } | Sort-Object Name | Select-Object -First $programs)
+    $folders = @($env:SystemRoot, (Join-Path $env:SystemRoot 'System32'), $env:TEMP)
+    $urls = @('https://example.com/', 'https://example.org/', 'https://example.net/')
+
+    $items = @()
+    $index = 0
+    $z = 0
+    foreach ($exe in $exes) {
+        $items += New-LayoutItem -Id ("app_p{0:d2}" -f $index) -Name $exe.BaseName -Kind 'application' -Path $exe.FullName `
+            -OffsetX 0 -OffsetY 0 -Z $z
+        $index++; $z++
+    }
+    foreach ($folder in $folders) {
+        $items += New-LayoutItem -Id ("dir_p{0:d2}" -f $index) -Name (Split-Path $folder -Leaf) -Kind 'folder' -Path $folder `
+            -OffsetX 0 -OffsetY 0 -IconKey 'folder' -Z $z
+        $index++; $z++
+    }
+    foreach ($url in $urls) {
+        $items += New-LayoutItem -Id ("url_p{0:d2}" -f $index) -Name ([Uri]$url).Host -Kind 'url' -Path $url `
+            -OffsetX 0 -OffsetY 0 -IconKey 'url' -Z $z
+        $index++; $z++
+    }
+
+    $columns = 10
+    $rows = [int][math]::Ceiling($count / $columns)
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        $column = $i % $columns
+        $row = [int][math]::Floor($i / $columns)
+        $items[$i].OffsetXDip = (($column - (($columns - 1) / 2)) * 130)
+        $items[$i].OffsetYDip = (($row - (($rows - 1) / 2)) * 130)
+    }
+
+    return $items
 }
 
 function Restore-Everything {
@@ -958,11 +1123,33 @@ function Restore-Everything {
     Stop-Process -Name Muralis -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 800
     if (Test-Path $script:settingsBackup) { Move-Item -Force $script:settingsBackup $script:settingsPath }
-    if (Test-Path $script:layoutBackup) {
-        Move-Item -Force $script:layoutBackup $script:layoutPath
-    } elseif (Test-Path $script:layoutPath) {
-        Remove-Item -Force $script:layoutPath
-    }
+    Restore-LayoutFile
     if (Test-Path $script:prototypeBackup) { Move-Item -Force $script:prototypeBackup $script:prototypePath }
     if (Test-Path "$script:layoutPath.bad") { Remove-Item -Force "$script:layoutPath.bad" }
+}
+
+# The desktop layout is the one thing a run must never lose. A document that is there at the end is
+# either the user's own, put back from the parked copy, or one the harness planted in the space where
+# the user had none — and only a park that really ran and really found nothing tells those apart.
+# Anything else leaves the file exactly where it is: a verification run that eats a desktop layout has
+# cost more than it can ever prove.
+function Restore-LayoutFile {
+    if (Test-Path $script:layoutBackup) {
+        Move-Item -Force $script:layoutBackup $script:layoutPath
+        return
+    }
+
+    if (-not (Test-Path $script:layoutPath)) { return }
+
+    if ($script:layoutHadDocument) {
+        Write-Host ("  WARNING: the parked desktop layout is missing and the user had one; leaving {0} untouched" -f $script:layoutPath)
+        return
+    }
+
+    if ($script:layoutParkRan) {
+        Remove-Item -Force $script:layoutPath
+        return
+    }
+
+    Write-Host '  WARNING: no layout park ran this time; leaving the desktop layout untouched'
 }

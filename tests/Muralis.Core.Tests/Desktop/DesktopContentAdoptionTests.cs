@@ -68,6 +68,62 @@ public sealed class DesktopContentAdoptionTests : IDisposable
     }
 
     [Fact]
+    public void AnEntryIsTheSameEntry_WhateverNameItIsShownUnder()
+    {
+        var path = Entry("editor.exe");
+        var layout = DesktopLayout.CreateEmpty();
+        layout.Items.Add(DesktopItemFactory.CreateFromTarget(new ApplicationTarget { Path = path }, "the editor", path));
+
+        // The same file, seen under a different name than the item shows it as.
+        var seen = Scan().Adoptable.Single() with { Name = "Something Else" };
+        var plan = DesktopContentAdopter.Plan(new DesktopContentScan([seen], [], []), layout);
+
+        Assert.Empty(plan.ToAdopt);
+        Assert.Equal(path, plan.AlreadyAdopted.Single().SourcePath);
+    }
+
+    [Fact]
+    public void AFileInAnotherFolder_IsNotExcusedByTheSameName()
+    {
+        var mine = Entry("editor.exe");
+        var layout = DesktopLayout.CreateEmpty();
+        layout.Items.Add(DesktopItemFactory.CreateFromTarget(new ApplicationTarget { Path = mine }, "editor", mine));
+
+        var seen = Scan().Adoptable.Single(entry => entry.SourcePath == mine);
+        var elsewhere = Path.Combine(_desktop, "elsewhere", "editor.exe");
+        seen = seen with { SourcePath = elsewhere };
+
+        var plan = DesktopContentAdopter.Plan(new DesktopContentScan([seen], [], []), layout);
+
+        Assert.Equal(elsewhere, plan.ToAdopt.Single().SourcePath);
+    }
+
+    // Identity is the path, so a file that moves is a new entry — and the item the old path left behind
+    // stays where it is, pointing at where the file used to be, until the user does something about it.
+    // Nothing is silently re-pointed and nothing is quietly dropped.
+    [Fact]
+    public void AFileThatMoves_IsANewEntry_AndTheItemItLeftBehindStays()
+    {
+        var before = Entry("editor.exe");
+        var layout = DesktopLayout.CreateEmpty();
+        Adopt(Plan(layout), layout);
+
+        var after = Path.Combine(_desktop, "renamed.exe");
+        File.Move(before, after);
+
+        var plan = Plan(layout);
+
+        Assert.Equal(after, plan.ToAdopt.Single().SourcePath);
+        Assert.Single(layout.Items);
+        Assert.Equal(before, layout.Items[0].SourcePath);
+
+        var result = Adopt(plan, layout);
+
+        Assert.Single(result.Added);
+        Assert.Equal(2, layout.Items.Count);
+    }
+
+    [Fact]
     public void AnEntryTheUserTurnedDown_IsDeclinedAgain()
     {
         var path = Entry("editor.exe");
