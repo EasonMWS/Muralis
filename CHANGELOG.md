@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The experimental desktop canvas stops drawing placeholders: its items now stand for real
+programs, shortcuts, files, folders and web addresses — imported by hand, drawn with the
+icons the shell shows, opened by double-clicking them, and marked rather than thrown away
+when what they point at goes missing.
+
+### Added
+
+**Desktop canvas items**
+
+- A formal desktop item: a name, an icon, a position and one typed target — application,
+  shortcut, file, folder or web address — where each kind is its own thing rather than a
+  bare path, and each item keeps its own identity even if its target moves or disappears
+- An import entry in Settings: pick a program or a shortcut, pick a folder, or type an
+  address and it lands on the canvas with the name and icon the shell shows. Nothing is
+  scanned, nothing is copied — an item only ever remembers where something already is
+- One launcher behind every open: programs start, documents open in their associated
+  program, folders open in Explorer and addresses open in the default browser — all through
+  the shell, and it is the only place in the app that starts a process
+- Clicking picks an item out, double-clicking opens it, and dragging moves it anywhere on
+  the canvas and saves the position; the double-click and drag thresholds are the ones your
+  mouse settings define, so dragging can never open something by accident
+- An item whose target was moved or deleted stays put, dimmed with a warning badge, and
+  returns to normal when the target is back; removing an item never touches the file
+
+**Icons**
+
+- Real icons read from the shell for programs, shortcuts and folders (the shell's own
+  extraction, in the platform layer), resolved once and cached on a worker thread with a
+  memory budget — magnifying an item never re-reads the file, and icons stay sharp at
+  hover magnification
+
+### Changed
+
+- The canvas now saves to `%LOCALAPPDATA%\Muralis\desktop\layout.json` (document version 2)
+  instead of the prototype file; the old document is read once — the canvas settings carry
+  over, the placeholder tiles do not — and is kept beside the new one as a `.v1.bak` backup
+
+### Removed
+
+- The Steam / Chrome / Blender / ComfyUI placeholder tiles: the canvas starts empty and
+  shows only what has been pointed at something real
+
 ## [0.2.0] - 2026-09-15
 
 The second release: browsing gained filters, tags and categories, downloads got a queue with

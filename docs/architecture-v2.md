@@ -1072,3 +1072,110 @@ Phase 0 到此结束。下一动作 = 你批准本文件后，按 §14 的 Commi
 | --- | --- |
 | Phase 3A = Desktop Input Foundation | 完成（见 §17.3；提交见 §17.4） |
 | Phase 3B 及以后 | 未开始（按指令停在 3A） |
+
+## 18. Phase 3B 落地记录：Real Desktop Items & App Launching（2026-09-16）
+
+> 2026-09-16：Phase 3 的第二段。Phase 2/3A 的画布项只是瓦片——一个字形、没有能打开的东西；原型文件里的 Steam / Chrome / Blender / ComfyUI 是每次启动都强行出现的假程序。本阶段把画布项升级成**真正的桌面项**：可以代表一个程序、一个 `.lnk`、一个文件夹、一个文件或一个网址，有真实图标，双击经 shell 打开，目标不在了只标记不删除。
+> **本阶段不做**：隐藏 Windows 原生桌面图标、自动扫描/导入整个桌面、Shell 上下文菜单正式版、右键扩展、把文件拖进桌面、多选、框选、重命名、删除真实文件、Scene / Widget / Music / FFT / Cloud。**Phase 3C 未开始。**
+> 结论基于 Debug / Release 双配置 0 警告构建 + 全部测试（Core 366 / Desktop 125，共 491）+ 本机真机实测（单屏 2560×1440 @96 DPI，scale 1.0）：演示 58 项检查、50 项性能 9 项检查全部通过。
+
+### 18.1 交付内容
+
+- **DesktopItem 与 Target 模型**（`src/Muralis.Core/Desktop/`，10 个文件）：`DesktopItem`（Id / Name / Target / IconKey / Placement / Anchor / 锚点偏移 / SizeDip / Z / IsVisible，外加 `IsMissing()`、`Validate()`、`Clone()`）；`DesktopItemTarget` 抽象基类 + `ApplicationTarget` / `ShortcutTarget` / `FileTarget` / `FolderTarget` / `UrlTarget`，用 `System.Text.Json` 多态序列化（判别符字段 `kind`），未知 kind 直接拒绝加载——不是把一切塞进一个字符串路径。
+- **清单生成**：`DesktopItemFactory`（路径 → item：名称取文件名，id 取 kind 前缀 `app_`/`lnk_`/`dir_`/`url_`/`file_` + 8 位随机；同一程序添加两次就是两个 item）、`DesktopItemPlacer`（新 item 落在离屏幕中心最近的空位，130 DIP 步距，存的是锚点偏移而不是像素）、`DesktopItemLaunch`（纯路由：location + `open` verb）。
+- **持久化升级（spec §八 的迁移点就在本阶段）**：`DesktopLayout`（schema 2，`kind: "muralis.desktopLayout"`）写入 `%LOCALAPPDATA%\Muralis\desktop\layout.json`，与 `settings.json` 彻底分开；`DesktopLayoutStore` 原子写（临时文件 + `Move`），解析失败或校验不过的文档改名 `.bad` 而不是删除；`DesktopLayoutMigrator` 把 Phase 2 的 `desktop-canvas-prototype.json` **读一次**——参数（悬停 / 运动 / Dock）带过来，原型瓦片不迁移（它们没有 target），旧文件改名 `.v1.bak` 留在原地。迁移失败时旧文件一字不动，桌面从空布局开始。
+- **图标层**（`src/Muralis.Desktop/Icons/`，5 个文件）：`ShellIconReader`（`SHGetFileInfoW` 取图标索引 → `SHGetImageList` 取图像列表 → `IImageList.GetIcon` 取句柄 → `GetDIBits` 复制像素 → 立刻 `DestroyIcon` / 释放 COM；结果统一为预乘 BGRA）、`IconBitmap`、`IconBitmapCache`（单 STA 工作线程 + 32 MB 预算 LRU + 请求去重）、`IconSurface` / `IconSurfaceDevice`（把像素上传成合成表面，配合 `CompositionBootstrap` 与 `D3D11Interop`）。`CanvasSurfaceContent` 只认像素：门禁测试禁止它出现任何 shell 图标调用。
+- **启动**：`IDesktopItemLauncher` + `DesktopItemLaunchResult`（`Launched` / `Missing` / `Failed`）；`ShellItemLauncher` 用 `Process.Start(new ProcessStartInfo(location) { UseShellExecute = true, Verb = "open" })` 走系统关联，在线程池上执行，结果回投 shell 线程。全仓没有第二处 `Process.Start` 用于桌面项，也没有任何命令行长拼。
+- **手势状态机**：`DesktopGestureRecognizer`（纯逻辑，喂坐标与时钟）：阈值全部来自系统——`GetDoubleClickTime`、`SM_CXDRAG` / `SM_CYDRAG`（拖动矩形）、`SM_CXDOUBLECLK` / `SM_CYDOUBLECLK`（双击矩形）。`PointerDown → 离开拖动矩形 = Drag（此后永不可能是 Click）`；`PointerUp → Click`；`第二次 Click 落在上一次的双击矩形与双击时间内 → DoubleClick（并结束连击链）`。
+- **画布接线**：`Click → Select`（选择环，日志 `was selected`）；`DoubleClick → Launch`（且只在该项正是被选中的那一项时；日志 `is being opened` + `was opened by the shell`，诊断面板 `launch <id> → <outcome>`）；`DragEnd → 落点立即写入文档`（日志 `was dropped at X / Y DIP`）。
+- **Missing 目标**：挂载 / 按下 / 落点三处问一次磁盘（在复制出来的 item 上、于工作线程问，挂载换代后回来的答案被丢弃）；只对问过的 item 生效——目标不在的标记（`MissingOpacity = 0.5` + 琥珀色徽标），目标回来的解除标记。**不删除、不移动、不改写**。
+- **导入入口（页面）**：动态壁纸页新增“程序或快捷方式”（文件选择器过滤 `.exe` / `.lnk`）、“文件夹”、“地址”（裸地址补 `https://`，只接受 http / https）三个入口，以及一行一个 item 的列表（名称 + 路径 + 移除按钮；移除只从文档里去掉引用，磁盘上的文件一个字节都不动）。
+- **诊断与门禁**：诊断面板新增 `launch <id> → <outcome>` 与 `icons N cached · N.N MB`；`ArchitectureGuardTests` 新增 `OnlyTheIconLayersKnowHowToReadAShellIcon`、`TheCanvasDoesNotUnderstandIconExtraction`。
+- **真机验收**：`tools/p3b-item-verify.ps1`（`-Stage picker|demo|perf|full`），共用件抽到 `tools/p3-common.ps1`（3A 的脚本改为复用同一份）。
+
+### 18.2 关键实现决定
+
+| 决定 | 内容 | 理由 |
+| --- | --- | --- |
+| 每种 kind 一个 target 类型 | 文档里带 `kind` 判别符；未知 kind 拒绝加载而不是猜 | 未来的 packaged app / Shell namespace 作为新派生类型进场，旧文档原样还能读——模型不把将来的路堵死（spec §二） |
+| 身份是生成的 id，不是路径 | `app_` / `lnk_` / `dir_` / `url_` 前缀 + 8 位随机 | 同一程序加两次是两个 item；目标以后移动或消失，item 仍然是它自己（spec §二） |
+| `.lnk` 不自己解析 | 保存 `.lnk` 的路径，图标与启动都交给 shell | 解析 `.lnk` 要 `IShellLink` COM，而 shell 本来就是唯一权威；Muralis 只保存引用（spec §三） |
+| 名称来自文件名 | `Path.GetFileNameWithoutExtension` | 与资源管理器显示一致；不读 `.lnk` 内部的描述（本阶段不需要） |
+| 图标按“需要的像素数”取 | `sizeDip × DPI 倍率 × Proximity.MaxScale`：96 DIP @1×/1.6× = 154 px → jumbo 列表；≤44 px 才用小列表 | 放大到 1.6× 仍清晰，又不为小图标付 jumbo 的内存（spec §四） |
+| 缓存里只有像素，没有 HICON | 读出即 `DestroyIcon`，缓存存预乘 BGRA | 每个图标不再持有 native 资源；50 项实测 0 个图标告警、句柄 hover 前后 1935 → 1926（spec §十四） |
+| 一个 STA 工作线程 + 预算淘汰 | shell 调用全部序列化在这条线程；32 MB 预算按 LRU 淘汰 | 壳线程永不等待 shell；50 项是一队而不是一群；几百项也不会无界增长 |
+| 启动只走 shell 的 `open` | `UseShellExecute = true` + `Verb = "open"`，绝不拼命令行、绝不给参数 | 关联程序由系统决定：网址 → 默认浏览器，文件 → 默认程序，文件夹 → 资源管理器（spec §五 / §十一） |
+| URL 只认 http / https | 其它 scheme 在生成与加载两处都被拒绝 | 否则 item 能变成“把启动程序伪装成打开链接” |
+| 双击才启动，且必须落在已选中那一项 | 第一次 click 选中，第二次 click 在双击矩形与时间内且同一项 → 启动 | 拖动永不启动；单击永不动手（spec §五 / §六） |
+| 阈值全部来自系统 | `GetDoubleClickTime` / `SM_CXDRAG` / `SM_CXDOUBLECLK`，只有系统拒答时才用 500 ms 兜底 | 用户自己的鼠标设置就是标准（spec §六要求“不要随便硬编码”） |
+| 拖动即断链 | 离开拖动矩形就把 `_clicked` 清掉，DragEnd 不会再产生 Click | 一次拖动的结束不可能被当成点击，更不可能启动（spec §六） |
+| 缺目标只标记 | 半透明 + 警告徽标；文档里的 item 一字不改 | 用户可能只是暂时移走了文件；Muralis 不得因此删 item（spec §七） |
+| 问磁盘只在这三个时刻 | 挂载 / 按下 / 落点，且在池线程上、对副本问 | 磁盘 I/O 不阻塞壳线程；不是每秒轮询文件系统 |
+| 文档 v2 + 一次性迁移 | prototype 参数带过来、瓦片不迁移、旧文件改名 `.v1.bak` | 瓦片没有 target，迁过来也只能是假程序；不留永久临时格式（spec §八 / §九） |
+| 损坏文档改名 `.bad` | 不是删除 | 手写文档出错的代价是“从头开始”，不是“文件没了” |
+
+### 18.3 逐条验收（spec §十三 的 18 步，全部实测通过）
+
+| # | 验收点 | 实测结果 |
+| --- | --- | --- |
+| 1 | 添加一个真实 `.exe` | 页面上的“程序或快捷方式”按钮 → 文件选择器 → `kind application path C:\Windows\System32\notepad.exe` |
+| 2 | Muralis 显示真实程序图标 | `icons: every item with a file behind it got a real icon : cached 3 of 3`（程序 / 文件夹 / 快捷方式各有真图标，网址没有） |
+| 3 | 拖动到任意位置 | `drag: the drop moved the item and was saved : 0,-130 -> 260,-310` |
+| 4 | 重启 Muralis | `restart: the app closed cleanly on its own window` → 重新启动 → 画布挂载 |
+| 5 | Item 位置恢复 | `restart: the dragged item is back where it was dropped : hovered dir_…`；文档哈希重启前后一致、文件名级未被改写 |
+| 6 | Double Click | `double click: the program really started : pids …` |
+| 7 | 程序启动 | `double click: the outcome is the shell taking it : launch app_… -> Launched`（日志 `opened C:\Windows\System32\notepad.exe`） |
+| 8 | 添加真实 `.lnk` | `import: a real .lnk becomes a shortcut item : kind shortcut path …\P3B Notepad.lnk` |
+| 9 | 正确提取名称和图标 | `import: the shortcut keeps its own name : name 'P3B Notepad'`；图标 `cached 3 of 3`、`no icon had to be left unresolved : warnings 0` |
+| 10 | 启动快捷方式 | `shortcut: double clicking it starts what it points at : pids …` + `shortcut: the shell took the shortcut : launch lnk_… -> Launched` |
+| 11 | 添加 Folder | `import: a real folder becomes a folder item : kind folder path …\P3B Folder` |
+| 12 | 双击打开 Explorer | `folder: double clicking opens it in Explorer` + `folder: the shell took the request : launch dir_… -> Launched` |
+| 13 | 添加 URL | `import: an address becomes a url item : kind url url https://example.com/` |
+| 14 | 默认浏览器打开 | `address: the shell took the address : launch url_… -> Launched`；本机默认浏览器 msedge，进程数 13 → 16 |
+| 15 | 拖动不会误启动 | `drag: the drag and its release launched nothing : no new process` + `drag: the drag did not open what it points at : no new window` |
+| 16 | 删除 / 移动一个测试 Target | `missing: taking the target away marks the item : missing 1` |
+| 17 | Muralis 显示 Missing 状态而不崩溃 | `missing: the item is still in the document, untouched : items 4` + `missing: the app is still alive and answering` + `missing: the marked item has not been moved` |
+| 18 | Explorer restart 后 Item 全部恢复 | `explorer: the canvas comes back after the shell restarts : mount 1 -> 2`、`explorer: every item is on the desktop again : items 4`、`explorer: the item whose target came back is no longer marked : missing 0` |
+
+演示同时覆盖了 spec 没逐条列出但同样要求的行为：单击只选中不启动（`click: a single click did not launch anything`）、悬停命中与放大（`hovered app_…` / `scale 1.6`）、页面行与移除（`page: one row per item…` / `remove: what it pointed at is still there : True`）、原型种子不再回来（`import: nothing from the old prototype seed is back`）、未复制任何文件（`nothing was copied into the fixture folder : strays 0`）。
+
+### 18.4 测试与提交
+
+- 新增测试：Core——`DesktopItemTests`、`DesktopItemFactoryTests`、`DesktopItemLaunchTests`、`DesktopItemPlacerTests`、`DesktopItemSerializationTests`、`DesktopLayoutTests`、`DesktopLayoutMigratorTests`、`DesktopLayoutStoreTests`（+ `TestSupport/TempWorkspace.cs`）；Desktop——`DesktopGestureRecognizerTests`、`IconBitmapCacheTests`、`ShellIconReaderTests`、`IconSurfaceLiveTests`，另加 2 条架构门禁。覆盖 target 序列化与未知 kind、id 与缺失判定、清单生成、启动路由、手势三态与系统阈值、图标缓存（去重 / 淘汰 / 并发）、布局文档往返与迁移、损坏文档处置。Core 281 → **366**，Desktop 84 → **125**（共 491），Debug / Release 双配置 0 警告 0 错误。
+- 提交（`architecture-v2` 分支）：`ae1e15f` feat: add desktop item target model → `8cf061c` fix: name every item fact once in the document → `cc47d59` feat: resolve real application icons → `8abb377` feat: launch desktop items → `53ac46e` test: cover real desktop item interactions → `a1535eb` test: open the shortcut in the demo and wait for the instance slot。本节与本轮 CHANGELOG 随其后的 `docs:` 提交入库。
+- 验收脚本：`tools/p3b-item-verify.ps1 -Stage demo`（58 项检查）、`-Stage perf`（50 项，9 项检查）、`-Stage picker`（导入入口 15 项）；产物在 `artifacts/p3b/`（未入库）。
+
+### 18.5 性能（50 项真实程序与目录，单屏 2560×1440）
+
+| 项目 | 实测 |
+| --- | --- |
+| 进程启动 → 50 项全部在屏上 | **1489 ms**（里程碑：app class 3 / window created 321 / window shown 328 / ui idle 578 ms） |
+| 布局保存（50 项，原子写） | **12.1 ms** |
+| 图标解析（冷，单项） | **2 ms**；47 项全部在 hover 之前完成，`cached 47 of 47` |
+| 图标缓存内存 | **11.8 MB**（47 项 jumbo 像素） |
+| Idle CPU | 78.125 ms / 10 s = 单核 **0.776 %** |
+| Hover CPU（150 次移动 / 14.1 s） | 265.625 ms = 单核 **1.88 %**；GPU 峰值 **0.33 %** |
+| 句柄 / GDI 对象 | 1935 → 1926（hover 之后）；89 → 87 |
+| 工作集 | 249.3 MB |
+| 图标告警（无法解析） | **0** |
+
+### 18.6 已知限制 / 诚实记录
+
+- **单屏结论**：与 Phase 2 / 3A 相同，全部实测在 2560×1440 @96 DPI 单屏上完成；高 DPI 与多屏未实测。图标按设备像素请求（`DIP × 倍率 × MaxScale`），设计上支持，但没有量（spec §一 只要求 16–128 DIP 不糊，这一点由“请求的像素数 ≥ 显示像素数”保证）。
+- **单实例重启窗口（本阶段唯一一次演示失败的原因）**：进程对象报告“已退出”之后，Windows 还要一小会儿才放开它持有的内核对象——单实例互斥体最长可多活约一秒。这段时间里再次启动 Muralis，新进程会被判成“第二个实例”，它只把旧实例“唤醒”一下就退出（日志 `Another Muralis instance is already running; this launch only woke it`），用户看到的是“点了没反应”。验收脚本现在**等互斥体本身空出来**再启动（`Test-SingleInstanceFree`），演示因此稳定复现；应用侧的启动路径本轮没有加宽限期——**这是 Phase 3C 之前值得修的小问题**（真人关窗后一秒内再点图标会踩到）。
+- **`.lnk` 的 Missing 判定只看 `.lnk` 文件本身**：`.lnk` 指向的目标被删掉时不会标 Missing（那需要解析 `.lnk`，而本阶段刻意不解析）。
+- **`.lnk` 的显示名取文件名**，不读 `.lnk` 内的 Description / 目标名。
+- **图标来自 shell 的 jumbo 图像列表**：不叠加 shell 的 overlay（快捷方式小箭头），也不跟随用户自定义图标缓存的变化刷新——重启后重新读一次 shell。图标缓存在内存里，没有磁盘缓存。
+- **packaged app / Store 应用、Shell namespace 对象不在本阶段**：模型留好了位置（新 target 类型 + `kind` 判别符，旧文档不受影响），但没有实现。
+- **没有重新绑定 target 的 UI**（spec §七 允许本阶段不做）；Missing 的判定发生在挂载 / 按下 / 落点，不是实时监视。
+- **50 项性能是一次测量**，不是分布；hover CPU 是 14 s 单段。
+- **验收脚本会最小化挡住画布的窗口**（结束逐个恢复，本轮已获授权）；它只移动真实指针、只读自家窗口与自家日志，不读取用户屏幕内容。
+- **种子布局已彻底删除**：Steam / Chrome / Blender / ComfyUI 那批假程序不再出现；桌面只显示用户真正添加过的东西（`import: the desktop starts empty : items 0`）。
+
+### Phase 3 状态
+
+| 内容 | 状态 |
+| --- | --- |
+| Phase 3A = Desktop Input Foundation | 完成（见 §17.3；提交见 §17.4） |
+| Phase 3B = Real Desktop Items & App Launching | 完成（见 §18.3；提交见 §18.4） |
+| Phase 3C 及以后 | 未开始（按指令停在 3B） |
