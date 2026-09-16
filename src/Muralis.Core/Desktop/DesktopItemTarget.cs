@@ -29,8 +29,15 @@ public enum DesktopItemKind
 /// with its own fields and old documents would keep loading untouched.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The item is only ever a reference: Muralis never copies, moves or rewrites what a target points
 /// at, and a target that stops existing leaves the item in place with a missing mark.
+/// </para>
+/// <para>
+/// Both computed members are ignored again on every override: the serialiser reads the attributes of
+/// the member a type declares, not the one it overrides, and a document that carried both the
+/// <c>kind</c> discriminator and a <c>Kind</c> copy of it would say the same fact twice.
+/// </para>
 /// </remarks>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind", UnknownDerivedTypeHandling = JsonUnknownDerivedTypeHandling.FailSerialization)]
 [JsonDerivedType(typeof(ApplicationTarget), "application")]
@@ -57,8 +64,10 @@ public sealed class ApplicationTarget : DesktopItemTarget
 {
     public string Path { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public override DesktopItemKind Kind => DesktopItemKind.Application;
 
+    [JsonIgnore]
     public override string Location => Path;
 }
 
@@ -67,8 +76,10 @@ public sealed class ShortcutTarget : DesktopItemTarget
 {
     public string Path { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public override DesktopItemKind Kind => DesktopItemKind.Shortcut;
 
+    [JsonIgnore]
     public override string Location => Path;
 }
 
@@ -77,8 +88,10 @@ public sealed class FileTarget : DesktopItemTarget
 {
     public string Path { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public override DesktopItemKind Kind => DesktopItemKind.File;
 
+    [JsonIgnore]
     public override string Location => Path;
 }
 
@@ -87,8 +100,10 @@ public sealed class FolderTarget : DesktopItemTarget
 {
     public string Path { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public override DesktopItemKind Kind => DesktopItemKind.Folder;
 
+    [JsonIgnore]
     public override string Location => Path;
 }
 
@@ -101,7 +116,9 @@ public sealed class UrlTarget : DesktopItemTarget
 {
     public string Url { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public override DesktopItemKind Kind => DesktopItemKind.Url;
 
+    [JsonIgnore]
     public override string Location => Url;
 }

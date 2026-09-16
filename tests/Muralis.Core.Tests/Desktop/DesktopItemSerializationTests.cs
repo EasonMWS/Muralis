@@ -46,6 +46,49 @@ public sealed class DesktopItemSerializationTests
         Assert.Empty(restored.Validate());
     }
 
+    [Theory]
+    [MemberData(nameof(EveryKind))]
+    public void NoFact_IsWrittenTwice(DesktopItemTarget target, string kind)
+    {
+        // A document that said "kind" and "Kind" would be read by a case insensitive reader as a
+        // conflict, and the copy would be a second truth about the same fact. Every object in the
+        // file must name each of its facts once, whatever the reader's case rules are.
+        var item = new DesktopItem
+        {
+            Id = "item_1",
+            Name = "editor",
+            Target = target,
+        };
+
+        var json = JsonSerializer.Serialize(item, JsonOptions);
+
+        using var document = JsonDocument.Parse(json);
+        AssertNoCaseCollision(document.RootElement, "the document");
+        Assert.Contains($"\"kind\": \"{kind}\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("Location", json, StringComparison.Ordinal);
+    }
+
+    private static void AssertNoCaseCollision(JsonElement element, string path)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in element.EnumerateObject())
+            {
+                Assert.True(seen.Add(property.Name), $"{path} names '{property.Name}' more than once");
+                AssertNoCaseCollision(property.Value, $"{path}.{property.Name}");
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            var index = 0;
+            foreach (var entry in element.EnumerateArray())
+            {
+                AssertNoCaseCollision(entry, $"{path}[{index++}]");
+            }
+        }
+    }
+
     [Fact]
     public void TheTarget_IsWrittenAsItsOwnObject()
     {

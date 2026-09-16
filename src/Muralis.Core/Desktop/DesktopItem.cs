@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Muralis.Core.Canvas;
 
 namespace Muralis.Core.Desktop;
@@ -44,6 +45,7 @@ public sealed class DesktopItem
     public bool IsVisible { get; set; } = true;
 
     /// <summary>Where the target points, as shown in lists and log lines.</summary>
+    [JsonIgnore]
     public string Location => Target?.Location ?? string.Empty;
 
     /// <summary>
