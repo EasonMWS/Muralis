@@ -819,7 +819,79 @@ Phase 1F 删除 `DesktopHostSession` 前的阻塞项：App 侧（动态壁纸页
 - 日志分层使用现有 Serilog category，不新增机制：视频事件（playing / display changed / media failed / device lost）由 `VideoSurfaceContent` 自己的 category 记录，壳层事件（window lost / re-mounted / worker）由 `DesktopShell` 记录，适配器只记录 start/stop 与启动失败。
 - 架构门禁（`tests/Muralis.Desktop.Tests/Architecture/ArchitectureGuardTests.cs`，11 条，断言失败信息给出违规文件）：无 `DesktopHostSession` 类型与源码引用；桌面窗口只在 `Surfaces/Win32SurfaceHost.cs` 创建（唯一例外：`Shell/ShellEventSource.cs` 自己的隐藏监听窗口）；`SetParent(` 只在 `Win32SurfaceHost`；`MediaPlayer` 只在 `Surfaces/VideoSurfaceContent.cs`；WorkerW 探测（`NativeMethods.FindWindowExW(`、`NativeMethods.EnumWindows(`、`"WorkerW"` 字面量、`SHELLDLL_DefView`）只在 `Interop/DesktopWorkerWindow.cs`；`TaskbarCreated` 只在 `Shell/ShellEventSource.cs`；`VideoSurfaceContent` 不出现 `WorkerW`/`SHELLDLL_DefView`/`CreateWindowEx`/`SetParent`/`TaskbarCreated`/`ShellRestarted`；`Shell/` 目录无 `MediaPlayer`/`IDXGISwapChain`/`VideoFrameAvailable`/`CopyFrameToVideoSurface`；App 不出现 `WorkerW`/`SHELLDLL_DefView`/`MuralisDesktopHostWindow`/`Win32SurfaceHost`/`DesktopLayerHost`/`SetParent(`；Core 不引用 `Muralis.Desktop`/`Microsoft.Windows.SDK.NET`/`WinRT.Runtime`/`Microsoft.UI.Xaml`；Desktop 不引用 `Microsoft.UI*`/`Microsoft.WindowsAppSDK*`/`Muralis.App`。源码扫描先剥离注释（允许注释里解释规则），token 使用调用点形式（`NativeMethods.…(`）与引号字面量，避免被类型名（如 `DesktopWorkerWindow`）误报。
 
-### Phase 1 状态（1A–1F）
+### 14.8 Phase 1G 落地记录：最终验证（Phase 1 收口）
+
+Phase 1G 不做新的架构迁移；本轮把 Phase 1 成果按所有权、线程模型、资源生命周期、显示拓扑、性能、功能回归六个口径集中验证。结论基于 Debug/Release 双配置 0 警告构建 + 247/247 测试 + Release 产物真机实测。
+
+**所有权审计（每项职责单一所有者，均有 xunit 门禁持续断言）**
+
+| 职责 | 唯一所有者 |
+| --- | --- |
+| 桌面层发现（WorkerW / SHELLDLL_DefView） | `Interop/DesktopWorkerWindow.cs` |
+| 宿主窗口创建 / 销毁 / 挂载（CreateWindowEx / SetParent） | `Surfaces/Win32SurfaceHost.cs`（唯一例外：`ShellEventSource` 自己的隐藏监听窗口） |
+| 窗口重挂载 / watchdog / 挂载注册表 | `Shell/DesktopShell.cs` |
+| Explorer 重启侦测（TaskbarCreated） | `Shell/ShellEventSource.cs` |
+| 视频渲染（MediaPlayer / DXGI / Present） | `Surfaces/VideoSurfaceContent.cs` |
+| 显示器枚举 / 主屏探测 | `Monitors/MonitorManager.cs`（唯一构造点：`DesktopShell`） |
+| UI 兼容 API + 视频状态事件 | `Surfaces/Compatibility/VideoWallpaperServiceAdapter.cs` |
+
+无 `DesktopHostSession`、无第二处 WorkerW 发现、无第二处 MediaPlayer、无第二处 `CreateWindowEx` 宿主、无 legacy fallback。
+
+**线程模型审计**
+
+- UI 线程无 native 阻塞：启动恢复是 fire-and-forget，全部等待在后台；
+- 适配器全 async（`SemaphoreSlim` 串行化、20 s 启动超时、`ConfigureAwait(false)`）；
+- 窗口 / 挂载 / 重挂载只发生在 “Muralis desktop shell” 线程的消息泵上；
+- 媒体回调只做呈现与状态上报，不改变 shell 所有权；shell 线程不做解码；
+- 停止路径单向（适配器 → shell `RemoveSurface` → 内容 `Dispose`），无 dispose 死锁路径；本轮未发现需要修改的线程模型问题。
+
+**资源生命周期（host-verify 压测，Release）**
+
+- Start/Stop ×10：句柄 711 → 731（+20）、线程 21 → 21、壁纸层子窗口 0 → 0、每轮无宿主窗口残留；
+- Start → Explorer 重启 → 自动重挂 → Stop ×2 轮：重挂 61–70 ms、恢复播放 ~245 ms、重启窗口期内无用户可见 `Stopped`、静态壁纸不受影响；
+- 首帧 524 ms、持续 30 fps、停止 6–17 ms。
+
+**显示拓扑（单屏）**
+
+- 2560×1440 → 1600×900 → 2560×1440 全链路：`WM_DISPLAYCHANGE` 被 shell 捕获、宿主窗口几何跟随、视频重建并继续解码（1.28–1.36 %）、静态壁纸不动；
+- **单屏已验证，多屏 / 热插拔 / 混合 DPI 留 Phase 2 实测**（不伪造多屏结论）。
+
+**性能重基线（Release，对比 `docs/performance.md` 的 v0.2.0 基线）**
+
+| 场景 | 指标 | v0.2.0 基线 | 1G 实测 | 判定 |
+| --- | --- | --- | --- | --- |
+| 1080p30 播放（静音） | CPU 均值 / 峰值 | 0.65–0.73 % / 1.11–1.30 % | 0.317 % / 1.302 % | 更好 |
+| | GPU 均值（sum over engines） | 2.24–2.27 %（decode 1.50–1.53 %） | 1.75 %（decode 1.24 %） | 更好 |
+| | 工作集 / 私有 | 267–270 MB / 236–238 MB | 283.6 MB / 251.6 MB | +5 %，噪声带内 |
+| 空闲（无视频） | CPU / GPU | 0.026 % / 0 % | 0 % / 0 % | 更好 |
+| | 工作集 / 私有 | 184.7 MB / 125.8 MB | 197.2 MB / 131.8 MB | +6.8 %，噪声带内 |
+| 窗口出现 | | 571 ms | 519–656 ms | 持平 |
+
+无 >10–15 % 的稳定性回退；主要指标下降。空闲工作集 +7 % 与运行间波动同量级（1E 实测 189.7 MB → 1G 197.2 MB），不构成回退。
+
+**功能回归（v0.2.0 能力逐族，均为 Release 真机脚本）**
+
+- 视频壁纸族：启动恢复、动态壁纸页播放/停止、硬杀恢复与残留清理、分辨率切换、Explorer 重挂、单实例唤醒 — 全绿；
+- 静态壁纸族：应用 / Fill / 恢复 — 全绿（在线条目未下载时“设为桌面壁纸”禁用与 v0.2.0 一致：`DetailViewModel` 与 v0.2.0 逐字节相同）；
+- 图库 / 下载族：导入 3 图、下载、应用、收藏、重启持久化 — 全绿；
+- 设置族：自动轮换开/关 + 立即换图、开机启动（Run 键增删）、关闭到托盘、主题 Dark ↔ System、语言 zh ↔ en 运行时切换并回跟随系统 — 全绿。
+
+自 v0.2.0 以来 `Muralis.App` 的差异仅 7 个壳层生命周期相关文件（47 插入 / 69 删除），功能页与 ViewModel 未被触碰。
+
+**与 Blueprint 的偏差（记录，不改历史）**
+
+- §14.2 Commit G 原计划 `tools/arch-check.ps1`；实际以 `tests/Muralis.Desktop.Tests/Architecture/ArchitectureGuardTests.cs`（11 条 xunit 事实）落地，随测试套件自动执行、失败信息给出违规文件。
+- §1 现状盘点与 §14.5–14.7 历史过程记录中的旧名称（`Muralis.DesktopHost`、`DesktopHostSession`）保持原文，不回改。
+
+**已知限制 / 诚实记录**
+
+- 本轮测试环境为单显示器（2560×1440@300、32 bpp）；多屏结论未伪造；
+- 测试窗口内出现过一次不可复现的启动异常（进程存活、未写日志、无崩溃记录），其后同类启动 20+ 次全部正常，未再出现；
+- 三个 UI 回归脚本（m4 / m3_verify / m2a）因脚本自身滞后于 UI 演进（导航新增 Downloads / Dynamic wallpaper、语言项本地化、下载完成等待）做了测试侧修正后全绿；应用代码未因测试改动。
+
+**Phase 1 完成条件**：全部达成（构建 / 测试 / 门禁 / 生命周期 / 性能 / 功能回归 / 单屏拓扑）。下一阶段入口 = Phase 2（Monitor Model & Multi-monitor Surfaces）。
+
+### Phase 1 状态（1A–1G）
 
 | Phase | 内容 | 状态 |
 | --- | --- | --- |
@@ -829,7 +901,7 @@ Phase 1F 删除 `DesktopHostSession` 前的阻塞项：App 侧（动态壁纸页
 | 1D | `DesktopShell` / `DesktopSurface` / `Win32SurfaceHost` / `PrimaryDisplayProbe` | 完成（`8deee28`、`146953d`、`7fe5e41`） |
 | 1E | `VideoSurfaceContent` + `VideoWallpaperServiceAdapter` | 完成（`5184b84`、`2a0f86a`） |
 | 1F | 删除 legacy `DesktopHostSession` 与会话粘合 | 完成（`5724f85`、`2dfecb3`） |
-| 1G | 架构门禁 / 测试 / 诊断 | 门禁已随 1F 提前落地；其余未开始 |
+| 1G | 最终验证（所有权 / 线程模型 / 生命周期 / 拓扑 / 性能 / 回归） | 完成（见 §14.8） |
 
 ---
 
