@@ -149,6 +149,38 @@ public sealed class ArchitectureGuardTests
     }
 
     [Fact]
+    public void OnlyTheIconLayersKnowHowToReadAShellIcon()
+    {
+        // Phase 3B: pulling an icon out of the shell is one job, done in one place behind the
+        // interop declarations. Everything else in the desktop layer sees pixels, not HICONs.
+        const string reason = "shell icon extraction belongs to the icon reader and the interop surface it sits on";
+        foreach (var token in new[] { "SHGetFileInfoW", "SHGetImageList", "IImageList", "GetDIBits", "GetIconInfo" })
+        {
+            AssertOnlyUses(
+                "src/Muralis.Desktop",
+                token,
+                reason,
+                "src/Muralis.Desktop/Icons/ShellIconReader.cs",
+                "src/Muralis.Desktop/Interop/NativeMethods.cs",
+                "src/Muralis.Desktop/Interop/IImageList.cs");
+        }
+    }
+
+    [Fact]
+    public void TheCanvasDoesNotUnderstandIconExtraction()
+    {
+        // The canvas shows an icon; how one is obtained is the icon layer's business, so no shell
+        // icon call may appear in the content itself.
+        var code = Code(Path.Combine(RepoRoot(), "src", "Muralis.Desktop", "Surfaces", "CanvasSurfaceContent.cs"));
+        foreach (var token in new[] { "SHGetFileInfo", "SHGetImageList", "IImageList", "GetDIBits", "DestroyIcon", "HICON" })
+        {
+            Assert.True(
+                !code.Contains(token, StringComparison.Ordinal),
+                $"the desktop canvas must not extract icons itself, but mentions {token}");
+        }
+    }
+
+    [Fact]
     public void NothingDrivesOrHidesTheNativeDesktopIcons()
     {
         // The non-destructive rule of the canvas prototype: Explorer's icons are left alone, so

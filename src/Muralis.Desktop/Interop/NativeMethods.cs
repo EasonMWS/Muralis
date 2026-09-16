@@ -42,6 +42,9 @@ internal static class NativeMethods
     internal const uint WmShellRestarted = 0x8000 + 2;
     internal const uint WmRunWork = 0x8000 + 3;
 
+    /// <summary>A surface content has work waiting for the shell thread that only it can run.</summary>
+    internal const uint WmCanvasWork = 0x8000 + 4;
+
     internal const uint PmNoRemove = 0x0000;
 
     /// <summary>TrackMouseEvent flags: report when the pointer leaves the window.</summary>
@@ -71,6 +74,27 @@ internal static class NativeMethods
 
     /// <summary>Ancestor walk step that never leaves the window's own parent chain.</summary>
     internal const uint GaParent = 1;
+
+    /// <summary>Asks the shell for the icon's index in its image lists instead of a ready-made HICON.</summary>
+    internal const uint ShgfiSysIconIndex = 0x000004000;
+
+    /// <summary>System metrics the canvas reads for its gestures: the drag and double-click rectangles.</summary>
+    internal const int SmCxDoubleClick = 36;
+    internal const int SmCyDoubleClick = 37;
+    internal const int SmCxDrag = 68;
+    internal const int SmCyDrag = 69;
+
+    /// <summary>Which of the shell's image lists to open: large is 32, extra large 48, jumbo 256 pixels.</summary>
+    internal const int ShilSmall = 0x1;
+    internal const int ShilLarge = 0x0;
+    internal const int ShilExtraLarge = 0x2;
+    internal const int ShilJumbo = 0x4;
+
+    /// <summary>Draw flags for <c>IImageList.GetIcon</c>: keep the icon's own transparency.</summary>
+    internal const uint IldTransparent = 0x1;
+
+    /// <summary>The image list the shell keeps icons in, per size.</summary>
+    internal static readonly Guid ImageListId = new("46EB5926-582E-4017-9FDF-E8998DAA0950");
 
     internal const int VkLButton = 0x01;
     internal const int VkRButton = 0x02;
@@ -159,6 +183,58 @@ internal static class NativeMethods
         public uint HoverTime;
     }
 
+    /// <summary>What the shell reports about one file: its place in the image lists, and its names.</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct ShFileInfo
+    {
+        public nint Icon;
+        public int IconIndex;
+        public uint Attributes;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string DisplayName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string TypeName;
+    }
+
+    /// <summary>A GDI bitmap's shape, as reported by <see cref="GetObjectW"/>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Bitmap
+    {
+        public int Type;
+        public int Width;
+        public int Height;
+        public int WidthBytes;
+        public ushort Planes;
+        public ushort BitsPixel;
+        public nint Bits;
+    }
+
+    /// <summary>The top of a <c>BITMAPINFO</c>; only the 32bpp BI_RGB case is ever asked for.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BitmapInfoHeader
+    {
+        public uint Size;
+        public int Width;
+        public int Height;
+        public ushort Planes;
+        public ushort BitCount;
+        public uint Compression;
+        public uint SizeImage;
+        public int XPelsPerMeter;
+        public int YPelsPerMeter;
+        public uint ClrUsed;
+        public uint ClrImportant;
+    }
+
+    /// <summary>The two bitmaps behind an icon: the colour one and the legacy 1bpp mask.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct IconInfo
+    {
+        public int IsIcon;
+        public uint HotspotX;
+        public uint HotspotY;
+        public nint MaskBitmap;
+        public nint ColorBitmap;
+    }
+
     /// <summary>One raw input source: the device class, how it is taken, and the window that receives it.</summary>
     [StructLayout(LayoutKind.Sequential)]
     internal struct RawInputDevice
@@ -241,6 +317,14 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern nint LoadCursorW(nint instance, nint cursorName);
+
+    /// <summary>The user's own drag and double-click thresholds, so gestures behave like the rest of Windows.</summary>
+    [DllImport("user32.dll")]
+    internal static extern int GetSystemMetrics(int index);
+
+    /// <summary>How long the user's double-click may take, in milliseconds.</summary>
+    [DllImport("user32.dll")]
+    internal static extern uint GetDoubleClickTime();
 
     [DllImport("user32.dll")]
     internal static extern nint SetCursor(nint cursor);
@@ -345,4 +429,39 @@ internal static class NativeMethods
     /// <summary>Physical button state, readable from a background thread; bit 15 is the down state.</summary>
     [DllImport("user32.dll")]
     internal static extern short GetAsyncKeyState(int virtualKey);
+
+    /// <summary>
+    /// The shell's opinion about a file: <see cref="ShFileInfo.IconIndex"/> is its place in the
+    /// system image lists, which is what icon extraction keys off.
+    /// </summary>
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern nint SHGetFileInfoW(string path, uint fileAttributes, ref ShFileInfo fileInfo, uint fileInfoSize, uint flags);
+
+    [DllImport("shell32.dll", SetLastError = true)]
+    internal static extern int SHGetImageList(int imageList, in Guid interfaceId, out IImageList imageListPointer);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DestroyIcon(nint icon);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetIconInfo(nint icon, out IconInfo info);
+
+    /// <summary>Reads a GDI object's shape; for a bitmap it fills <see cref="Bitmap"/>.</summary>
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern int GetObjectW(nint handle, int size, ref Bitmap bitmap);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint GetDC(nint hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern int ReleaseDC(nint hWnd, nint dc);
+
+    /// <summary>
+    /// Copies a bitmap's pixels out. A negative <c>Height</c> in the header asks for top-down rows,
+    /// which is the order a texture upload wants; the call needs a DC even for 32bpp DIBs.
+    /// </summary>
+    [DllImport("gdi32.dll", SetLastError = true)]
+    internal static extern int GetDIBits(nint dc, nint bitmap, uint startScan, uint scanLines, [Out] byte[] bits, ref BitmapInfoHeader header, uint usage);
 }

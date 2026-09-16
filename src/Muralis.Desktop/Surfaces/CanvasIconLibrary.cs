@@ -5,11 +5,10 @@ using Windows.UI.Composition;
 namespace Muralis.Desktop.Surfaces;
 
 /// <summary>
-/// The prototype's icon pipeline: every item gets a rounded tile with a simple glyph, drawn from
+/// The prototype's glyph set: every item gets a rounded tile with a simple glyph, drawn from
 /// composition shapes at a fixed 96-unit design size, so a tile stays sharp at any DPI and costs
-/// no image decoding at all. It deliberately does not read real application icons yet — pulling a
-/// real HICON into composition needs a Direct2D surface, which is Phase 3 work; this keeps the
-/// prototype's rendering free of a graphics stack it does not otherwise need.
+/// no image decoding at all. It is what an item looks like while its real icon is being read and
+/// what an item without one keeps — addresses, and items whose file has no icon to give.
 /// </summary>
 internal static class CanvasIconLibrary
 {
@@ -17,6 +16,13 @@ internal static class CanvasIconLibrary
     internal const float DesignSize = 96f;
 
     private static readonly Color Glyph = Color.FromArgb(235, 255, 255, 255);
+
+    /// <summary>The selected item's outline: bright enough to read on any wallpaper.</summary>
+    private static readonly Color Selection = Color.FromArgb(235, 118, 190, 255);
+
+    /// <summary>The missing badge's amber, and the dark ink of the mark inside it.</summary>
+    private static readonly Color Warning = Color.FromArgb(255, 240, 160, 40);
+    private static readonly Color Ink = Color.FromArgb(255, 32, 24, 12);
 
     /// <summary>Builds the tile for an icon key; unknown keys get a neutral placeholder.</summary>
     internal static ShapeVisual Create(Compositor compositor, string iconKey, float size)
@@ -39,6 +45,61 @@ internal static class CanvasIconLibrary
     internal static CompositionSpriteShape Panel(Compositor compositor, float width, float height, float corner, Color fill) =>
         RoundedRect(compositor, 0, 0, width, height, corner, fill: fill);
 
+    /// <summary>
+    /// The outline that marks the selected item. It is a border with nothing inside it, drawn over
+    /// the item, so it reads the same whether the item is still a tile or already a real icon.
+    /// </summary>
+    internal static ShapeVisual SelectionRing(Compositor compositor, float size)
+    {
+        ArgumentNullException.ThrowIfNull(compositor);
+
+        var visual = compositor.CreateShapeVisual();
+        visual.Size = new Vector2(size, size);
+        visual.Shapes.Add(RoundedRect(
+            compositor,
+            size * 0.015f,
+            size * 0.015f,
+            size * 0.97f,
+            size * 0.97f,
+            size * 0.25f,
+            stroke: Selection,
+            thickness: Math.Max(2f, size * 0.045f)));
+        return visual;
+    }
+
+    /// <summary>
+    /// The mark an item wears when its target is gone: a badge in the item's top-right corner, so an
+    /// item whose file was deleted or moved says so while staying where the user put it.
+    /// </summary>
+    internal static ShapeVisual MissingBadge(Compositor compositor, float size)
+    {
+        ArgumentNullException.ThrowIfNull(compositor);
+
+        var visual = compositor.CreateShapeVisual();
+        visual.Size = new Vector2(size, size);
+
+        var radius = size * 0.17f;
+        var center = (X: size - radius, Y: radius);
+        visual.Shapes.Add(Ellipse(compositor, center.X, center.Y, radius, radius, fill: Warning));
+        visual.Shapes.Add(Line(
+            compositor,
+            center.X,
+            center.Y - (radius * 0.55f),
+            center.X,
+            center.Y + (radius * 0.12f),
+            Ink,
+            Math.Max(1.5f, radius * 0.3f)));
+        visual.Shapes.Add(Ellipse(
+            compositor,
+            center.X,
+            center.Y + (radius * 0.5f),
+            Math.Max(1f, radius * 0.16f),
+            Math.Max(1f, radius * 0.16f),
+            fill: Ink));
+
+        return visual;
+    }
+
     private static CompositionSpriteShape Tile(Compositor compositor, float size, Color color) =>
         RoundedRect(compositor, size * 0.03f, size * 0.03f, size * 0.94f, size * 0.94f, size * 0.23f, fill: color);
 
@@ -54,9 +115,11 @@ internal static class CanvasIconLibrary
             "blender" => Blender(compositor, s),
             "comfyui" => ComfyUi(compositor, s),
             "files" => Files(compositor, s),
+            "folder" => Files(compositor, s),
             "music" => Music(compositor, s),
             "settings" => Settings(compositor, s),
             "terminal" => Terminal(compositor, s),
+            "url" => Globe(compositor, s),
             _ => Placeholder(compositor, s),
         };
     }
@@ -153,6 +216,13 @@ internal static class CanvasIconLibrary
         Line(c, 46 * s, 58 * s, 64 * s, 58 * s, Glyph, 6 * s),
     ];
 
+    private static IEnumerable<CompositionSpriteShape> Globe(Compositor c, float s) =>
+    [
+        Ellipse(c, 48 * s, 48 * s, 27 * s, 27 * s, stroke: Glyph, thickness: 7 * s),
+        Line(c, 21 * s, 48 * s, 75 * s, 48 * s, Glyph, 6 * s),
+        Ellipse(c, 48 * s, 48 * s, 12 * s, 27 * s, stroke: Glyph, thickness: 6 * s),
+    ];
+
     private static IEnumerable<CompositionSpriteShape> Placeholder(Compositor c, float s) =>
     [
         RoundedRect(c, 20 * s, 20 * s, 56 * s, 56 * s, 14 * s, stroke: Glyph, thickness: 7 * s),
@@ -166,9 +236,11 @@ internal static class CanvasIconLibrary
         "blender" => Color.FromArgb(255, 232, 125, 13),
         "comfyui" => Color.FromArgb(255, 90, 79, 207),
         "files" => Color.FromArgb(255, 232, 163, 61),
+        "folder" => Color.FromArgb(255, 232, 163, 61),
         "music" => Color.FromArgb(255, 217, 79, 112),
         "settings" => Color.FromArgb(255, 107, 114, 128),
         "terminal" => Color.FromArgb(255, 16, 185, 129),
+        "url" => Color.FromArgb(255, 59, 130, 246),
         _ => Color.FromArgb(255, 75, 85, 99),
     };
 
