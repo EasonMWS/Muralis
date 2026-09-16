@@ -12,10 +12,14 @@ using Muralis.Core.Networking;
 using Muralis.Core.Providers;
 using Muralis.Core.Repositories;
 using Muralis.Core.Services;
+using Muralis.Core.Desktop.Takeover;
 using Muralis.Desktop.Input;
 using Muralis.Desktop.Items;
+using Muralis.Desktop.Modes;
 using Muralis.Desktop.Shell;
 using Muralis.Desktop.Surfaces.Compatibility;
+using Muralis.Desktop.Sync;
+using Muralis.Desktop.Takeover;
 
 namespace Muralis.App.Infrastructure;
 
@@ -169,6 +173,27 @@ public sealed class AppHost : IDisposable
         services.AddSingleton(sp => new DesktopLayoutStore(sp.GetRequiredService<ILogger<DesktopLayoutStore>>()));
         services.AddSingleton<IDesktopItemLauncher, ShellItemLauncher>();
         services.AddSingleton<IDesktopCanvasService, DesktopCanvasServiceAdapter>();
+
+        // The desktop takeover: the marker it leaves for a crash, the reader of the user's own
+        // desktop, and the three-mode service that orders the two together.
+        services.AddSingleton(sp => new DesktopTakeoverRecordStore(
+            sp.GetRequiredService<ILogger<DesktopTakeoverRecordStore>>()));
+        services.AddSingleton(sp => new DesktopContentScanner(
+            sp.GetRequiredService<ILogger<DesktopContentScanner>>()));
+        services.AddSingleton<IDesktopItemSyncService, DesktopItemSyncService>();
+        services.AddSingleton<IDesktopTakeoverService>(sp =>
+        {
+            var takeover = ActivatorUtilities.CreateInstance<DesktopTakeoverService>(sp);
+
+            // The shell's restart announcement is what brings the takeover back after Explorer
+            // rebuilds the desktop. The pairing cannot be expressed as a constructor argument,
+            // because Core declares the takeover and only the desktop layer knows the shell.
+            takeover.AttachTo(sp.GetRequiredService<IDesktopShell>());
+            return takeover;
+        });
+        services.AddSingleton<IDesktopModeService, DesktopModeService>();
+        services.AddSingleton<DesktopShutdown>();
+
         services.AddSingleton<RotationService>();
         services.AddSingleton<TrayService>();
 

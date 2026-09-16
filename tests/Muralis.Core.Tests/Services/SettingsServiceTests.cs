@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Muralis.Core.Models;
 using Muralis.Core.Services;
 using Xunit;
@@ -30,7 +30,6 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.False(service.Current.VideoWallpaper.Enabled);
         Assert.Equal(string.Empty, service.Current.VideoWallpaper.VideoPath);
         Assert.True(service.Current.VideoWallpaper.Muted);
-        Assert.False(service.Current.DesktopCanvas.Enabled);
     }
 
     [Fact]
@@ -49,11 +48,10 @@ public sealed class SettingsServiceTests : IDisposable
             settings.VideoWallpaper.Enabled = true;
             settings.VideoWallpaper.VideoPath = @"C:\videos\aurora.mp4";
             settings.VideoWallpaper.Muted = false;
-            settings.DesktopCanvas.Enabled = true;
         });
 
-        // Update saves in the background; give the detached save a moment to complete.
-        await WaitForFileAsync(_settingsPath);
+        // Update saves in the background; wait for the written file to carry what was asked for.
+        await WaitForFileAsync(_settingsPath, "\"Dark\"");
 
         var reloaded = CreateService();
         await reloaded.LoadAsync();
@@ -66,7 +64,6 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.True(reloaded.Current.VideoWallpaper.Enabled);
         Assert.Equal(@"C:\videos\aurora.mp4", reloaded.Current.VideoWallpaper.VideoPath);
         Assert.False(reloaded.Current.VideoWallpaper.Muted);
-        Assert.True(reloaded.Current.DesktopCanvas.Enabled);
     }
 
     [Fact]
@@ -110,11 +107,27 @@ public sealed class SettingsServiceTests : IDisposable
 
     private SettingsService CreateService() => new(NullLogger<SettingsService>.Instance, _settingsPath);
 
-    private static async Task WaitForFileAsync(string path, int timeoutMs = 3000)
+    // The save that Update starts is detached, so the test waits for the file to say what was written
+    // rather than merely to exist. Under a loaded machine the two are not the same moment, and reading
+    // the file the instant it appears is what made this test flaky.
+    private static async Task WaitForFileAsync(string path, string expected, int timeoutMs = 3000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!File.Exists(path) && DateTime.UtcNow < deadline)
+        while (DateTime.UtcNow < deadline)
         {
+            try
+            {
+                if (File.Exists(path)
+                    && (await File.ReadAllTextAsync(path)).Contains(expected, StringComparison.Ordinal))
+                {
+                    return;
+                }
+            }
+            catch (IOException)
+            {
+                // The finished file is not in place yet; the next pass reads it.
+            }
+
             await Task.Delay(25);
         }
     }

@@ -3,24 +3,36 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Muralis.App.Infrastructure;
 using Muralis.App.Services.Platform;
+using Muralis.Core.Abstractions;
+using Muralis.Core.Desktop;
+using Muralis.Core.Desktop.Takeover;
 using Muralis.Desktop.Shell;
 
 namespace Muralis.App.Services;
 
 /// <summary>
 /// System tray presence built directly on Shell_NotifyIcon: left click restores the
-/// window, right click opens a native context menu (show / next wallpaper / settings / exit).
+/// window, right click opens a native context menu (show / next wallpaper / settings /
+/// desktop modes / exit).
 /// </summary>
+/// <remarks>
+/// The desktop entries are a guarantee, not a convenience: while Muralis owns the desktop the tray is
+/// the one piece of it the user can always reach, so turning the takeover off and giving the native
+/// desktop back are both reachable from here whatever state the canvas or the layout is in.
+/// </remarks>
 public sealed class TrayService : IDisposable
 {
     private const uint MenuShow = 1;
     private const uint MenuNextWallpaper = 2;
     private const uint MenuSettings = 3;
     private const uint MenuExit = 4;
+    private const uint MenuTurnOffDesktop = 5;
+    private const uint MenuRestoreDesktop = 6;
 
     private readonly WindowContext _windowContext;
     private readonly INavigationService _navigation;
     private readonly RotationService _rotation;
+    private readonly IDesktopModeService _desktopMode;
     private readonly ILocalizationService _localization;
     private readonly ILogger<TrayService> _logger;
     private readonly TrayInterop.WindowProc _windowProc;
@@ -34,6 +46,7 @@ public sealed class TrayService : IDisposable
         WindowContext windowContext,
         INavigationService navigation,
         RotationService rotation,
+        IDesktopModeService desktopMode,
         ILocalizationService localization,
         ShellEventSource shellEvents,
         ILogger<TrayService> logger)
@@ -41,6 +54,7 @@ public sealed class TrayService : IDisposable
         _windowContext = windowContext;
         _navigation = navigation;
         _rotation = rotation;
+        _desktopMode = desktopMode;
         _localization = localization;
         _logger = logger;
         _windowProc = OnWindowMessage;
@@ -209,6 +223,9 @@ public sealed class TrayService : IDisposable
             TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuNextWallpaper, _localization.Get("Tray_NextWallpaper"));
             TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuSettings, _localization.Get("Tray_Settings"));
             TrayInterop.AppendMenuW(menu, TrayInterop.MfSeparator, 0, string.Empty);
+            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuTurnOffDesktop, _localization.Get("Tray_TurnOffDesktop"));
+            TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuRestoreDesktop, _localization.Get("Tray_RestoreDesktop"));
+            TrayInterop.AppendMenuW(menu, TrayInterop.MfSeparator, 0, string.Empty);
             TrayInterop.AppendMenuW(menu, TrayInterop.MfString, (nint)MenuExit, _localization.Get("Tray_Exit"));
 
             // Required so the menu closes correctly when clicking elsewhere.
@@ -238,6 +255,16 @@ public sealed class TrayService : IDisposable
                     ShowMainWindow();
                     _navigation.NavigateTo(Routes.Settings);
                     break;
+                case MenuTurnOffDesktop:
+                    RunDesktopChange(
+                        "turning the desktop takeover off",
+                        () => _desktopMode.ApplyAsync(DesktopMode.Native));
+                    break;
+                case MenuRestoreDesktop:
+                    RunDesktopChange(
+                        "restoring the Windows desktop",
+                        () => _desktopMode.RestoreNativeDesktopAsync());
+                    break;
                 case MenuExit:
                     (_windowContext.MainWindow as MainWindow)?.ExitApplication();
                     break;
@@ -251,6 +278,27 @@ public sealed class TrayService : IDisposable
         {
             TrayInterop.DestroyMenu(menu);
         }
+    }
+
+    /// <summary>
+    /// Starts a desktop change and reports where it ended. Nothing is awaited here — the tray's menu is
+    /// drawn from its own message loop and must not block on the desktop — and a failure is logged and
+    /// then shown by the desktop page, which listens to the same service.
+    /// </summary>
+    private void RunDesktopChange(string what, Func<Task<DesktopModeStatus>> change)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var status = await change().ConfigureAwait(false);
+                _logger.LogInformation("The tray asked for {What}; the desktop is now {Mode}", what, status.EffectiveMode);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "The tray could not finish {What}", what);
+            }
+        });
     }
 
     /// <summary>Refreshes the hover tooltip after a display-language change.</summary>

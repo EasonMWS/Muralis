@@ -236,6 +236,9 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
                 return false;
             }
 
+            // Same reason as on the mounted path: a removed item whose source came from the user's
+            // desktop is turned down, so the next sync cannot put it back.
+            layout.Takeover.Ignore(item.SourcePath);
             layout.Items.Remove(item);
             await _store.SaveAsync(layout).ConfigureAwait(false);
             _logger.LogInformation("The item {Id} was removed from the saved layout", id);
@@ -343,6 +346,61 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
                 dock.Enabled ? string.Empty : " and switched off",
                 dock.Entries.Count);
             return true;
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
+    public async Task<DesktopTakeoverOptions> GetTakeoverOptionsAsync(CancellationToken cancellationToken = default)
+    {
+        var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return layout.Takeover.Clone();
+    }
+
+    public async Task UpdateTakeoverOptionsAsync(
+        DesktopTakeoverOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var problems = options.Validate();
+        if (problems.Count > 0)
+        {
+            _logger.LogWarning("The desktop mode change was refused ({Problems})", string.Join(" ", problems));
+            return;
+        }
+
+        await _mutex.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_content is { } content)
+            {
+                // The mounted canvas owns the live layout, and its own save is what the next mount
+                // reads; writing the file here instead would drop every item placed since it mounted.
+                content.UpdateTakeoverOptions(options);
+                _logger.LogInformation("The desktop mode is now {Mode}", options.Mode);
+                return;
+            }
+
+            var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            layout.Takeover.CopyFrom(options);
+            await _store.SaveAsync(layout).ConfigureAwait(false);
+            _logger.LogInformation("The saved desktop mode is now {Mode}", options.Mode);
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
+    public async Task SuspendInteractionAsync(CancellationToken cancellationToken = default)
+    {
+        await _mutex.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _content?.Suspend();
         }
         finally
         {

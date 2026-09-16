@@ -169,44 +169,60 @@
                 </Grid>
             </Border>
 
-            <!--  Desktop canvas prototype  -->
+            <!--  Desktop mode: Windows' own, the canvas over it, or a takeover  -->
             <TextBlock
                 Margin="0,14,0,4"
                 Style="{StaticResource SectionTitleStyle}"
-                Text="{Binding [Dynamic_Section_Canvas], Source={StaticResource Loc}}" />
+                Text="{Binding [Dynamic_Section_Desktop], Source={StaticResource Loc}}" />
             <Border Padding="16" Style="{StaticResource CardBorderStyle}">
-                <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <FontIcon
-                        VerticalAlignment="Center"
-                        FontSize="20"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Glyph="&#xE71D;" />
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_Canvas_Title], Source={StaticResource Loc}}" />
+                <StackPanel Spacing="12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_Desktop_Title], Source={StaticResource Loc}}" />
                         <TextBlock
                             Style="{StaticResource CardCaptionStyle}"
-                            Text="{Binding [Dynamic_Canvas_Description], Source={StaticResource Loc}}"
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            Margin="0,4,0,0"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind ViewModel.CanvasStateText, Mode=OneWay}"
+                            Text="{Binding [Dynamic_Desktop_Description], Source={StaticResource Loc}}"
                             TextWrapping="Wrap" />
                     </StackPanel>
-                    <ToggleSwitch
-                        Grid.Column="2"
-                        VerticalAlignment="Center"
-                        AutomationProperties.Name="{Binding [Dynamic_Canvas_Title], Source={StaticResource Loc}}"
+                    <ComboBox
+                        MinWidth="300"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="DesktopModeSelector"
+                        AutomationProperties.Name="{Binding [Dynamic_Desktop_Mode], Source={StaticResource Loc}}"
+                        Header="{Binding [Dynamic_Desktop_Mode], Source={StaticResource Loc}}"
                         IsEnabled="{x:Bind ViewModel.CanToggleCanvas, Mode=OneWay}"
-                        IsOn="{x:Bind ViewModel.CanvasEnabled, Mode=TwoWay}"
-                        OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
-                        OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
-                </Grid>
+                        ItemsSource="{x:Bind ViewModel.Modes}"
+                        SelectedIndex="{x:Bind ViewModel.ModeIndex, Mode=TwoWay}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DesktopModeRow">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{x:Bind Label}" />
+                                    <TextBlock
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind Description}"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock
+                        AutomationProperties.AutomationId="DesktopModeState"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.DesktopStateText, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <InfoBar
+                        IsClosable="False"
+                        IsOpen="{x:Bind ViewModel.NeedsDesktopRecovery, Mode=OneWay}"
+                        Message="{Binding [Dynamic_Desktop_Recovery_Message], Source={StaticResource Loc}}"
+                        Severity="Warning"
+                        Title="{Binding [Dynamic_Desktop_Recovery_Title], Source={StaticResource Loc}}">
+                        <InfoBar.ActionButton>
+                            <Button
+                                AutomationProperties.AutomationId="RestoreWindowsDesktop"
+                                Command="{x:Bind ViewModel.RestoreWindowsDesktopCommand}"
+                                Content="{Binding [Dynamic_Desktop_Restore], Source={StaticResource Loc}}" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                </StackPanel>
             </Border>
             <Expander
                 Margin="0,8,0,0"
@@ -302,6 +318,13 @@
                             Command="{x:Bind ViewModel.AddFolderCommand}"
                             Content="{Binding [Dynamic_Canvas_Add_Folder], Source={StaticResource Loc}}"
                             IsEnabled="{x:Bind ViewModel.CanEditCanvasItems, Mode=OneWay}" />
+                        <Button
+                            AutomationProperties.AutomationId="DesktopRefreshItems"
+                            AutomationProperties.Name="{Binding [Dynamic_Desktop_Refresh], Source={StaticResource Loc}}"
+                            Command="{x:Bind ViewModel.RefreshDesktopItemsCommand}"
+                            Content="{Binding [Dynamic_Desktop_Refresh], Source={StaticResource Loc}}"
+                            IsEnabled="{x:Bind ViewModel.CanRefreshItems, Mode=OneWay}"
+                            ToolTipService.ToolTip="{Binding [Dynamic_Desktop_Refresh_Hint], Source={StaticResource Loc}}" />
                     </StackPanel>
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>

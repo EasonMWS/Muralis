@@ -81,6 +81,27 @@ public interface IDesktopCanvasService
     Task<bool> UpdateDockAsync(DockOptions dock, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The desktop mode and the list of turned-down desktop sources as the layout keeps them, as a
+    /// copy the caller may keep. Answered whether the canvas is showing or not.
+    /// </summary>
+    Task<DesktopTakeoverOptions> GetTakeoverOptionsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remembers the desktop mode and the adoption settings. The canvas is not what carries them out —
+    /// it only keeps them, so the next launch knows which desktop the user asked for.
+    /// </summary>
+    Task UpdateTakeoverOptionsAsync(
+        DesktopTakeoverOptions options,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stops the canvas taking any input — no hover, no click, no hit area — without taking it off the
+    /// desktop. It is how the shutdown order makes the desktop unclickable in the moment between the
+    /// native icons coming back and the canvas going away, and it is safe to call with nothing mounted.
+    /// </summary>
+    Task SuspendInteractionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The canvas as it looked at its last change, for the development overlay; readable from any
     /// thread. <c>null</c> while the canvas is not showing.
     /// </summary>

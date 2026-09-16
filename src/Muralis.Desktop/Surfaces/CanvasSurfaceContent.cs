@@ -139,6 +139,9 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private string? _lastLaunchId;
     private string? _lastLaunchOutcome;
 
+    /// <summary>Set once the canvas has been told to stop taking input; only a fresh mount clears it.</summary>
+    private bool _suspended;
+
     /// <summary>The layout as copies, republished on every change; a reader on another thread sees a whole list.</summary>
     private volatile IReadOnlyList<DesktopItem> _items = [];
 
@@ -200,6 +203,9 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _window = win32.WindowHandle;
         _scaleFactor = target.ScaleFactor > 0 ? target.ScaleFactor : 1.0;
         _displayBounds = target.PixelBounds;
+
+        // A mount is a fresh start: a suspension asked for before it belonged to a canvas that is gone.
+        _suspended = false;
 
         try
         {
@@ -597,6 +603,59 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     }
 
     /// <summary>
+    /// Remembers the desktop mode and the adoption settings in the layout. Nothing is shown or hidden
+    /// by it: which desktop the user asked for is carried out by the mode service, and this only keeps
+    /// the answer where the next launch reads it. Called from any thread.
+    /// </summary>
+    internal void UpdateTakeoverOptions(DesktopTakeoverOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var copy = options.Clone();
+        Post(() =>
+        {
+            _layout.Takeover.CopyFrom(copy);
+            SaveLayout();
+        });
+    }
+
+    /// <summary>
+    /// Stops the canvas taking input without taking it off the desktop: the pointer is let go, the
+    /// window's hit area goes to nothing so the desktop below keeps its clicks, and every message
+    /// that arrives afterwards is ignored. A remount clears it, because a fresh canvas is a new
+    /// canvas. Called from any thread.
+    /// </summary>
+    internal void Suspend()
+    {
+        Post(SuspendCore);
+    }
+
+    private void SuspendCore()
+    {
+        _suspended = true;
+        UnsubscribeFromPointer();
+
+        var wasDragging = _drag is not null || _dockDrag is not null;
+        _pressed = null;
+        _drag = null;
+        _dockDrag = null;
+        _dockInsertIndex = null;
+        _gestures.Cancel();
+
+        if (wasDragging)
+        {
+            NativeMethods.ReleaseCapture();
+        }
+
+        if (_window != nint.Zero)
+        {
+            NativeMethods.KillTimer(_window, DockTimerId);
+        }
+
+        ClearRegion();
+        Bump();
+    }
+
+    /// <summary>
     /// The items as they are right now, copies the caller may keep. Published on the shell thread
     /// whenever the layout changes, so a reader on another thread sees a whole list and never a
     /// halfway-edited one.
@@ -792,6 +851,10 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
         if (item is not null)
         {
+            // An item that came from the user's own desktop is remembered as turned down, not merely
+            // removed: a sync adopts what it finds, so without this the next refresh would put back an
+            // item the user took off the canvas on purpose.
+            _layout.Takeover.Ignore(item.SourcePath);
             _layout.Items.Remove(item);
         }
 
@@ -2149,7 +2212,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     public bool OnWindowMessage(nint window, uint message, nint wParam, nint lParam, out nint result)
     {
         result = nint.Zero;
-        if (window != _window || _root is null || _target is null)
+        if (_suspended || window != _window || _root is null || _target is null)
         {
             return false;
         }

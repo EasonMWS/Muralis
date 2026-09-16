@@ -881,33 +881,111 @@
   <data name="Dynamic_Status_StartupOff" xml:space="preserve">
     <value>下次启动 Muralis 时将不再自动播放该视频。</value>
   </data>
-  <data name="Dynamic_Section_Canvas" xml:space="preserve">
-    <value>桌面画布（原型）</value>
-  </data>
-  <data name="Dynamic_Canvas_Title" xml:space="preserve">
-    <value>画布原型</value>
-  </data>
-  <data name="Dynamic_Canvas_Description" xml:space="preserve">
-    <value>叠在桌面图标之上的实验性自由布局层：图标项可随意拖动，鼠标靠近时连续放大，侧边停靠栏离开后自动收起。原生桌面图标照常工作；关闭开关即完全移除画布。</value>
-  </data>
-  <data name="Dynamic_Canvas_State_Disabled" xml:space="preserve">
-    <value>已关闭——桌面保持原样。</value>
-  </data>
-  <data name="Dynamic_Canvas_State_Starting" xml:space="preserve">
-    <value>正在把画布放到桌面上…</value>
-  </data>
-  <data name="Dynamic_Canvas_State_Active" xml:space="preserve">
-    <value>桌面上有 {0} 个图标项。可随意拖动，悬停会放大。</value>
-  </data>
-  <data name="Dynamic_Canvas_State_Failed" xml:space="preserve">
-    <value>无法显示画布：{0}</value>
-  </data>
-  <data name="Dynamic_Canvas_Status_Failed" xml:space="preserve">
-    <value>无法切换桌面画布：{0}</value>
-  </data>
   <data name="Dynamic_Canvas_Diagnostics_Title" xml:space="preserve">
     <value>画布诊断（仅开发版）</value>
   </data>
+
+  <!--  桌面模式  -->
+  <data name="Dynamic_Section_Desktop" xml:space="preserve">
+    <value>你的桌面</value>
+  </data>
+  <data name="Dynamic_Desktop_Title" xml:space="preserve">
+    <value>桌面模式</value>
+  </data>
+  <data name="Dynamic_Desktop_Description" xml:space="preserve">
+    <value>选择桌面由谁负责。交给 Windows：什么都不动。显示画布：Muralis 把图标项画在你的图标之上，Windows 照常工作。接管桌面：Windows 不再绘制桌面图标，画布就是桌面。关闭后会把桌面还原成原样。</value>
+  </data>
+  <data name="Dynamic_Desktop_Mode" xml:space="preserve">
+    <value>模式</value>
+  </data>
+  <data name="Dynamic_Desktop_Mode_Native" xml:space="preserve">
+    <value>Windows 自己的桌面</value>
+  </data>
+  <data name="Dynamic_Desktop_Mode_Native_Description" xml:space="preserve">
+    <value>桌面和图标由 Windows 绘制，Muralis 不往上放任何东西。</value>
+  </data>
+  <data name="Dynamic_Desktop_Mode_Preview" xml:space="preserve">
+    <value>覆盖在图标之上的预览</value>
+  </data>
+  <data name="Dynamic_Desktop_Mode_Preview_Description" xml:space="preserve">
+    <value>Muralis 把图标项作为一层画在你的图标之上。你的图标照常可用，且不会有任何改动。</value>
+  </data>
+  <data name="Dynamic_Desktop_Mode_Takeover" xml:space="preserve">
+    <value>Muralis 桌面（接管）</value>
+  </data>
+  <data name="Dynamic_Desktop_Mode_Takeover_Description" xml:space="preserve">
+    <value>Windows 不再绘制桌面图标，Muralis 的图标项就是桌面。关闭后会把你原来的图标还原回来。</value>
+  </data>
+  <data name="Dynamic_Desktop_State_Preview" xml:space="preserve">
+    <value>画布正覆盖在你的图标之上：{0} 个图标项。你的图标照常可用。</value>
+  </data>
+  <data name="Dynamic_Desktop_State_Takeover" xml:space="preserve">
+    <value>Muralis 正在显示桌面：{0} 个图标项，Windows 未绘制桌面图标。关闭该模式即可取回图标。</value>
+  </data>
+  <data name="Dynamic_Desktop_State_RecoveryRequired" xml:space="preserve">
+    <value>你的桌面图标还没有还原。请使用“还原 Windows 桌面”；在还原成功之前，Muralis 不会再改动桌面。（{0}）</value>
+  </data>
+  <data name="Dynamic_Desktop_State_Problem" xml:space="preserve">
+    <value>实际结果是：{0}</value>
+  </data>
+  <data name="Dynamic_Desktop_State_Native" xml:space="preserve">
+    <value>桌面由 Windows 绘制，Muralis 没有往上放任何东西。</value>
+  </data>
+  <data name="Dynamic_Desktop_Recovery_Title" xml:space="preserve">
+    <value>Windows 桌面尚未还原</value>
+  </data>
+  <data name="Dynamic_Desktop_Recovery_Message" xml:space="preserve">
+    <value>上一次接管没能把原生桌面图标还回来，它们可能仍处于隐藏状态。“还原 Windows 桌面”在任何情况下都可用，无论画布处于什么状态。</value>
+  </data>
+  <data name="Dynamic_Desktop_Restore" xml:space="preserve">
+    <value>还原 Windows 桌面</value>
+  </data>
+  <data name="Dynamic_Desktop_Refresh" xml:space="preserve">
+    <value>导入我的桌面图标项</value>
+  </data>
+  <data name="Dynamic_Desktop_Refresh_Hint" xml:space="preserve">
+    <value>读取你自己的桌面，把画布上还没有的条目加进来。不会移动、复制或修改任何东西——每个条目只记住文件原本所在的位置。</value>
+  </data>
+  <data name="Dynamic_Desktop_Status_Changed" xml:space="preserve">
+    <value>桌面现在显示为：{0}。</value>
+  </data>
+  <data name="Dynamic_Desktop_Status_Restored" xml:space="preserve">
+    <value>你的 Windows 桌面已经回来了，图标都在。</value>
+  </data>
+  <data name="Dynamic_Desktop_Status_Failed" xml:space="preserve">
+    <value>无法切换桌面状态：{0}</value>
+  </data>
+  <data name="Dynamic_Desktop_Status_ItemsAdded" xml:space="preserve">
+    <value>已从你自己的桌面导入 {0} 个图标项到画布。</value>
+  </data>
+  <data name="Dynamic_Desktop_Status_NothingNew" xml:space="preserve">
+    <value>你的桌面上没有新东西。</value>
+  </data>
+  <data name="Dynamic_Desktop_Status_RefreshFailed" xml:space="preserve">
+    <value>无法读取你自己的桌面：{0}</value>
+  </data>
+  <data name="Dynamic_Desktop_Preview_Title" xml:space="preserve">
+    <value>要显示桌面画布吗？</value>
+  </data>
+  <data name="Dynamic_Desktop_Preview_Summary" xml:space="preserve">
+    <value>将把你自己桌面上的 {0} 个条目加入画布，另外 {1} 个已经在画布上。</value>
+  </data>
+  <data name="Dynamic_Desktop_Preview_Declined" xml:space="preserve">
+    <value>你拒绝过的 {0} 个条目不会被加进来。</value>
+  </data>
+  <data name="Dynamic_Desktop_Preview_Unsupported" xml:space="preserve">
+    <value>以下条目无法显示，会原封不动地留在原处：</value>
+  </data>
+  <data name="Dynamic_Desktop_Preview_MoreUnsupported" xml:space="preserve">
+    <value>  ……以及另外 {0} 个。</value>
+  </data>
+  <data name="Dynamic_Desktop_Preview_Ownership" xml:space="preserve">
+    <value>Muralis 不拥有你的桌面文件：不会复制、移动、重命名或删除任何文件，每个图标项只记住文件原本所在的位置。</value>
+  </data>
+  <data name="Dynamic_Desktop_Preview_Continue" xml:space="preserve">
+    <value>显示</value>
+  </data>
+
 
   <!--  Desktop canvas items  -->
   <data name="Dynamic_Section_Canvas_Items" xml:space="preserve">
@@ -1000,6 +1078,12 @@
   </data>
   <data name="Tray_Settings" xml:space="preserve">
     <value>设置</value>
+  </data>
+  <data name="Tray_TurnOffDesktop" xml:space="preserve">
+    <value>关闭桌面接管</value>
+  </data>
+  <data name="Tray_RestoreDesktop" xml:space="preserve">
+    <value>还原 Windows 桌面</value>
   </data>
   <data name="Tray_Exit" xml:space="preserve">
     <value>退出 Muralis</value>

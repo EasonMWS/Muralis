@@ -136,7 +136,7 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
         }
     }
 
-    public void Dispose()
+    public async Task ShutdownAsync()
     {
         if (_disposed)
         {
@@ -171,16 +171,25 @@ public sealed class DesktopShell : IDesktopShell, IDisposable
             }
         });
 
-        if (!released.Wait(TimeSpan.FromSeconds(10)))
+        // Waited for on the pool: the caller is usually the UI thread, which must not be held while
+        // the desktop layer releases its windows.
+        await Task.Run(() =>
         {
-            _logger.LogWarning("The desktop shell did not release its surfaces in time");
-        }
+            if (!released.Wait(TimeSpan.FromSeconds(10)))
+            {
+                _logger.LogWarning("The desktop shell did not release its surfaces in time");
+            }
 
-        if (!thread.Join(TimeSpan.FromSeconds(10)))
-        {
-            _logger.LogWarning("The desktop shell thread did not end in time");
-        }
+            if (!thread.Join(TimeSpan.FromSeconds(10)))
+            {
+                _logger.LogWarning("The desktop shell thread did not end in time");
+            }
+
+            released.Dispose();
+        }).ConfigureAwait(false);
     }
+
+    public void Dispose() => ShutdownAsync().GetAwaiter().GetResult();
 
     /// <summary>
     /// Queues a work item and makes sure a shell thread is there to run it. Work items always run on

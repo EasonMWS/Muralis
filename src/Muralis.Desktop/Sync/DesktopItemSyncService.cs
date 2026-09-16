@@ -105,6 +105,18 @@ public sealed class DesktopItemSyncService : IDesktopItemSyncService, IDisposabl
             return DesktopAdoptionResult.None;
         }
 
+        // The desktop was still read and the plan still says what is on it — that is what the preview is
+        // for — but the choice not to bring any of it across is the user's, and it is answered here
+        // rather than by the canvas, because this is the one command that adopts anything.
+        var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (!layout.Takeover.AdoptDesktopItems)
+        {
+            _logger.LogInformation(
+                "The desktop holds {Count} entries that could be shown, and none of them was adopted: the layout says not to",
+                plan.ToAdopt.Count);
+            return DesktopAdoptionResult.None;
+        }
+
         return await _canvas.AdoptAsync(plan, cancellationToken).ConfigureAwait(false);
     }
 

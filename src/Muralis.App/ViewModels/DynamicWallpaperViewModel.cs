@@ -7,6 +7,7 @@ using Microsoft.UI.Dispatching;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Desktop;
+using Muralis.Core.Desktop.Takeover;
 using Muralis.Core.Dock;
 using Muralis.Core.Models;
 
@@ -14,20 +15,26 @@ namespace Muralis.App.ViewModels;
 
 /// <summary>
 /// Drives the dynamic wallpaper page: pick a video, put it on the desktop behind the icons,
-/// take it off again, decide whether it comes back on the next launch, and look after the
-/// experimental desktop canvas prototype — switch it on or off, add the programs, shortcuts,
-/// folders and addresses that should live on it, and take them off again.
+/// take it off again, decide whether it comes back on the next launch, and choose what the desktop
+/// itself is — Windows' own, a preview of the canvas over it, or a takeover with the canvas as the
+/// way in. Also where the items on that desktop are added, removed and refreshed.
 /// </summary>
 public sealed partial class DynamicWallpaperViewModel : ViewModelBase
 {
+    /// <summary>How many skipped entries the first-run dialog lists before it only counts them.</summary>
+    private const int UnsupportedListLimit = 8;
+
     private readonly IVideoWallpaperService _videoWallpaper;
     private readonly IDesktopCanvasService _canvas;
+    private readonly IDesktopModeService _desktopMode;
+    private readonly IDesktopItemSyncService _desktopSync;
     private readonly ISettingsService _settingsService;
     private readonly IFilePickerService _filePicker;
+    private readonly IDialogService _dialogs;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger<DynamicWallpaperViewModel> _logger;
     private bool _applyingSettings = true;
-    private bool _applyingCanvasStatus;
+    private bool _applyingMode;
     private bool _applyingDock;
     private VideoWallpaperState _state;
     private (string Key, object?[] Args)? _message;
@@ -55,16 +62,28 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool StatusIsError { get; set; }
 
-    /// <summary>Whether the experimental desktop canvas is on the desktop.</summary>
+    /// <summary>Which of <see cref="Modes"/> the user picked. The wish, not what is happening.</summary>
     [ObservableProperty]
-    public partial bool CanvasEnabled { get; set; }
+    public partial int ModeIndex { get; set; }
 
-    /// <summary>Live state of the desktop canvas, shown as the canvas card's caption.</summary>
+    /// <summary>What the desktop is really doing, shown as the desktop card's caption.</summary>
     [ObservableProperty]
-    public partial string CanvasStateText { get; set; }
+    public partial string DesktopStateText { get; set; }
 
+    /// <summary>True while a mode change is in flight, so the picker waits for it.</summary>
     [ObservableProperty]
-    public partial bool IsCanvasBusy { get; set; }
+    public partial bool IsDesktopBusy { get; set; }
+
+    /// <summary>
+    /// Whether the native desktop is still owed a give-back. Shown as a warning with the one action
+    /// that always works, whether or not the canvas or the layout can be used.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool NeedsDesktopRecovery { get; set; }
+
+    /// <summary>True while a refresh of the user's own desktop items is running.</summary>
+    [ObservableProperty]
+    public partial bool IsRefreshingItems { get; set; }
 
     /// <summary>What the user typed into the address box; cleared once the address is on the canvas.</summary>
     [ObservableProperty]
@@ -97,27 +116,36 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     public DynamicWallpaperViewModel(
         IVideoWallpaperService videoWallpaper,
         IDesktopCanvasService canvas,
+        IDesktopModeService desktopMode,
+        IDesktopItemSyncService desktopSync,
         ISettingsService settingsService,
         IFilePickerService filePicker,
+        IDialogService dialogs,
         ILocalizationService localization,
         ILogger<DynamicWallpaperViewModel> logger)
         : base(localization)
     {
         _videoWallpaper = videoWallpaper;
         _canvas = canvas;
+        _desktopMode = desktopMode;
+        _desktopSync = desktopSync;
         _settingsService = settingsService;
         _filePicker = filePicker;
+        _dialogs = dialogs;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         CanvasItems = [];
         DockEdges = [];
+        Modes = [];
         NewItemUrl = string.Empty;
 
         foreach (var edge in DockEdgeInfo.All)
         {
             DockEdges.Add(new DesktopDockEdgeRow(edge, localization));
         }
+
+        ReloadModeRows();
 
         var saved = settingsService.Current.VideoWallpaper;
         VideoPath = saved.VideoPath;
@@ -128,11 +156,10 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         _videoWallpaper.StatusChanged += OnStatusChanged;
         ApplyStatus(_videoWallpaper.Status);
 
-        // The toggle starts where the service already is — the app may have restored the canvas
+        // The picker starts where the service already is — the app may have restored the desktop
         // before this page was ever opened.
-        _canvas.StatusChanged += OnCanvasStatusChanged;
-        CanvasStateText = DescribeCanvasStatus(_canvas.Status);
-        CanvasEnabled = _canvas.Status.State == CanvasPrototypeState.Active;
+        _desktopMode.Changed += OnDesktopChanged;
+        ApplyDesktopStatus(_desktopMode.Status);
         DiagnosticsText = string.Empty;
         _applyingSettings = false;
 
@@ -154,10 +181,13 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
 
     public bool CanStop => !IsBusy && _state is VideoWallpaperState.Starting or VideoWallpaperState.Playing;
 
-    public bool CanToggleCanvas => !IsCanvasBusy;
+    public bool CanToggleCanvas => !IsDesktopBusy;
 
     /// <summary>The items on the canvas, in the order the canvas keeps them.</summary>
     public ObservableCollection<DesktopItemRow> CanvasItems { get; }
+
+    /// <summary>The three desktop modes, in the order the picker offers them.</summary>
+    public ObservableCollection<DesktopModeRow> Modes { get; }
 
     /// <summary>The four display edges, in the order the picker offers them.</summary>
     public ObservableCollection<DesktopDockEdgeRow> DockEdges { get; }
@@ -166,7 +196,10 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     public bool HasCanvasItems => CanvasItems.Count > 0;
 
     /// <summary>The import buttons wait while an import or a removal is running.</summary>
-    public bool CanEditCanvasItems => !IsCanvasItemsBusy;
+    public bool CanEditCanvasItems => !IsCanvasItemsBusy && !IsRefreshingItems;
+
+    /// <summary>The refresh button waits while a refresh is running.</summary>
+    public bool CanRefreshItems => !IsRefreshingItems && !IsCanvasItemsBusy;
 
     /// <summary>The diagnostics panel is a development tool; release builds do not offer it.</summary>
     public bool IsDiagnosticsAvailable =>
@@ -180,7 +213,9 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(VideoFileName));
         StateText = DescribeState(_videoWallpaper.Status);
-        CanvasStateText = DescribeCanvasStatus(_canvas.Status);
+        ReloadModeRows();
+        OnPropertyChanged(nameof(CanToggleCanvas));
+        DesktopStateText = DescribeDesktopStatus(_desktopMode.Status);
 
         if (_message is { } message)
         {
@@ -191,7 +226,7 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     public override void DetachFromPage()
     {
         _videoWallpaper.StatusChanged -= OnStatusChanged;
-        _canvas.StatusChanged -= OnCanvasStatusChanged;
+        _desktopMode.Changed -= OnDesktopChanged;
         StopDiagnostics();
         base.DetachFromPage();
     }
@@ -318,19 +353,29 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         SetMessage(value ? "Dynamic_Status_StartupOn" : "Dynamic_Status_StartupOff", isError: false);
     }
 
-    partial void OnCanvasEnabledChanged(bool value)
+    partial void OnModeIndexChanged(int value)
     {
-        if (_applyingSettings || _applyingCanvasStatus)
+        if (_applyingSettings || _applyingMode)
         {
             return;
         }
 
-        _ = ApplyCanvasAsync(value);
+        _ = ApplyDesktopModeAsync();
     }
 
-    partial void OnIsCanvasBusyChanged(bool value) => OnPropertyChanged(nameof(CanToggleCanvas));
+    partial void OnIsDesktopBusyChanged(bool value) => OnPropertyChanged(nameof(CanToggleCanvas));
 
-    partial void OnIsCanvasItemsBusyChanged(bool value) => OnPropertyChanged(nameof(CanEditCanvasItems));
+    partial void OnIsCanvasItemsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanEditCanvasItems));
+        OnPropertyChanged(nameof(CanRefreshItems));
+    }
+
+    partial void OnIsRefreshingItemsChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanEditCanvasItems));
+        OnPropertyChanged(nameof(CanRefreshItems));
+    }
 
     partial void OnDockEnabledChanged(bool value) => ApplyDock();
 
@@ -420,43 +465,190 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Shows or removes the canvas. The enabled flag is only remembered once the canvas is really
-    /// on the desktop, so a failed attempt is not restored — and reported — on every launch.
+    /// Puts the desktop into the mode the picker is on. Entering a mode that shows the canvas goes
+    /// through the first-run preview first, which is the only place the user is told what is about to be
+    /// brought across before it is; leaving them alone means the picker goes back to where it was.
     /// </summary>
-    private async Task ApplyCanvasAsync(bool enabled)
+    private async Task ApplyDesktopModeAsync()
     {
-        IsCanvasBusy = true;
+        if (ModeIndex < 0 || ModeIndex >= Modes.Count)
+        {
+            return;
+        }
+
+        var mode = Modes[ModeIndex].Mode;
+        if (mode == _desktopMode.Status.Mode)
+        {
+            return;
+        }
+
+        IsDesktopBusy = true;
         try
         {
-            CanvasPrototypeStatus status;
-            if (enabled)
+            if (mode != DesktopMode.Native && !await ConfirmDesktopPreviewAsync())
             {
-                status = await _canvas.EnableAsync();
+                ApplyDesktopStatus(_desktopMode.Status);
+                return;
+            }
+
+            var status = await _desktopMode.ApplyAsync(mode);
+            ApplyDesktopStatus(status);
+
+            if (status.HasError)
+            {
+                SetMessage("Dynamic_Desktop_Status_Failed", isError: true, status.Error ?? string.Empty);
             }
             else
             {
-                await _canvas.DisableAsync();
-                status = _canvas.Status;
-            }
-
-            _settingsService.Update(settings => settings.DesktopCanvas.Enabled = status.State == CanvasPrototypeState.Active);
-
-            if (status.State == CanvasPrototypeState.Failed)
-            {
-                SetMessage("Dynamic_Canvas_Status_Failed", isError: true, status.Error ?? string.Empty);
+                SetMessage("Dynamic_Desktop_Status_Changed", isError: false, Modes[ModeIndex].Label);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "The desktop canvas could not be switched");
-            _settingsService.Update(settings => settings.DesktopCanvas.Enabled = false);
-            SetMessage("Dynamic_Canvas_Status_Failed", isError: true, ex.Message);
+            _logger.LogError(ex, "The desktop could not be put into {Mode}", mode);
+            SetMessage("Dynamic_Desktop_Status_Failed", isError: true, ex.Message);
+            ApplyDesktopStatus(_desktopMode.Status);
         }
         finally
         {
-            IsCanvasBusy = false;
-            ApplyCanvasStatus(_canvas.Status);
+            IsDesktopBusy = false;
         }
+    }
+
+    /// <summary>
+    /// The emergency way out, offered whenever the desktop is owed a give-back and reachable whether or
+    /// not the canvas or the layout can be used. It is also the honest way to leave a takeover that is
+    /// in a state the picker cannot describe.
+    /// </summary>
+    [RelayCommand]
+    private async Task RestoreWindowsDesktopAsync()
+    {
+        IsDesktopBusy = true;
+        try
+        {
+            var status = await _desktopMode.RestoreNativeDesktopAsync();
+            ApplyDesktopStatus(status);
+
+            if (status.HasError)
+            {
+                SetMessage("Dynamic_Desktop_Status_Failed", isError: true, status.Error ?? string.Empty);
+            }
+            else
+            {
+                SetMessage("Dynamic_Desktop_Status_Restored", isError: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The Windows desktop could not be restored");
+            SetMessage("Dynamic_Desktop_Status_Failed", isError: true, ex.Message);
+        }
+        finally
+        {
+            IsDesktopBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Brings across whatever the user has put on their own desktop since the last look. Nothing is
+    /// moved or rewritten: every entry becomes an item that points at where the file already is.
+    /// </summary>
+    [RelayCommand]
+    private async Task RefreshDesktopItemsAsync()
+    {
+        IsRefreshingItems = true;
+        try
+        {
+            var result = await _desktopSync.SyncAsync();
+
+            if (result.Added.Count == 0)
+            {
+                SetMessage("Dynamic_Desktop_Status_NothingNew", isError: false);
+            }
+            else
+            {
+                SetMessage("Dynamic_Desktop_Status_ItemsAdded", isError: false, result.Added.Count);
+            }
+
+            await ReloadCanvasItemsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The user's own desktop could not be read");
+            SetMessage("Dynamic_Desktop_Status_RefreshFailed", isError: true, ex.Message);
+        }
+        finally
+        {
+            IsRefreshingItems = false;
+        }
+    }
+
+    /// <summary>
+    /// Shows what a first switch to a showing mode would do, and asks. Only entries that will really be
+    /// added are counted, and the ones that cannot be shown are named so the user is not left wondering
+    /// why something is missing.
+    /// </summary>
+    private async Task<bool> ConfirmDesktopPreviewAsync()
+    {
+        if (_desktopMode.Status.IsShowingCanvas)
+        {
+            // The desktop is already Muralis's; this is a switch between two showing modes, and nothing
+            // is adopted again on the way.
+            return true;
+        }
+
+        DesktopAdoptionPlan plan;
+        try
+        {
+            plan = await _desktopSync.PreviewAsync();
+        }
+        catch (Exception ex)
+        {
+            // A desktop that could not be read is not a reason to refuse the mode: it simply means
+            // nothing is brought across this time.
+            _logger.LogWarning(ex, "The user's own desktop could not be read before switching the mode");
+            return true;
+        }
+
+        if (plan.IsEmpty)
+        {
+            return true;
+        }
+
+        var report = new StringBuilder();
+        report.AppendLine(Loc.Format("Dynamic_Desktop_Preview_Summary", plan.ToAdopt.Count, plan.AlreadyAdopted.Count));
+        report.AppendLine(Loc.Format("Dynamic_Desktop_Preview_Declined", plan.Declined.Count));
+
+        if (plan.Unsupported.Count > 0)
+        {
+            report.AppendLine();
+            report.AppendLine(Loc.Get("Dynamic_Desktop_Preview_Unsupported"));
+
+            foreach (var skipped in plan.Unsupported.Take(UnsupportedListLimit))
+            {
+                report.AppendLine($"  • {skipped.Name} — {skipped.Reason}");
+            }
+
+            if (plan.Unsupported.Count > UnsupportedListLimit)
+            {
+                report.AppendLine(Loc.Format("Dynamic_Desktop_Preview_MoreUnsupported", plan.Unsupported.Count - UnsupportedListLimit));
+            }
+        }
+
+        if (plan.UnreadableFolders.Count > 0)
+        {
+            report.AppendLine();
+            report.AppendLine(string.Join(Environment.NewLine, plan.UnreadableFolders));
+        }
+
+        report.AppendLine();
+        report.Append(Loc.Get("Dynamic_Desktop_Preview_Ownership"));
+
+        return await _dialogs.ShowConfirmAsync(
+            Loc.Get("Dynamic_Desktop_Preview_Title"),
+            report.ToString().TrimEnd(),
+            Loc.Get("Dynamic_Desktop_Preview_Continue"),
+            Loc.Get("Common_Cancel"));
     }
 
     /// <summary>
@@ -603,39 +795,45 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         await ReloadDockAsync();
     }
 
-    private void OnCanvasStatusChanged(object? sender, CanvasPrototypeStatus status)
+    private void OnDesktopChanged(object? sender, DesktopModeStatus status)
     {
         if (_dispatcherQueue.HasThreadAccess)
         {
-            ApplyCanvasStatus(status);
+            ApplyDesktopStatus(status);
         }
         else
         {
-            _dispatcherQueue.TryEnqueue(() => ApplyCanvasStatus(status));
+            _dispatcherQueue.TryEnqueue(() => ApplyDesktopStatus(status));
         }
     }
 
-    private void ApplyCanvasStatus(CanvasPrototypeStatus status)
+    /// <summary>
+    /// Shows where the desktop really is. The picker follows the mode that was asked for — which is what
+    /// the service remembers, and what says whether the user's choice is showing — while the caption says
+    /// what is actually happening, including the case where the takeover did not work and the canvas is
+    /// showing over the icons instead.
+    /// </summary>
+    private void ApplyDesktopStatus(DesktopModeStatus status)
     {
-        CanvasStateText = DescribeCanvasStatus(status);
+        DesktopStateText = DescribeDesktopStatus(status);
+        NeedsDesktopRecovery = status.NeedsRecovery;
 
-        // Keep the switch in step with reality: a failed mount flips it back off, a restored
-        // canvas flips it on without going through the change handler.
-        if (CanvasEnabled != (status.State == CanvasPrototypeState.Active))
+        var index = Modes.ToList().FindIndex(row => row.Mode == status.Mode);
+        if (index >= 0 && ModeIndex != index)
         {
-            var wasApplying = _applyingCanvasStatus;
-            _applyingCanvasStatus = true;
+            var wasApplying = _applyingMode;
+            _applyingMode = true;
             try
             {
-                CanvasEnabled = status.State == CanvasPrototypeState.Active;
+                ModeIndex = index;
             }
             finally
             {
-                _applyingCanvasStatus = wasApplying;
+                _applyingMode = wasApplying;
             }
         }
 
-        if (status.State == CanvasPrototypeState.Active)
+        if (status.IsShowingCanvas)
         {
             // A mount shows the layout as it is now, which may have been edited while the canvas was
             // off; the list follows the canvas rather than what the page last saw.
@@ -643,13 +841,50 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         }
     }
 
-    private string DescribeCanvasStatus(CanvasPrototypeStatus status) => status.State switch
+    /// <summary>
+    /// Fills the mode picker, keeping whatever the user was on. The rows resolve their own labels, so a
+    /// display-language change is a rebuild.
+    /// </summary>
+    private void ReloadModeRows()
     {
-        CanvasPrototypeState.Starting => Loc.Get("Dynamic_Canvas_State_Starting"),
-        CanvasPrototypeState.Active => Loc.Format("Dynamic_Canvas_State_Active", status.ItemCount),
-        CanvasPrototypeState.Failed => Loc.Format("Dynamic_Canvas_State_Failed", status.Error ?? string.Empty),
-        _ => Loc.Get("Dynamic_Canvas_State_Disabled"),
-    };
+        var index = ModeIndex;
+
+        var wasApplying = _applyingMode;
+        _applyingMode = true;
+        try
+        {
+            Modes.Clear();
+            foreach (var mode in new[] { DesktopMode.Native, DesktopMode.Preview, DesktopMode.Takeover })
+            {
+                Modes.Add(new DesktopModeRow(mode, Loc));
+            }
+
+            ModeIndex = index >= 0 && index < Modes.Count ? index : 0;
+        }
+        finally
+        {
+            _applyingMode = wasApplying;
+        }
+    }
+
+    private string DescribeDesktopStatus(DesktopModeStatus status)
+    {
+        if (status.NeedsRecovery)
+        {
+            return Loc.Format("Dynamic_Desktop_State_RecoveryRequired", status.Error ?? string.Empty);
+        }
+
+        var text = status.EffectiveMode switch
+        {
+            DesktopMode.Takeover => Loc.Format("Dynamic_Desktop_State_Takeover", _canvas.Status.ItemCount),
+            DesktopMode.Preview => Loc.Format("Dynamic_Desktop_State_Preview", _canvas.Status.ItemCount),
+            _ => Loc.Get("Dynamic_Desktop_State_Native"),
+        };
+
+        return status.HasError
+            ? $"{text} {Loc.Format("Dynamic_Desktop_State_Problem", status.Error!)}"
+            : text;
+    }
 
     private void StartDiagnostics()
     {

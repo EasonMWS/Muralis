@@ -16,8 +16,10 @@ public sealed partial class MainWindow : Window
     private readonly ISettingsService _settingsService;
     private readonly IDownloadQueue _downloadQueue;
     private readonly TrayService _trayService;
+    private readonly DesktopShutdown _desktopShutdown;
     private readonly ILogger<MainWindow> _logger;
     private bool _allowClose;
+    private bool _shuttingDown;
 
     public MainWindow(
         INavigationService navigation,
@@ -25,6 +27,7 @@ public sealed partial class MainWindow : Window
         ISettingsService settingsService,
         IDownloadQueue downloadQueue,
         TrayService trayService,
+        DesktopShutdown desktopShutdown,
         ActivationWindow activationWindow,
         WindowContext windowContext,
         ILogger<MainWindow> logger)
@@ -36,6 +39,7 @@ public sealed partial class MainWindow : Window
         _settingsService = settingsService;
         _downloadQueue = downloadQueue;
         _trayService = trayService;
+        _desktopShutdown = desktopShutdown;
         _logger = logger;
 
         windowContext.MainWindow = this;
@@ -124,8 +128,33 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Quits the application even when close-to-tray is enabled (tray menu / settings).</summary>
-    public void ExitApplication()
+    public void ExitApplication() => _ = QuitAsync();
+
+    /// <summary>
+    /// Hands the desktop back and then closes. Anything the app put on the desktop — the video, the
+    /// canvas, and above all a takeover that hid the native icons — is undone before the window goes,
+    /// so the user never sees their desktop come back after Muralis has already disappeared.
+    /// </summary>
+    private async Task QuitAsync()
     {
+        if (_shuttingDown)
+        {
+            return;
+        }
+
+        // Set before the first await, on whichever thread called in: a second request while this one is
+        // running must not start a shutdown of its own.
+        _shuttingDown = true;
+
+        try
+        {
+            await _desktopShutdown.RunAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The desktop could not be handed back before quitting");
+        }
+
         _allowClose = true;
         Close();
     }
@@ -169,15 +198,25 @@ public sealed partial class MainWindow : Window
 
     private void OnWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
-        if (_allowClose || !_settingsService.Current.CloseToTray)
+        if (_allowClose)
         {
             return;
         }
 
-        // Keep running in the tray so rotation and quick access stay available.
+        if (_settingsService.Current.CloseToTray)
+        {
+            // Keep running in the tray so rotation and quick access stay available.
+            args.Cancel = true;
+            _trayService.HideMainWindow();
+            _logger.LogInformation("Window hidden to the tray");
+            return;
+        }
+
+        // Closing the window is how the app ends with close-to-tray off, so this is a real quit and the
+        // desktop has to be handed back first — which is a thing that has to be awaited, and closing
+        // cannot be. The close is deferred by a moment instead of being allowed through.
         args.Cancel = true;
-        _trayService.HideMainWindow();
-        _logger.LogInformation("Window hidden to the tray");
+        _ = QuitAsync();
     }
 
     /// <summary>

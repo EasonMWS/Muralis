@@ -103,6 +103,29 @@ public sealed class DesktopItemSyncServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task WithAdoptionTurnedOff_TheDesktopIsStillReadAndNothingIsAdopted()
+    {
+        // The flag is the user's answer to "adopt what is already on my desktop", and it has to hold for
+        // a mounted canvas too: that is the path a takeover runs on, and it is the one that does not go
+        // through the adopter's own check. The preview keeps reporting what is there either way.
+        File.WriteAllText(Path.Combine(_desktop, "notes.txt"), "x");
+
+        var layout = new DesktopLayout();
+        layout.Takeover.AdoptDesktopItems = false;
+        await new DesktopLayoutStore(NullLogger<DesktopLayoutStore>.Instance, _layoutFile).SaveAsync(layout);
+
+        var canvas = new RecordingCanvas { Added = 1 };
+        using var sync = Service(canvas);
+
+        var plan = await sync.PreviewAsync();
+        var result = await sync.SyncAsync();
+
+        Assert.Single(plan.ToAdopt);
+        Assert.Empty(result.Added);
+        Assert.Equal(0, canvas.AdoptCalls);
+    }
+
+    [Fact]
     public async Task Watching_TheDesktopFolders_IsOffUntilItIsAskedFor()
     {
         using var sync = Service(new RecordingCanvas());
@@ -208,5 +231,14 @@ public sealed class DesktopItemSyncServiceTests : IDisposable
 
         public Task<bool> UpdateDockAsync(DockOptions dock, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
+
+        public Task<DesktopTakeoverOptions> GetTakeoverOptionsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DesktopTakeoverOptions());
+
+        public Task UpdateTakeoverOptionsAsync(
+            DesktopTakeoverOptions options,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task SuspendInteractionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

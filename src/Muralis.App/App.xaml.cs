@@ -5,6 +5,7 @@ using Muralis.App.Infrastructure;
 using Muralis.App.Services;
 using Muralis.App.Services.Platform;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Desktop.Takeover;
 using Muralis.Core.Helpers;
 using Muralis.Core.Models;
 using Muralis.Desktop.Shell;
@@ -99,8 +100,8 @@ public partial class App : Application
             // its own thread, and a missing or broken file must not delay the window.
             _ = RestoreVideoWallpaperAsync(logger);
 
-            // The canvas prototype comes back the same way when it was left switched on.
-            _ = RestoreDesktopCanvasAsync(logger);
+            // The desktop mode comes back the same way, after the crash marker has been dealt with.
+            _ = RestoreDesktopAsync(logger);
 
             // SQLite and the catalog are not needed for the first frame; loading them in
             // the background keeps the window's appear time short. Pages listening to
@@ -160,28 +161,46 @@ public partial class App : Application
         }
     }
 
-    private async Task RestoreDesktopCanvasAsync(Microsoft.Extensions.Logging.ILogger logger)
+    /// <summary>
+    /// Gives the native desktop back if a previous run was killed while it owned the desktop, and only
+    /// then puts the saved mode back. The order is the whole point: a marker is the one record that the
+    /// native icons may still be hidden, and nothing may be built on a desktop that is owed a give-back.
+    /// </summary>
+    private async Task RestoreDesktopAsync(Microsoft.Extensions.Logging.ILogger logger)
     {
         try
         {
-            if (!_host.Services.GetRequiredService<ISettingsService>().Current.DesktopCanvas.Enabled)
+            var recovered = await _host.Services
+                .GetRequiredService<IDesktopTakeoverService>()
+                .RecoverIfNeededAsync()
+                .ConfigureAwait(true);
+
+            if (recovered.Error is not null)
             {
+                logger.LogWarning("The desktop takeover marker was not usable: {Error}", recovered.Error);
+            }
+
+            if (recovered.State == DesktopTakeoverState.RecoveryRequired)
+            {
+                // The icons could not be verified as back. Restoring a mode now would hide them again on
+                // a desktop nobody can vouch for, so the modes are left alone until the next attempt.
+                logger.LogWarning("The native desktop is owed a give-back; the desktop mode was not restored");
                 return;
             }
 
             var status = await _host.Services
-                .GetRequiredService<IDesktopCanvasService>()
-                .EnableAsync()
+                .GetRequiredService<IDesktopModeService>()
+                .RestoreAsync()
                 .ConfigureAwait(true);
 
-            if (status.State == CanvasPrototypeState.Failed)
+            if (status.HasError)
             {
-                logger.LogWarning("The desktop canvas could not be restored: {Error}", status.Error);
+                logger.LogWarning("The desktop is {Mode}: {Error}", status.EffectiveMode, status.Error);
             }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "The desktop canvas could not be restored");
+            logger.LogError(ex, "The desktop could not be restored");
         }
     }
 

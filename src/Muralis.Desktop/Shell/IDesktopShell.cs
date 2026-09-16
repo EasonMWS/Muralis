@@ -36,4 +36,11 @@ public interface IDesktopShell
 
     /// <summary>Removes a surface and releases everything behind it. Safe to call while orphaned.</summary>
     Task RemoveSurfaceAsync(IDesktopSurface surface, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Shuts the desktop layer down for good: every surface is released, the shell thread ends and
+    /// nothing is mounted again. Idempotent, never cancelled — a shutdown abandoned halfway would
+    /// leave desktop windows behind — and awaiting it means the desktop layer really is handed back.
+    /// </summary>
+    Task ShutdownAsync();
 }
