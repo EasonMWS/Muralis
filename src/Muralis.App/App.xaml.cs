@@ -93,6 +93,9 @@ public partial class App : Application
             // its own thread, and a missing or broken file must not delay the window.
             _ = RestoreVideoWallpaperAsync(logger);
 
+            // The canvas prototype comes back the same way when it was left switched on.
+            _ = RestoreDesktopCanvasAsync(logger);
+
             // SQLite and the catalog are not needed for the first frame; loading them in
             // the background keeps the window's appear time short. Pages listening to
             // ILocalLibrary.Changed refresh as soon as the catalog is ready.
@@ -148,6 +151,31 @@ public partial class App : Application
         catch (Exception ex)
         {
             logger.LogError(ex, "The video wallpaper could not be restored");
+        }
+    }
+
+    private async Task RestoreDesktopCanvasAsync(Microsoft.Extensions.Logging.ILogger logger)
+    {
+        try
+        {
+            if (!_host.Services.GetRequiredService<ISettingsService>().Current.DesktopCanvas.Enabled)
+            {
+                return;
+            }
+
+            var status = await _host.Services
+                .GetRequiredService<IDesktopCanvasService>()
+                .EnableAsync()
+                .ConfigureAwait(true);
+
+            if (status.State == CanvasPrototypeState.Failed)
+            {
+                logger.LogWarning("The desktop canvas could not be restored: {Error}", status.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The desktop canvas could not be restored");
         }
     }
 

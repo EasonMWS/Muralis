@@ -881,6 +881,33 @@
   <data name="Dynamic_Status_StartupOff" xml:space="preserve">
     <value>下次启动 Muralis 时将不再自动播放该视频。</value>
   </data>
+  <data name="Dynamic_Section_Canvas" xml:space="preserve">
+    <value>桌面画布（原型）</value>
+  </data>
+  <data name="Dynamic_Canvas_Title" xml:space="preserve">
+    <value>画布原型</value>
+  </data>
+  <data name="Dynamic_Canvas_Description" xml:space="preserve">
+    <value>叠在桌面图标之上的实验性自由布局层：图标项可随意拖动，鼠标靠近时连续放大，侧边停靠栏离开后自动收起。原生桌面图标照常工作；关闭开关即完全移除画布。</value>
+  </data>
+  <data name="Dynamic_Canvas_State_Disabled" xml:space="preserve">
+    <value>已关闭——桌面保持原样。</value>
+  </data>
+  <data name="Dynamic_Canvas_State_Starting" xml:space="preserve">
+    <value>正在把画布放到桌面上…</value>
+  </data>
+  <data name="Dynamic_Canvas_State_Active" xml:space="preserve">
+    <value>桌面上有 {0} 个图标项。可随意拖动，悬停会放大。</value>
+  </data>
+  <data name="Dynamic_Canvas_State_Failed" xml:space="preserve">
+    <value>无法显示画布：{0}</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_Failed" xml:space="preserve">
+    <value>无法切换桌面画布：{0}</value>
+  </data>
+  <data name="Dynamic_Canvas_Diagnostics_Title" xml:space="preserve">
+    <value>画布诊断（仅开发版）</value>
+  </data>
 
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">

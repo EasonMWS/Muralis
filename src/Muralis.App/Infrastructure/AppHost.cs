@@ -5,6 +5,7 @@ using Muralis.App.Services;
 using Muralis.App.Services.Platform;
 using Muralis.App.ViewModels;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Canvas;
 using Muralis.Core.Helpers;
 using Muralis.Core.Networking;
 using Muralis.Core.Providers;
@@ -161,6 +162,8 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<ShellEventSource>();
         services.AddSingleton<IDesktopShell, DesktopShell>();
         services.AddSingleton<IVideoWallpaperService, VideoWallpaperServiceAdapter>();
+        services.AddSingleton(sp => new CanvasLayoutStore(sp.GetRequiredService<ILogger<CanvasLayoutStore>>()));
+        services.AddSingleton<IDesktopCanvasService, DesktopCanvasServiceAdapter>();
         services.AddSingleton<RotationService>();
         services.AddSingleton<TrayService>();
 

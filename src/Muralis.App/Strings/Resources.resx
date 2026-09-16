@@ -881,6 +881,33 @@
   <data name="Dynamic_Status_StartupOff" xml:space="preserve">
     <value>The video will not be restored the next time Muralis starts.</value>
   </data>
+  <data name="Dynamic_Section_Canvas" xml:space="preserve">
+    <value>Desktop canvas (prototype)</value>
+  </data>
+  <data name="Dynamic_Canvas_Title" xml:space="preserve">
+    <value>Canvas prototype</value>
+  </data>
+  <data name="Dynamic_Canvas_Description" xml:space="preserve">
+    <value>An experimental free-form layer above the desktop icons: drag the items anywhere, hover to magnify them, and let the side dock retract when you leave it. Your real icons keep working; switching this off removes the canvas completely.</value>
+  </data>
+  <data name="Dynamic_Canvas_State_Disabled" xml:space="preserve">
+    <value>Off — the desktop is untouched.</value>
+  </data>
+  <data name="Dynamic_Canvas_State_Starting" xml:space="preserve">
+    <value>Putting the canvas on the desktop…</value>
+  </data>
+  <data name="Dynamic_Canvas_State_Active" xml:space="preserve">
+    <value>{0} items on the desktop. Drag them anywhere; hover to magnify.</value>
+  </data>
+  <data name="Dynamic_Canvas_State_Failed" xml:space="preserve">
+    <value>Could not show the canvas: {0}</value>
+  </data>
+  <data name="Dynamic_Canvas_Status_Failed" xml:space="preserve">
+    <value>The desktop canvas could not be switched: {0}</value>
+  </data>
+  <data name="Dynamic_Canvas_Diagnostics_Title" xml:space="preserve">
+    <value>Canvas diagnostics (development builds only)</value>
+  </data>
 
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">

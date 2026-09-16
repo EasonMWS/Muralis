@@ -168,6 +168,61 @@
                 </Grid>
             </Border>
 
+            <!--  Desktop canvas prototype  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Dynamic_Section_Canvas], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE71D;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dynamic_Canvas_Title], Source={StaticResource Loc}}" />
+                        <TextBlock
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{Binding [Dynamic_Canvas_Description], Source={StaticResource Loc}}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.CanvasStateText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding [Dynamic_Canvas_Title], Source={StaticResource Loc}}"
+                        IsEnabled="{x:Bind ViewModel.CanToggleCanvas, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.CanvasEnabled, Mode=TwoWay}"
+                        OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                        OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
+                </Grid>
+            </Border>
+            <Expander
+                Margin="0,8,0,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                IsExpanded="{x:Bind ViewModel.IsDiagnosticsOpen, Mode=TwoWay}"
+                Visibility="{x:Bind ViewModel.IsDiagnosticsAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                <Expander.Header>
+                    <TextBlock Text="{Binding [Dynamic_Canvas_Diagnostics_Title], Source={StaticResource Loc}}" />
+                </Expander.Header>
+                <TextBlock
+                    FontFamily="Consolas"
+                    FontSize="12"
+                    IsTextSelectionEnabled="True"
+                    Text="{x:Bind ViewModel.DiagnosticsText, Mode=OneWay}" />
+            </Expander>
+
             <!--  Notes  -->
             <TextBlock
                 Margin="0,14,0,4"

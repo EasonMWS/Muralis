@@ -1,3 +1,4 @@
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -10,18 +11,22 @@ namespace Muralis.App.ViewModels;
 
 /// <summary>
 /// Drives the dynamic wallpaper page: pick a video, put it on the desktop behind the icons,
-/// take it off again, and decide whether it comes back on the next launch.
+/// take it off again, decide whether it comes back on the next launch, and switch the
+/// experimental desktop canvas prototype on or off.
 /// </summary>
 public sealed partial class DynamicWallpaperViewModel : ViewModelBase
 {
     private readonly IVideoWallpaperService _videoWallpaper;
+    private readonly IDesktopCanvasService _canvas;
     private readonly ISettingsService _settingsService;
     private readonly IFilePickerService _filePicker;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger<DynamicWallpaperViewModel> _logger;
     private bool _applyingSettings = true;
+    private bool _applyingCanvasStatus;
     private VideoWallpaperState _state;
     private (string Key, object?[] Args)? _message;
+    private DispatcherQueueTimer? _diagnosticsTimer;
 
     [ObservableProperty]
     public partial string VideoPath { get; set; }
@@ -45,8 +50,28 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool StatusIsError { get; set; }
 
+    /// <summary>Whether the experimental desktop canvas is on the desktop.</summary>
+    [ObservableProperty]
+    public partial bool CanvasEnabled { get; set; }
+
+    /// <summary>Live state of the desktop canvas, shown as the canvas card's caption.</summary>
+    [ObservableProperty]
+    public partial string CanvasStateText { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsCanvasBusy { get; set; }
+
+    /// <summary>Whether the development diagnostics panel is expanded.</summary>
+    [ObservableProperty]
+    public partial bool IsDiagnosticsOpen { get; set; }
+
+    /// <summary>The latest canvas measurements, one field per line; development builds only.</summary>
+    [ObservableProperty]
+    public partial string DiagnosticsText { get; set; }
+
     public DynamicWallpaperViewModel(
         IVideoWallpaperService videoWallpaper,
+        IDesktopCanvasService canvas,
         ISettingsService settingsService,
         IFilePickerService filePicker,
         ILocalizationService localization,
@@ -54,6 +79,7 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         : base(localization)
     {
         _videoWallpaper = videoWallpaper;
+        _canvas = canvas;
         _settingsService = settingsService;
         _filePicker = filePicker;
         _logger = logger;
@@ -64,10 +90,17 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
         Muted = saved.Muted;
         StartWithApp = saved.Enabled;
         StateText = string.Empty;
-        _applyingSettings = false;
 
         _videoWallpaper.StatusChanged += OnStatusChanged;
         ApplyStatus(_videoWallpaper.Status);
+
+        // The toggle starts where the service already is — the app may have restored the canvas
+        // before this page was ever opened.
+        _canvas.StatusChanged += OnCanvasStatusChanged;
+        CanvasStateText = DescribeCanvasStatus(_canvas.Status);
+        CanvasEnabled = _canvas.Status.State == CanvasPrototypeState.Active;
+        DiagnosticsText = string.Empty;
+        _applyingSettings = false;
     }
 
     public string? SuccessMessage => StatusIsError ? null : StatusMessage;
@@ -84,10 +117,21 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
 
     public bool CanStop => !IsBusy && _state is VideoWallpaperState.Starting or VideoWallpaperState.Playing;
 
+    public bool CanToggleCanvas => !IsCanvasBusy;
+
+    /// <summary>The diagnostics panel is a development tool; release builds do not offer it.</summary>
+    public bool IsDiagnosticsAvailable =>
+#if DEBUG
+        true;
+#else
+        false;
+#endif
+
     public override void OnLanguageChanged()
     {
         OnPropertyChanged(nameof(VideoFileName));
         StateText = DescribeState(_videoWallpaper.Status);
+        CanvasStateText = DescribeCanvasStatus(_canvas.Status);
 
         if (_message is { } message)
         {
@@ -98,6 +142,8 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
     public override void DetachFromPage()
     {
         _videoWallpaper.StatusChanged -= OnStatusChanged;
+        _canvas.StatusChanged -= OnCanvasStatusChanged;
+        StopDiagnostics();
         base.DetachFromPage();
     }
 
@@ -221,6 +267,151 @@ public sealed partial class DynamicWallpaperViewModel : ViewModelBase
 
         _settingsService.Update(settings => settings.VideoWallpaper.Enabled = value);
         SetMessage(value ? "Dynamic_Status_StartupOn" : "Dynamic_Status_StartupOff", isError: false);
+    }
+
+    partial void OnCanvasEnabledChanged(bool value)
+    {
+        if (_applyingSettings || _applyingCanvasStatus)
+        {
+            return;
+        }
+
+        _ = ApplyCanvasAsync(value);
+    }
+
+    partial void OnIsCanvasBusyChanged(bool value) => OnPropertyChanged(nameof(CanToggleCanvas));
+
+    partial void OnIsDiagnosticsOpenChanged(bool value)
+    {
+        if (value)
+        {
+            StartDiagnostics();
+        }
+        else
+        {
+            StopDiagnostics();
+        }
+    }
+
+    /// <summary>
+    /// Shows or removes the canvas. The enabled flag is only remembered once the canvas is really
+    /// on the desktop, so a failed attempt is not restored — and reported — on every launch.
+    /// </summary>
+    private async Task ApplyCanvasAsync(bool enabled)
+    {
+        IsCanvasBusy = true;
+        try
+        {
+            CanvasPrototypeStatus status;
+            if (enabled)
+            {
+                status = await _canvas.EnableAsync();
+            }
+            else
+            {
+                await _canvas.DisableAsync();
+                status = _canvas.Status;
+            }
+
+            _settingsService.Update(settings => settings.DesktopCanvas.Enabled = status.State == CanvasPrototypeState.Active);
+
+            if (status.State == CanvasPrototypeState.Failed)
+            {
+                SetMessage("Dynamic_Canvas_Status_Failed", isError: true, status.Error ?? string.Empty);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The desktop canvas could not be switched");
+            _settingsService.Update(settings => settings.DesktopCanvas.Enabled = false);
+            SetMessage("Dynamic_Canvas_Status_Failed", isError: true, ex.Message);
+        }
+        finally
+        {
+            IsCanvasBusy = false;
+            ApplyCanvasStatus(_canvas.Status);
+        }
+    }
+
+    private void OnCanvasStatusChanged(object? sender, CanvasPrototypeStatus status)
+    {
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            ApplyCanvasStatus(status);
+        }
+        else
+        {
+            _dispatcherQueue.TryEnqueue(() => ApplyCanvasStatus(status));
+        }
+    }
+
+    private void ApplyCanvasStatus(CanvasPrototypeStatus status)
+    {
+        CanvasStateText = DescribeCanvasStatus(status);
+
+        // Keep the switch in step with reality: a failed mount flips it back off, a restored
+        // canvas flips it on without going through the change handler.
+        if (CanvasEnabled != (status.State == CanvasPrototypeState.Active))
+        {
+            var wasApplying = _applyingCanvasStatus;
+            _applyingCanvasStatus = true;
+            try
+            {
+                CanvasEnabled = status.State == CanvasPrototypeState.Active;
+            }
+            finally
+            {
+                _applyingCanvasStatus = wasApplying;
+            }
+        }
+    }
+
+    private string DescribeCanvasStatus(CanvasPrototypeStatus status) => status.State switch
+    {
+        CanvasPrototypeState.Starting => Loc.Get("Dynamic_Canvas_State_Starting"),
+        CanvasPrototypeState.Active => Loc.Format("Dynamic_Canvas_State_Active", status.ItemCount),
+        CanvasPrototypeState.Failed => Loc.Format("Dynamic_Canvas_State_Failed", status.Error ?? string.Empty),
+        _ => Loc.Get("Dynamic_Canvas_State_Disabled"),
+    };
+
+    private void StartDiagnostics()
+    {
+        if (!IsDiagnosticsAvailable)
+        {
+            return;
+        }
+
+        if (_diagnosticsTimer is null)
+        {
+            _diagnosticsTimer = _dispatcherQueue.CreateTimer();
+            _diagnosticsTimer.Interval = TimeSpan.FromMilliseconds(250);
+            _diagnosticsTimer.Tick += (_, _) => UpdateDiagnostics();
+        }
+
+        _diagnosticsTimer.Start();
+        UpdateDiagnostics();
+    }
+
+    private void StopDiagnostics() => _diagnosticsTimer?.Stop();
+
+    private void UpdateDiagnostics()
+    {
+        if (_canvas.Diagnostics is not { } snapshot)
+        {
+            DiagnosticsText = "canvas is not showing";
+            return;
+        }
+
+        var report = new StringBuilder();
+        report.AppendLine($"surface  {snapshot.SurfaceState ?? "?"} · mount {snapshot.MountCount} · {_canvas.Status.State}");
+        report.AppendLine($"monitor  {snapshot.MonitorId ?? "?"} · {snapshot.BoundsPixels.Width}x{snapshot.BoundsPixels.Height} at {snapshot.BoundsPixels.X},{snapshot.BoundsPixels.Y} · {snapshot.Dpi} dpi ({snapshot.ScaleFactor:0.##}x)");
+        report.AppendLine($"canvas   {snapshot.BoundsWidthDip:0.#} x {snapshot.BoundsHeightDip:0.#} DIP");
+        report.AppendLine($"pointer  {(snapshot.PointerInside ? "inside " : "outside")} {snapshot.PointerXDip:0.#}, {snapshot.PointerYDip:0.#} DIP");
+        report.AppendLine($"items    {snapshot.ItemCount} · hovered {snapshot.HoveredItemId ?? "none"} at {snapshot.HoveredScale:0.00}x");
+        report.AppendLine($"dock     {snapshot.DockPhase} at {snapshot.DockScale:0.00}x");
+        report.AppendLine($"updates  {snapshot.UpdatesPerSecond:0.0}/s · {snapshot.Updates} total");
+        report.AppendLine($"layout   {snapshot.LayoutPath}");
+        DiagnosticsText = report.ToString().TrimEnd();
     }
 
     private void OnStatusChanged(object? sender, VideoWallpaperStatus status)

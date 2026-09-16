@@ -37,4 +37,7 @@ public sealed class AppSettings
 
     /// <summary>The video shown behind the desktop icons, and whether to bring it back on launch.</summary>
     public VideoWallpaperSettings VideoWallpaper { get; set; } = new();
+
+    /// <summary>Whether the experimental desktop canvas prototype is shown above the icons.</summary>
+    public DesktopCanvasSettings DesktopCanvas { get; set; } = new();
 }
