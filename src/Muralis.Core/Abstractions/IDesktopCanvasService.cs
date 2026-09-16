@@ -57,6 +57,17 @@ public interface IDesktopCanvasService
     Task<bool> RemoveItemAsync(string id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Brings the items an adoption planned onto the canvas, each pointing at where the file already
+    /// is. Answered the same way whether the canvas is showing or not, and answered with the items
+    /// that were added so a first run can say what it did. Nothing is adopted while adoption is
+    /// switched off for the layout, and an entry the plan already saw on the canvas is not added
+    /// twice.
+    /// </summary>
+    Task<DesktopAdoptionResult> AdoptAsync(
+        DesktopAdoptionPlan plan,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The dock as it is configured right now, as a copy the caller may keep. Answered whether the
     /// canvas is showing or not.
     /// </summary>

@@ -551,6 +551,29 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         Post(() => AddItemCore(item));
     }
 
+    /// <summary>
+    /// Adds a whole import at once, in one pass over the layout. Called from any thread; the work
+    /// travels to the shell thread like every other change. The items arrive already knowing where
+    /// they came from, so each one is placed and shown the same way a single import is, but the
+    /// layout is saved and the display region updated once rather than once per item.
+    /// </summary>
+    internal void AdoptItems(IReadOnlyList<DesktopItem> items)
+    {
+        if (items is null || items.Count == 0)
+        {
+            return;
+        }
+
+        var arriving = items.ToArray();
+        Post(() => AdoptItemsCore(arriving));
+    }
+
+    /// <summary>The display this content is mounted on, in device independent pixels.</summary>
+    internal (double WidthDip, double HeightDip) DisplaySizeDip =>
+        _displayBounds.Width <= 0 || _scaleFactor <= 0
+            ? (0, 0)
+            : (_displayBounds.Width / _scaleFactor, _displayBounds.Height / _scaleFactor);
+
     /// <summary>Removes an item from the layout. The target on disk is not touched; the item is.</summary>
     internal void RemoveItem(string id)
     {
@@ -686,6 +709,69 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         }
 
         // A new item may be docked, which moves the rail and every dock slot with it.
+        OrderDockViews();
+        ApplyLayout();
+        RefreshItems();
+        SaveLayout();
+        UpdateRegion();
+        Bump();
+    }
+
+    /// <summary>
+    /// The bulk of a whole import, done the way one item is: an item already held by id or by the file
+    /// it came from is skipped, everything else is placed and shown. The one difference is that the
+    /// layout is saved, the region updated and the diagnostics bumped once at the end, because a first
+    /// run can bring a hundred items across at the same time.
+    /// </summary>
+    private void AdoptItemsCore(IReadOnlyList<DesktopItem> items)
+    {
+        var added = 0;
+
+        foreach (var item in items)
+        {
+            if (_layout.Items.Any(existing => string.Equals(existing.Id, item.Id, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            // The import is compared by the file each item came from, so a desktop entry that is
+            // already on the canvas under a different caption is not put there a second time.
+            if (item.SourcePath.Length > 0
+                && _layout.Items.Any(existing => string.Equals(existing.SourcePath, item.SourcePath, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            if (!_layout.IsDocked(item.Id) && _displayBounds.Width > 0)
+            {
+                var (offsetX, offsetY) = DesktopItemPlacer.NextFreeSpot(
+                    _layout.Items,
+                    _layout.Dock.DockedItemIds(),
+                    _displayBounds.Width / _scaleFactor,
+                    _displayBounds.Height / _scaleFactor,
+                    item.SizeDip);
+                item.OffsetXDip = offsetX;
+                item.OffsetYDip = offsetY;
+            }
+
+            _layout.Items.Add(item);
+            added++;
+
+            if (item.IsVisible && _root is not null)
+            {
+                var view = CreateView(item);
+                if (view is not null)
+                {
+                    CheckMissingOne(view);
+                }
+            }
+        }
+
+        if (added == 0)
+        {
+            return;
+        }
+
         OrderDockViews();
         ApplyLayout();
         RefreshItems();

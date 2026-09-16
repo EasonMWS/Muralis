@@ -247,6 +247,57 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
         }
     }
 
+    public async Task<DesktopAdoptionResult> AdoptAsync(
+        DesktopAdoptionPlan plan,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        await _mutex.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (plan.ToAdopt.Count == 0)
+            {
+                return DesktopAdoptionResult.None;
+            }
+
+            if (_content is { } content)
+            {
+                // The mounted canvas owns the live layout, so the items go to it and it places them
+                // against the display it is actually on. Its own save is what the next mount reads.
+                var items = NewItems(plan, content.Items);
+                if (items.Count == 0)
+                {
+                    return DesktopAdoptionResult.None;
+                }
+
+                content.AdoptItems(items);
+                _logger.LogInformation("The desktop was adopted onto the canvas: {Added} items were added", items.Count);
+                return new DesktopAdoptionResult(items);
+            }
+
+            // Nothing is mounted: the layout is edited on disk, so the items are already there when the
+            // canvas is switched on next.
+            var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var (widthDip, heightDip) = DisplaySizeDip();
+            var adopted = DesktopContentAdopter.Adopt(plan, layout, widthDip, heightDip, _logger);
+            if (adopted.Added.Count == 0)
+            {
+                return DesktopAdoptionResult.None;
+            }
+
+            await _store.SaveAsync(layout).ConfigureAwait(false);
+            _logger.LogInformation(
+                "The desktop was adopted into the saved layout: {Added} items were added",
+                adopted.Added.Count);
+            return adopted;
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
     public async Task<DockOptions> GetDockAsync(CancellationToken cancellationToken = default)
     {
         var layout = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -297,6 +348,52 @@ public sealed class DesktopCanvasServiceAdapter : IDesktopCanvasService
         {
             _mutex.Release();
         }
+    }
+
+    /// <summary>
+    /// The items an adoption would add, made but not yet placed: the mounted canvas places what it
+    /// shows. The plan may be a moment old, so an entry that has since found its way onto the canvas
+    /// is left out here — the same file is never adopted twice.
+    /// </summary>
+    private static List<DesktopItem> NewItems(DesktopAdoptionPlan plan, IReadOnlyList<DesktopItem> held)
+    {
+        var sources = held
+            .Where(item => item is not null && item.SourcePath.Length > 0)
+            .Select(item => item.SourcePath)
+            .ToList();
+
+        var items = new List<DesktopItem>(plan.ToAdopt.Count);
+        foreach (var entry in plan.ToAdopt)
+        {
+            if (sources.Any(source => entry.IsSameSourceAs(source)))
+            {
+                continue;
+            }
+
+            items.Add(DesktopItemFactory.CreateFromTarget(entry.Target, entry.Name, entry.SourcePath));
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// The display the canvas would go on, in device independent pixels: the mounted canvas answers for
+    /// itself, and with nothing mounted the primary display's own size is used. A display that cannot
+    /// be resolved answers zero, which the placer reads as "no display to place against".
+    /// </summary>
+    private (double WidthDip, double HeightDip) DisplaySizeDip()
+    {
+        if (_content is { } content)
+        {
+            return content.DisplaySizeDip;
+        }
+
+        if (_shell.Monitors.Primary?.Runtime is not { } runtime || runtime.ScaleFactor <= 0)
+        {
+            return (0, 0);
+        }
+
+        return (runtime.Bounds.Width / runtime.ScaleFactor, runtime.Bounds.Height / runtime.ScaleFactor);
     }
 
     private CanvasPrototypeStatus Fail(string error)
