@@ -17,12 +17,15 @@
       - Explorer restart: the router rides it out untouched and the canvas re-mounts
       - a graceful exit: the raw input registration and the router window are released
 
-    Everything the harness changes is restored on the way out: settings.json, the prototype layout
-    file, the running app.
+    The geometry every expectation below is computed from is planted as a schema 2 document before
+    the app starts (see New-SeedLayoutItems): the four free items at the Phase 2 seed's offsets and
+    the four dock items. Everything the harness changes is restored on the way out: settings.json,
+    the user's own desktop layout document, the Phase 2 prototype file and the running app.
 
 .PARAMETER Stage
-    probe - no app launch, only reports the machine state and what sits under the probe points
-    full  - the whole matrix
+    probe   - no app launch, only reports the machine state and what sits under the probe points
+    latency - how fresh a UI Automation read of the diagnostics panel is
+    full    - the whole matrix
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File tools/p3a-pointer-verify.ps1 -Stage probe
@@ -39,173 +42,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# ---------------------------------------------------------------- interop
-
-Add-Type @"
-using System;
-using System.Text;
-using System.Runtime.InteropServices;
-public class P3Win {
-  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, StringBuilder text, int count);
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
-  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
-  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern IntPtr GetDesktopWindow();
-  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
-  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
-  [DllImport("user32.dll", SetLastError = true)] public static extern uint SendInput(uint count, INPUT[] inputs, int size);
-
-  public const uint INPUT_MOUSE = 0;
-  public const uint MOUSEEVENTF_MOVE = 0x0001;
-  public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
-  public const uint MOUSEEVENTF_LEFTUP = 0x0004;
-  public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
-  public const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
-  public const uint GA_ROOT = 2;
-  public const uint WM_CLOSE = 0x0010;
-  public const int SW_MINIMIZE = 6;
-  public const int SW_RESTORE = 9;
-  public const int SM_CXVIRTUALSCREEN = 78;
-  public const int SM_CYVIRTUALSCREEN = 79;
-  public const int SM_XVIRTUALSCREEN = 76;
-  public const int SM_YVIRTUALSCREEN = 77;
-
-  public struct POINT { public int X; public int Y; }
-  public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-
-  [StructLayout(LayoutKind.Sequential)]
-  public struct MOUSEINPUT {
-    public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo;
-  }
-
-  [StructLayout(LayoutKind.Sequential)]
-  public struct INPUT { public uint type; public MOUSEINPUT mi; }
-
-  private static void SendOne(uint flags, int dx, int dy) {
-    INPUT[] inputs = new INPUT[1];
-    inputs[0].type = INPUT_MOUSE;
-    inputs[0].mi.dx = dx;
-    inputs[0].mi.dy = dy;
-    inputs[0].mi.dwFlags = flags;
-    uint sent = SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
-    if (sent != 1) throw new InvalidOperationException("SendInput failed (" + Marshal.GetLastWin32Error() + ")");
-  }
-
-  // A move that goes through the input stack, so raw input consumers see it exactly like a mouse.
-  public static void MoveTo(int x, int y) {
-    int left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    int top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    int width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    int height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-    if (width < 2 || height < 2) throw new InvalidOperationException("The virtual screen is not measurable.");
-    int nx = (int)Math.Round((x - left) * 65535.0 / (width - 1));
-    int ny = (int)Math.Round((y - top) * 65535.0 / (height - 1));
-    SendOne(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, nx, ny);
-  }
-
-  public static void LeftDown() { SendOne(MOUSEEVENTF_LEFTDOWN, 0, 0); }
-  public static void LeftUp() { SendOne(MOUSEEVENTF_LEFTUP, 0, 0); }
-
-  public static string ClassOf(IntPtr h) {
-    var text = new StringBuilder(256);
-    GetClassName(h, text, 256);
-    return text.ToString();
-  }
-
-  public static string TitleOf(IntPtr h) {
-    var text = new StringBuilder(256);
-    GetWindowText(h, text, 256);
-    return text.ToString();
-  }
-
-  public static IntPtr RootOf(IntPtr h) { return GetAncestor(h, GA_ROOT); }
-
-  public static int ProcessOf(IntPtr h) {
-    uint pid;
-    GetWindowThreadProcessId(h, out pid);
-    return (int)pid;
-  }
-
-  public static IntPtr FindWindowByClass(int processId, string className) {
-    IntPtr found = IntPtr.Zero;
-    EnumWindows(delegate(IntPtr h, IntPtr l) {
-      if (ProcessOf(h) != processId) return true;
-      if (!IsWindowVisible(h)) return true;
-      if (ClassOf(h) != className) return true;
-      found = h;
-      return false;
-    }, IntPtr.Zero);
-    return found;
-  }
-
-  // Hidden top level windows included: the router window is never shown. Descendants too: the
-  // canvas window is parented to the shell's icon host, so it never shows up as a top level window.
-  public static string[] ClassesWithPrefix(string prefix) {
-    var list = new System.Collections.Generic.List<string>();
-    EnumWindows(delegate(IntPtr h, IntPtr l) {
-      string cls = ClassOf(h);
-      if (cls.StartsWith(prefix)) list.Add(cls);
-      EnumChildWindows(h, delegate(IntPtr child, IntPtr l2) {
-        string childCls = ClassOf(child);
-        if (childCls.StartsWith(prefix)) list.Add(childCls);
-        return true;
-      }, IntPtr.Zero);
-      return true;
-    }, IntPtr.Zero);
-    return list.ToArray();
-  }
-
-  public static IntPtr[] VisibleTopLevel(int minWidth, int minHeight) {
-    var list = new System.Collections.Generic.List<IntPtr>();
-    EnumWindows(delegate(IntPtr h, IntPtr l) {
-      if (!IsWindowVisible(h)) return true;
-      RECT r; GetWindowRect(h, out r);
-      if (r.Right - r.Left >= minWidth && r.Bottom - r.Top >= minHeight) list.Add(h);
-      return true;
-    }, IntPtr.Zero);
-    return list.ToArray();
-  }
-
-  public static int[] RectOf(IntPtr h) {
-    RECT r; GetWindowRect(h, out r);
-    return new int[] { r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top };
-  }
-
-  public static string Describe(IntPtr h) {
-    if (h == IntPtr.Zero) return "(none)";
-    return ClassOf(h) + " [" + TitleOf(h) + "]";
-  }
-}
-"@
-
-# ---------------------------------------------------------------- helpers
+. (Join-Path $PSScriptRoot 'p3-common.ps1')
+Set-BackupPaths 'p3a'
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $exePath = if ([System.IO.Path]::IsPathRooted($Exe)) { $Exe } else { Join-Path $repoRoot $Exe }
 $outPath = if ([System.IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $repoRoot $OutDir }
 
-$appData = Join-Path $env:LOCALAPPDATA 'Muralis'
-$settingsPath = Join-Path $appData 'settings.json'
-$layoutPath = Join-Path $appData 'desktop-canvas-prototype.json'
-$settingsBackup = "$settingsPath.p3a.bak"
-$layoutBackup = "$layoutPath.p3a.bak"
-
-# The canvas, as the layout puts it on this display.
+# The canvas, as the seed layout puts it on the 2560x1440 display at 1x this harness was verified
+# against: four 96 DIP items, centre anchor, 130 DIP apart, 220 DIP above the middle.
 $itemCentresX = @(1085, 1215, 1345, 1475)
 $rowY = 500
-$rowTop = 421   # 500 - (96 * 1.6 / 2 + 2)
 $offRowY = 380  # 120 DIP above the centres: inside the influence radius, outside the region
 $offRowScale = 1.21
 $dockProbe = @(5, 720)
@@ -214,353 +61,49 @@ $blankProbes = @(@(1700, 900), @(700, 1200))
 $growProbe = @(1280, 500)     # the blender item's grown box covers this point
 $outsideProbe = @(1615, 500)  # right of the region, which ends at 1475 + 78.8
 
-$diagTitle = -join ([int[]](0x753B, 0x5E03, 0x8BCA, 0x65AD, 0xFF08, 0x4EC5, 0x5F00, 0x53D1, 0x7248, 0xFF09) | ForEach-Object { [char]$_ })
-$navDynamic = -join ([int[]](0x52A8, 0x6001, 0x58C1, 0x7EB8) | ForEach-Object { [char]$_ })
+# The band the pointer tests sweep and the single points they also rely on: the canvas row, the
+# dock strip, and two blank corners.
+$clearPointsX = @(1015, 1075, 1135, 1195, 1255, 1315, 1375, 1435, 1495, 1555, 1615)
+$clearPointsY = @(380, 500)
+$clearExtraPoints = @(@(1215, 300), @(48, 620), @(1700, 900), @(700, 1200))
 
-$script:checks = New-Object System.Collections.ArrayList
-$script:samples = @{}
-$script:logFile = $null
-$script:process = $null
-$script:window = [IntPtr]::Zero
-$script:diagElement = $null
-$script:diagMode = 'minimize'
-
-function Add-Check([string]$name, [bool]$ok, [string]$detail) {
-    [void]$script:checks.Add([pscustomobject]@{ Check = $name; Ok = $ok; Detail = $detail })
-    $tag = 'FAIL'
-    if ($ok) { $tag = 'PASS' }
-    Write-Host ("  [{0}] {1} : {2}" -f $tag, $name, $detail)
-}
-
-function Refresh-LogFile {
-    $dir = Join-Path $appData 'logs'
-    $script:logFile = Get-ChildItem $dir -Filter 'muralis-*.log' -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-}
-
-function Read-LogText {
-    if (-not $script:logFile) { return '' }
-    for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        try { return [IO.File]::ReadAllText($script:logFile.FullName, [Text.Encoding]::UTF8) }
-        catch { Start-Sleep -Milliseconds 100 }
-    }
-    return ''
-}
-
-# Serilog's file sink does not have to hit the disk the moment the app writes a line, so the
-# on-disk file lags during a run. Counting occurrences of a pattern is still sound: counts from
-# previous runs are already flushed, and the whole file is flushed when the app exits. Growth is
-# therefore polled with generous timeouts, and the authoritative log checks run after the exit.
 $logPatterns = [ordered]@{
-    UiIdle         = 'ui idle'
-    CanvasShowing  = 'The desktop canvas is showing'
+    UiIdle          = 'ui idle'
+    CanvasShowing   = 'The desktop canvas is showing'
+    LayoutLoaded    = 'Desktop layout loaded from'
     RouterListening = 'The desktop pointer router is listening'
-    RouterReleased = 'released its raw mouse input registration'
-    DockExpanded   = 'The desktop dock expanded'
-    DockRetracted  = 'The desktop dock retracted'
-    ItemDropped    = 'was dropped at'
-    ItemClicked    = 'was clicked'
-    SurfaceBack    = 'The desktop surface is back on the desktop'
+    RouterReleased  = 'released its raw mouse input registration'
+    DockExpanded    = 'The desktop dock expanded'
+    DockRetracted   = 'The desktop dock retracted'
+    ItemDropped     = ' was dropped at'
+    ItemSelected    = ' was selected'
+    SurfaceBack     = 'The desktop surface is back on the desktop'
 }
 
-function Get-LogCounts {
-    Refresh-LogFile
-    $text = Read-LogText
-    $counts = @{}
-    foreach ($key in $logPatterns.Keys) {
-        if ([string]::IsNullOrEmpty($text)) { $counts[$key] = 0 }
-        else { $counts[$key] = ([regex]::Matches($text, [regex]::Escape($logPatterns[$key]))).Count }
-    }
-    return $counts
+# ---------------------------------------------------------------- the planted document
+
+# The harness plants its own desktop instead of relying on a product seed: the four free items sit
+# exactly where the Phase 2 seed put them, so the four item centres, the grown box and the dock
+# trigger band below are the geometry this file was verified against. Addresses stand in for the
+# prototype's tiles — a target that cannot go missing and is never opened keeps the run free of
+# anything a launch could start, and the glyph tiles are drawn exactly as they always were.
+function New-SeedLayoutItems {
+    return @(
+        (New-LayoutItem -Id 'seed_free_1' -Name 'Steam'    -Kind 'url' -Path 'https://seed1.example/' -IconKey 'steam'    -OffsetX (-195) -OffsetY (-220) -Z 0)
+        (New-LayoutItem -Id 'seed_free_2' -Name 'Chrome'   -Kind 'url' -Path 'https://seed2.example/' -IconKey 'chrome'   -OffsetX (-65)  -OffsetY (-220) -Z 1)
+        (New-LayoutItem -Id 'seed_free_3' -Name 'Blender'  -Kind 'url' -Path 'https://seed3.example/' -IconKey 'blender'  -OffsetX 65    -OffsetY (-220) -Z 2)
+        (New-LayoutItem -Id 'seed_free_4' -Name 'ComfyUI'  -Kind 'url' -Path 'https://seed4.example/' -IconKey 'comfyui'  -OffsetX 195   -OffsetY (-220) -Z 3)
+        (New-LayoutItem -Id 'seed_dock_1' -Name 'Files'    -Kind 'url' -Path 'https://seed-dock1.example/' -IconKey 'files'    -Placement 'Dock' -Z 0)
+        (New-LayoutItem -Id 'seed_dock_2' -Name 'Music'    -Kind 'url' -Path 'https://seed-dock2.example/' -IconKey 'music'    -Placement 'Dock' -Z 1)
+        (New-LayoutItem -Id 'seed_dock_3' -Name 'Settings' -Kind 'url' -Path 'https://seed-dock3.example/' -IconKey 'settings' -Placement 'Dock' -Z 2)
+        (New-LayoutItem -Id 'seed_dock_4' -Name 'Terminal' -Kind 'url' -Path 'https://seed-dock4.example/' -IconKey 'terminal' -Placement 'Dock' -Z 3)
+    )
 }
 
-function Get-LogCount([string]$pattern) {
-    Refresh-LogFile
-    $text = Read-LogText
-    if ([string]::IsNullOrEmpty($text)) { return 0 }
-    return ([regex]::Matches($text, [regex]::Escape($pattern))).Count
-}
-
-$script:minimized = New-Object System.Collections.ArrayList
-
-function Get-DesktopPoint([int]$x, [int]$y) {
-    $point = New-Object P3Win+POINT
-    $point.X = $x
-    $point.Y = $y
-    $hit = [P3Win]::WindowFromPoint($point)
-    $root = [P3Win]::RootOf($hit)
-    return @{ Class = [P3Win]::ClassOf($root); Root = $root; Hit = $hit }
-}
-
-# The desktop layer must be reachable for any of the pointer checks to mean anything. Whatever
-# covers it gets minimised (never our own windows, never the desktop or its taskbar) and put back
-# at the end of the run.
-function Clear-TheDesktop {
-    Write-Host 'Clearing the desktop: minimising the windows that cover the canvas ...'
-    $desktopClasses = @('Progman', 'WorkerW', 'SHELLDLL_DefView')
-    $keepClasses = @('Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'Progman', 'WorkerW', 'SHELLDLL_DefView', 'Windows.UI.Core.CoreWindow')
-    $points = @()
-    foreach ($y in @(380, 500)) {
-        for ($x = 1015; $x -le 1615; $x += 60) { $points += , @($x, $y) }
-    }
-    $points += , @(1215, 300)
-    $points += , @(48, 620)
-    $points += , @(1700, 900)
-    $points += , @(700, 1200)
-
-    $ownId = 0
-    if ($null -ne $script:process) { $ownId = $script:process.Id }
-
-    for ($round = 1; $round -le 12; $round++) {
-        $offenders = @{}
-        foreach ($probe in $points) {
-            $found = Get-DesktopPoint $probe[0] $probe[1]
-            if ($desktopClasses -contains $found.Class) { continue }
-            if ($keepClasses -contains $found.Class) { continue }
-            if ([P3Win]::ProcessOf($found.Root) -eq $ownId) { continue }
-            if (-not $offenders.ContainsKey($found.Root)) { $offenders[$found.Root] = $found.Class }
-        }
-        if ($offenders.Count -eq 0) { break }
-
-        foreach ($handle in $offenders.Keys) {
-            [P3Win]::ShowWindow($handle, 7) | Out-Null   # SW_SHOWMINNOACTIVE: no focus stealing
-            [void]$script:minimized.Add($handle)
-            Write-Host ("  minimised {0} [{1}]" -f [P3Win]::ClassOf($handle), [P3Win]::TitleOf($handle))
-        }
-        Start-Sleep -Milliseconds 600
-    }
-
-    $blocked = @()
-    foreach ($probe in $points) {
-        $found = Get-DesktopPoint $probe[0] $probe[1]
-        if (-not ($desktopClasses -contains $found.Class)) {
-            $blocked += ("({0},{1}) -> {2}" -f $probe[0], $probe[1], $found.Class)
-        }
-    }
-    return $blocked
-}
-
-function Restore-MinimizedWindows {
-    if ($script:minimized.Count -eq 0) { return }
-    Write-Host 'Restoring the windows the harness minimised ...'
-    foreach ($handle in $script:minimized) {
-        try {
-            if ([P3Win]::IsWindow($handle)) { [P3Win]::ShowWindow($handle, [P3Win]::SW_RESTORE) | Out-Null }
-        } catch {
-            Write-Host ("  could not restore one window: {0}" -f $_)
-        }
-    }
-    $script:minimized.Clear()
-}
-
-function Wait-Until([scriptblock]$predicate, [int]$timeoutSeconds, [string]$what) {
-    $deadline = (Get-Date).AddSeconds($timeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
-        if (& $predicate) { return $true }
-        Start-Sleep -Milliseconds 250
-    }
-    Write-Host ("  (timed out waiting for {0})" -f $what)
-    return $false
-}
-
-function Wait-LogCountGrew([string]$pattern, [long]$base, [int]$timeoutSeconds, [string]$what) {
-    $deadline = (Get-Date).AddSeconds($timeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
-        if ((Get-LogCount $pattern) -gt $base) { return $true }
-        Start-Sleep -Milliseconds 300
-    }
-    Write-Host ("  (timed out waiting for {0} to appear in the log)" -f $what)
-    return $false
-}
-
-function Move-Pointer([int]$x, [int]$y) {
-    [P3Win]::MoveTo($x, $y)
-}
-
-function Get-CursorNow {
-    $point = New-Object P3Win+POINT
-    [void][P3Win]::GetCursorPos([ref]$point)
-    return @($point.X, $point.Y)
-}
-
-function Move-And-Settle([int]$x, [int]$y, [int]$settleMs) {
-    Move-Pointer $x $y
-    Start-Sleep -Milliseconds $settleMs
-}
-
-function Click-Pointer {
-    [P3Win]::LeftDown()
-    Start-Sleep -Milliseconds 30
-    [P3Win]::LeftUp()
-}
-
-function Measure-GpuOnce([int]$processId) {
-    try {
-        $sample = Get-Counter -Counter '\GPU Engine(*)\Utilization Percentage' -MaxSamples 1 -ErrorAction Stop
-        $values = @()
-        foreach ($entry in $sample.CounterSamples) {
-            if ($entry.InstanceName -like "*pid_$processId*") { $values += $entry.CookedValue }
-        }
-        if ($values.Count -eq 0) { return 0 }
-        return ($values | Measure-Object -Maximum).Maximum
-    } catch {
-        return $null
-    }
-}
-
-# ---------------------------------------------------------------- UI Automation
-
-Add-Type -AssemblyName UIAutomationClient
-Add-Type -AssemblyName UIAutomationTypes
-
-function Find-ByName($root, [string]$name, $scope) {
-    if ($null -eq $scope) { $scope = [System.Windows.Automation.TreeScope]::Descendants }
-    $condition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, $name)
-    return $root.FindFirst($scope, $condition)
-}
-
-function Get-DiagElement($root) {
-    $condition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Text)
-    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
-    for ($i = 0; $i -lt $all.Count; $i++) {
-        $element = $all.Item($i)
-        try {
-            $name = $element.GetCurrentPropertyValue([System.Windows.Automation.AutomationElement]::NameProperty)
-        } catch { continue }
-        if ($name -is [string] -and $name -match '^surface' -and $name -match 'mount') { return $element }
-    }
-    return $null
-}
-
-function Initialize-Diagnostics {
-    Write-Host 'Navigating to the dynamic wallpaper page and opening the diagnostics panel ...'
-    $window = [P3Win]::FindWindowByClass([int]$script:process.Id, 'WinUIDesktopWin32WindowClass')
-    if ($window -eq [IntPtr]::Zero) { throw 'The Muralis main window was not found.' }
-    $script:window = $window
-
-    $root = $null
-    for ($attempt = 0; $attempt -lt 60; $attempt++) {
-        try { $root = [System.Windows.Automation.AutomationElement]::FromHandle($window); break } catch { Start-Sleep -Milliseconds 250 }
-    }
-    if ($null -eq $root) { throw 'The Muralis window never became reachable through UI Automation.' }
-
-    [P3Win]::ShowWindow($window, [P3Win]::SW_RESTORE) | Out-Null
-    [P3Win]::SetForegroundWindow($window) | Out-Null
-    Start-Sleep -Milliseconds 400
-
-    $nav = Find-ByName $root $navDynamic $null
-    if ($null -eq $nav) { throw "The navigation item '$navDynamic' was not found." }
-    $nav.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-    Start-Sleep -Milliseconds 900
-
-    $root = [System.Windows.Automation.AutomationElement]::FromHandle($window)
-    $expander = $null
-    $named = Find-ByName $root $diagTitle $null
-    if ($null -ne $named) {
-        try {
-            $named.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-            $expander = $named
-        } catch {
-            $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
-            $cursor = $named
-            while ($null -ne $cursor) {
-                try {
-                    $cursor.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-                    $expander = $cursor
-                    break
-                } catch { $cursor = $walker.GetParent($cursor) }
-            }
-        }
-    }
-    if ($null -eq $expander) { throw 'The diagnostics expander was not found.' }
-    $script:diagExpander = $expander
-    Start-Sleep -Milliseconds 600
-
-    $script:diagElement = Get-DiagElement $root
-    if ($null -eq $script:diagElement) { throw 'The diagnostics text was not found after expanding the panel.' }
-
-    # Minimising keeps the desktop clear for the sweeps; if the panel stops answering, the window
-    # goes to a corner instead so the reads keep working.
-    [P3Win]::ShowWindow($window, [P3Win]::SW_MINIMIZE) | Out-Null
-    Start-Sleep -Milliseconds 500
-}
-
-function Read-Diag {
-    for ($attempt = 1; $attempt -le 3; $attempt++) {
-        try {
-            $text = $script:diagElement.GetCurrentPropertyValue([System.Windows.Automation.AutomationElement]::NameProperty)
-            if ($text -is [string] -and $text.Length -gt 0) { return $text }
-        } catch {
-            # The element went stale: resolve it again.
-            $root = [System.Windows.Automation.AutomationElement]::FromHandle($script:window)
-            $script:diagElement = Get-DiagElement $root
-        }
-        Start-Sleep -Milliseconds 60
-    }
-
-    if ($script:diagMode -eq 'minimize') {
-        Write-Host '  (diagnostics went quiet while minimised; switching to corner mode)'
-        $script:diagMode = 'corner'
-        [P3Win]::ShowWindow($script:window, [P3Win]::SW_RESTORE) | Out-Null
-        [P3Win]::MoveWindow($script:window, 1750, 900, 780, 500, $true) | Out-Null
-        Start-Sleep -Milliseconds 600
-        $root = [System.Windows.Automation.AutomationElement]::FromHandle($script:window)
-        $script:diagElement = Get-DiagElement $root
-    }
-
-    return ''
-}
-
-function Parse-Diag([string]$text) {
-    $state = @{
-        Inside = $null; Px = $null; Py = $null; HoverId = $null; HoverScale = $null
-        DockPhase = $null; Context = $null; Rate = $null; Reports = $null
-        Dispatches = $null; Updates = $null; Mount = $null
-    }
-    if ([string]::IsNullOrEmpty($text)) { return $state }
-
-    if ($text -match 'pointer\s+(inside|outside)\s+(-?[0-9.,]+),\s*(-?[0-9.,]+)') {
-        $state.Inside = ($Matches[1] -eq 'inside')
-        $state.Px = [double]($Matches[2] -replace ',', '')
-        $state.Py = [double]($Matches[3] -replace ',', '')
-    }
-    if ($text -match 'hovered\s+(\S+)\s+at\s+([0-9.]+)x') { $state.HoverId = $Matches[1]; $state.HoverScale = [double]$Matches[2] }
-    if ($text -match 'dock\s+(\w+)\s+at\s+([0-9.]+)x') { $state.DockPhase = $Matches[1]; $state.DockScale = [double]$Matches[2] }
-    if ($text -match 'router\s+(\w+)\s+.\s+([0-9.]+)/s\s+.\s+(\d+)\s+reports\s+.\s+(\d+)\s+dispatches') {
-        $state.Context = $Matches[1]; $state.Rate = [double]$Matches[2]
-        $state.Reports = [long]$Matches[3]; $state.Dispatches = [long]$Matches[4]
-    }
-    if ($text -match 'updates\s+([0-9.]+)/s\s+.\s+(\d+)\s+total') { $state.Updates = [long]$Matches[2] }
-    if ($text -match 'mount\s+(\d+)') { $state.Mount = [int]$Matches[1] }
-    return $state
-}
-
-function Read-State {
-    $text = Read-Diag
-    $state = Parse-Diag $text
-    $state.Text = $text
-    return $state
-}
-
-# The panel rewrites its text on a 250 ms timer, so a reading taken straight after a move can still
-# describe the previous position. These two wait for the panel to catch up instead of guessing a
-# sleep: give up after the timeout and return whatever the panel last said.
-function Read-StateUntil([scriptblock]$predicate, [int]$timeoutMs = 1500) {
-    $deadline = (Get-Date).AddMilliseconds($timeoutMs)
-    $state = Read-State
-    while ((Get-Date) -lt $deadline) {
-        if (& $predicate $state) { return $state }
-        Start-Sleep -Milliseconds 60
-        $state = Read-State
-    }
-    return $state
-}
-
-function Read-StateAt([int]$x, [int]$y, [int]$timeoutMs = 1500) {
-    return Read-StateUntil { param($s) $null -ne $s.Px -and [math]::Abs($s.Px - $x) -le 1.5 -and [math]::Abs($s.Py - $y) -le 1.5 } $timeoutMs
+function Write-SeedLayout {
+    $items = New-SeedLayoutItems
+    Write-Layout $items
+    Write-Host ("planted {0} items in {1} (4 free at the Phase 2 seed offsets, 4 in the dock)" -f $items.Count, $script:layoutPath)
 }
 
 # ---------------------------------------------------------------- probe
@@ -580,7 +123,12 @@ function Invoke-Probe {
         else { Write-Host ("settings.json: DesktopCanvas.Enabled = {0}" -f $canvasProperty.Value.Enabled) }
         Write-Host ("settings.json: CloseToTray = {0}" -f $settings.CloseToTray)
     }
-    Write-Host ("layout file: {0}" -f (Test-Path $layoutPath))
+    Write-Host ("desktop layout:  {0} (present: {1})" -f $layoutPath, (Test-Path $layoutPath))
+    if (Test-Path $layoutPath) {
+        $layout = Read-Layout
+        Write-Host ("  schema {0}, kind '{1}', {2} item(s)" -f $layout.SchemaVersion, $layout.Kind, @($layout.Items).Count)
+    }
+    Write-Host ("prototype file:  {0} (present: {1})" -f $prototypePath, (Test-Path $prototypePath))
 
     $probes = @(
         @{ Name = 'row item centre'; X = 1215; Y = 500 },
@@ -675,21 +223,20 @@ function Invoke-LatencyStage {
     if (Get-Process -Name Muralis -ErrorAction SilentlyContinue) { throw 'Muralis is already running; stop it first.' }
     if (-not (Test-Path $exePath)) { throw "Executable not found: $exePath" }
 
-    Copy-Item -Force $settingsPath $settingsBackup
-    $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-    $settings | Add-Member -NotePropertyName DesktopCanvas -NotePropertyValue ([pscustomobject]@{ Enabled = $true }) -Force
-    $settings.CloseToTray = $false
-    $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $settingsPath -Encoding UTF8
-    if (Test-Path $layoutPath) { Move-Item -Force $layoutPath $layoutBackup }
+    Backup-Settings
+    Enable-CanvasInSettings
+    Park-LayoutFiles
+    Write-SeedLayout
 
     Write-Host '=== Phase 3A diagnostics latency probe ==='
     $script:process = Start-Process -FilePath $exePath -PassThru
     $processId = [int]$script:process.Id
     [void](Wait-Until { [P3Win]::FindWindowByClass($processId, 'WinUIDesktopWin32WindowClass') -ne [IntPtr]::Zero } 60 'the main window')
     [void](Wait-Until { ([P3Win]::ClassesWithPrefix('MuralisPointerRouter_')).Count -ge 1 } 60 'the router attach')
-    Start-Sleep -Milliseconds 800
-    Initialize-Diagnostics
-    $blocked = Clear-TheDesktop
+    Start-Sleep -Milliseconds 900
+    Open-DynamicPage
+    Minimize-AppWindow
+    $blocked = Clear-TheDesktop $clearPointsX $clearPointsY ' (latency stage)' $clearExtraPoints
     if ($blocked.Count -gt 0) { Write-Host ("  (still covered: {0})" -f ($blocked -join '; ')) }
 
     Write-Host ''
@@ -701,13 +248,7 @@ function Invoke-LatencyStage {
 
     Write-Host ''
     Write-Host '--- window visible in the corner ---'
-    [P3Win]::ShowWindow($script:window, [P3Win]::SW_RESTORE) | Out-Null
-    [P3Win]::MoveWindow($script:window, 1750, 900, 780, 500, $true) | Out-Null
-    Start-Sleep -Milliseconds 800
-    $script:diagMode = 'corner'
-    $root = [System.Windows.Automation.AutomationElement]::FromHandle($script:window)
-    $script:diagElement = Get-DiagElement $root
-    if ($null -eq $script:diagElement) { throw 'The diagnostics text was lost when the window came back.' }
+    Show-AppWindow 1750 900 780 500
     Watch-Point 1215 500 6
     Watch-Point 1215 440 6
     Watch-Point 1215 380 6
@@ -718,38 +259,20 @@ function Invoke-LatencyStage {
 
 # ---------------------------------------------------------------- full run
 
-function Restore-Everything {
-    Write-Host ''
-    Write-Host 'Restoring settings and layout ...'
-    Restore-MinimizedWindows
-    Stop-Process -Name Muralis -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 800
-    if (Test-Path $settingsBackup) {
-        Move-Item -Force $settingsBackup $settingsPath
-    }
-    if (Test-Path $layoutBackup) {
-        Move-Item -Force $layoutBackup $layoutPath
-    } elseif (Test-Path $layoutPath) {
-        Remove-Item -Force $layoutPath
-    }
-}
-
 function Invoke-Full {
     if (Get-Process -Name Muralis -ErrorAction SilentlyContinue) { throw 'Muralis is already running; stop it first.' }
     if (-not (Test-Path $exePath)) { throw "Executable not found: $exePath" }
     New-Item -ItemType Directory -Force -Path $outPath | Out-Null
 
-    # --- prepare: back up settings, enable the canvas, park any saved layout so the seed geometry
-    #     (which every expectation below is computed from) is what actually shows.
-    Copy-Item -Force $settingsPath $settingsBackup
-    $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-    $settings | Add-Member -NotePropertyName DesktopCanvas -NotePropertyValue ([pscustomobject]@{ Enabled = $true }) -Force
-    $settings.CloseToTray = $false   # so the graceful-exit check can close the window for real
-    $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $settingsPath -Encoding UTF8
-    if (Test-Path $layoutPath) { Move-Item -Force $layoutPath $layoutBackup }
+    # --- prepare: back up settings, enable the canvas, park any saved document so the planted seed
+    #     geometry (which every expectation below is computed from) is what actually shows.
+    Backup-Settings
+    Enable-CanvasInSettings
+    Park-LayoutFiles
+    Write-SeedLayout
 
     Write-Host ("Launching {0}" -f $exePath)
-    $logBase = Get-LogCounts
+    $logBase = Get-LogCounts $logPatterns
     $script:process = Start-Process -FilePath $exePath -PassThru
     $processId = [int]$script:process.Id
 
@@ -760,17 +283,30 @@ function Invoke-Full {
     Add-Check 'startup: the main window appears' $windowUp ''
     Add-Check 'startup: the canvas mounts' $canvasUp ''
     Add-Check 'startup: the router attaches' $routerUp ''
+    Add-Sample 'exe' $exePath
 
     # Never minimise before the first frame: the app crashes if the window goes away that early.
-    Start-Sleep -Milliseconds 800
-    Initialize-Diagnostics
-    Start-Sleep -Milliseconds 400
+    Start-Sleep -Milliseconds 900
+    Open-DynamicPage
+    Minimize-AppWindow
 
     $routerWindows = [P3Win]::ClassesWithPrefix('MuralisPointerRouter_')
     Add-Check 'one router window for the whole desktop' ($routerWindows.Count -eq 1) ("count {0}" -f $routerWindows.Count)
 
+    # --- the planted geometry only means anything on the display it was computed for
+    $geometry = Read-State
+    $expectedDisplay = ($geometry.MonitorW -eq 2560) -and ($geometry.MonitorH -eq 1440) -and
+        ($geometry.MonitorX -eq 0) -and ($geometry.MonitorY -eq 0) -and ($geometry.ScaleFactor -eq 1.0)
+    Add-Check 'preflight: the display is the one these expectations were computed for' $expectedDisplay `
+        ("{0}x{1} at {2},{3} {4}x" -f $geometry.MonitorW, $geometry.MonitorH, $geometry.MonitorX, $geometry.MonitorY, $geometry.ScaleFactor)
+    if (-not $expectedDisplay) { throw 'The display is not 2560x1440 at 1x with origin 0,0; the probe points in this file do not describe it.' }
+
+    $itemsOnCanvas = Wait-Diag { param($s) $s.ItemCount -eq 8 } 30 'the eight planted items to mount'
+    Add-Check 'startup: the planted document is on the desktop' ($null -ne $itemsOnCanvas) ("items {0}" -f $itemsOnCanvas.ItemCount)
+    Add-Check 'startup: no planted item is marked missing' ($null -ne $itemsOnCanvas -and $itemsOnCanvas.MissingCount -eq 0) ("missing {0}" -f $itemsOnCanvas.MissingCount)
+
     # --- the desktop has to be reachable before any pointer check means anything
-    $blocked = Clear-TheDesktop
+    $blocked = Clear-TheDesktop $clearPointsX $clearPointsY '' $clearExtraPoints
     Add-Check 'preflight: the canvas area is on the desktop, not under an application' ($blocked.Count -eq 0) ("blocked points: {0}" -f ($blocked -join '; '))
     if ($blocked.Count -gt 0) { throw "The desktop is still covered: $($blocked -join '; ')" }
 
@@ -835,7 +371,7 @@ function Invoke-Full {
     Add-Check 'off-row sweep: items still magnify (max 1.21x expected)' ($offRowMax -gt 1.10 -and $offRowMax -lt 1.35) ("max scale {0:0.00}" -f $offRowMax)
     Add-Check 'off-row sweep: value above the item centre is the expected 1.21x' ([math]::Abs($overCentre - $offRowScale) -le 0.06) ("{0:0.00} vs 1.21" -f $overCentre)
 
-    $samples['sweep'] = $sweep
+    Add-Sample 'sweep' $sweep
 
     # --- 3: decay back to rest
     Write-Host 'Test 3: decay, pointer leaves the canvas'
@@ -857,7 +393,7 @@ function Invoke-Full {
     }
     $last = $decayScales[$decayScales.Count - 1]
     Add-Check 'decay: everything returns to rest away from the canvas' $allRest ("last hovered {0} at {1:0.00}x" -f $last.Item, $last.Scale)
-    $samples['decay'] = $decayScales
+    Add-Sample 'decay' $decayScales
 
     # --- 4: dock trigger band. The log lines "The desktop dock expanded/retracted" are checked
     #     after the exit, when the log has been flushed; here the diagnostics phase is the evidence.
@@ -917,13 +453,13 @@ function Invoke-Full {
     Add-Check 'foreign: the canvas clears over the taskbar' (($null -eq $state.HoverId -or $state.HoverId -eq 'none') -and $state.HoverScale -le 1.001) ("hovered {0} at {1:0.00}x" -f $state.HoverId, $state.HoverScale)
 
     # --- 6: hit testing against the visual scale. Evidence here is file system observable: a drag
-    #     inside the region commits the drop and writes the layout; a press outside the region
-    #     cannot reach the canvas at all. The log lines are checked after the exit.
+    #     inside the region commits the drop and rewrites the layout document; a press outside the
+    #     region cannot reach the canvas at all. The log lines are checked after the exit.
     Write-Host 'Test 6: hit testing, region and the grown item box'
     $outsideHit = Get-DesktopPoint $outsideProbe[0] $outsideProbe[1]
     Add-Check 'hit test: outside the region the desktop is under the point' ($outsideHit.Class -in @('SHELLDLL_DefView', 'WorkerW', 'Progman')) ("root class '{0}' at {1},{2}" -f $outsideHit.Class, $outsideProbe[0], $outsideProbe[1])
 
-    $layoutBefore = Test-Path $layoutPath
+    $hashBeforeDrag = (Get-FileHash -Algorithm SHA256 $script:layoutPath).Hash
     Move-And-Settle $growProbe[0] $growProbe[1] 450
     [P3Win]::LeftDown()
     Start-Sleep -Milliseconds 40
@@ -934,17 +470,14 @@ function Invoke-Full {
     Start-Sleep -Milliseconds 60
     [P3Win]::LeftUp()
     Start-Sleep -Milliseconds 500
-    $layoutWritten = Test-Path $layoutPath
-    Add-Check 'hit test: the grown box receives the drag (the drop commits the layout)' ($layoutWritten -and -not $layoutBefore) ("layout before: {0}, after: {1}" -f $layoutBefore, $layoutWritten)
-    $hashAfterDrag = ''
-    if ($layoutWritten) { $hashAfterDrag = (Get-FileHash -Algorithm SHA256 $layoutPath).Hash }
+    $hashAfterDrag = (Get-FileHash -Algorithm SHA256 $script:layoutPath).Hash
+    Add-Check 'hit test: the grown box receives the drag (the drop rewrites the layout)' ($hashAfterDrag -ne $hashBeforeDrag) ("{0} -> {1}" -f $hashBeforeDrag.Substring(0, 8), $hashAfterDrag.Substring(0, 8))
 
     # A press outside the region is not delivered to the canvas: no click, no drag, no commit.
     Move-And-Settle $outsideProbe[0] $outsideProbe[1] 120
     Click-Pointer
     Start-Sleep -Milliseconds 400
-    $hashAfterOutside = ''
-    if (Test-Path $layoutPath) { $hashAfterOutside = (Get-FileHash -Algorithm SHA256 $layoutPath).Hash }
+    $hashAfterOutside = (Get-FileHash -Algorithm SHA256 $script:layoutPath).Hash
     Add-Check 'hit test: a press outside the region changes nothing' ($hashAfterOutside -eq $hashAfterDrag) ''
 
     # --- 7: 30 s of continuous fast movement
@@ -1014,7 +547,7 @@ function Invoke-Full {
     Write-Host ("  movement: {0} moves over {1:0.0}s ({2:0.0} moves/s)" -f $moves, $watch.Elapsed.TotalSeconds, $movesPerSecond)
     Write-Host ("  CPU during movement: {0:0.0} ms total, {1:0.00} ms/s, {2:0.000} % of one core ({3} cores)" -f $cpuUsed, $cpuPerSecond, $cpuPercent, $cpuCount)
     Write-Host ("  GPU during movement: max {0:0.0} %" -f $gpuMax)
-    $samples['flood'] = [pscustomobject]@{
+    Add-Sample 'flood' ([pscustomobject]@{
         Seconds = $watch.Elapsed.TotalSeconds
         Moves = $moves
         MovesPerSecond = $movesPerSecond
@@ -1026,7 +559,7 @@ function Invoke-Full {
         DispatchRateMax = $maxRate
         Reports = $reportGrowth
         Dispatches = $dispatchGrowth
-    }
+    })
 
     # --- 8: idle: nothing moves, nothing happens
     Write-Host 'Test 8: idle while the pointer rests on the desktop'
@@ -1042,14 +575,14 @@ function Invoke-Full {
     $reportsGrew = $state.Reports - $reportsBefore
     Add-Check 'idle: no reports while the pointer rests' ($reportsGrew -eq 0) ("{0} reports in 5 s" -f $reportsGrew)
     Write-Host ("  CPU while idle, diagnostics panel open: {0:0.0} ms over {1:0.0}s" -f $cpuIdle, $idleWatch.Elapsed.TotalSeconds)
-    $samples['idle'] = [pscustomobject]@{
+    Add-Sample 'idle' ([pscustomobject]@{
         Seconds = $idleWatch.Elapsed.TotalSeconds
         CpuMs = $cpuIdle
         CpuMsPerSecond = $cpuIdle / $idleWatch.Elapsed.TotalSeconds
         Reports = $reportsGrew
         DispatchesPerSecond = $state.Rate
         UpdatesTotal = $state.Updates
-    }
+    })
 
     # and again with the panel closed: that is the app at rest with no development tooling on top
     try {
@@ -1061,11 +594,11 @@ function Invoke-Full {
         $quietWatch.Stop()
         $cpuQuiet = ($script:process.TotalProcessorTime - $cpuStart).TotalMilliseconds
         Write-Host ("  CPU while idle, diagnostics panel closed: {0:0.0} ms over {1:0.0}s" -f $cpuQuiet, $quietWatch.Elapsed.TotalSeconds)
-        $samples['idleQuiet'] = [pscustomobject]@{
+        Add-Sample 'idleQuiet' ([pscustomobject]@{
             Seconds = $quietWatch.Elapsed.TotalSeconds
             CpuMs = $cpuQuiet
             CpuMsPerSecond = $cpuQuiet / $quietWatch.Elapsed.TotalSeconds
-        }
+        })
         $script:diagExpander.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         Start-Sleep -Milliseconds 700
     } catch {
@@ -1137,7 +670,7 @@ function Invoke-Full {
         Start-Sleep -Milliseconds 800
     }
     Add-Check 'exit: the app closes on the window close' $exited ''
-    $released = Wait-LogCountGrew 'released its raw mouse input registration' $logBase.RouterReleased 8 'the release log line'
+    $released = Wait-LogCountGrew 'released its raw mouse input registration' $logBase['RouterReleased'] 8 'the release log line'
     Start-Sleep -Milliseconds 700
     $routerWindows = [P3Win]::ClassesWithPrefix('MuralisPointerRouter_')
     $hostWindows = [P3Win]::ClassesWithPrefix('MuralisDesktopHostWindow')
@@ -1147,44 +680,22 @@ function Invoke-Full {
 
     # --- 12: the run's story, read back from the now-flushed log
     Write-Host 'Test 12: the log after the exit (Serilog flushes on shutdown)'
-    $logAfter = Get-LogCounts
-    $samples['logs'] = [pscustomobject]@{ Base = $logBase; After = $logAfter }
-    Add-Check 'log: the first frame settled in this run' ($logAfter.UiIdle -gt $logBase.UiIdle) ("{0} -> {1}" -f $logBase.UiIdle, $logAfter.UiIdle)
-    Add-Check 'log: the canvas mounted in this run' ($logAfter.CanvasShowing -gt $logBase.CanvasShowing) ("{0} -> {1}" -f $logBase.CanvasShowing, $logAfter.CanvasShowing)
-    Add-Check 'log: the router attached exactly once' ($logAfter.RouterListening -eq ($logBase.RouterListening + 1)) ("{0} -> {1}" -f $logBase.RouterListening, $logAfter.RouterListening)
-    Add-Check 'log: the router released exactly once, at the exit' ($logAfter.RouterReleased -eq ($logBase.RouterReleased + 1)) ("{0} -> {1}" -f $logBase.RouterReleased, $logAfter.RouterReleased)
-    Add-Check 'log: the dock expanded and retracted' (($logAfter.DockExpanded -gt $logBase.DockExpanded) -and ($logAfter.DockRetracted -gt $logBase.DockRetracted)) `
-        ("expanded {0}->{1}, retracted {2}->{3}" -f $logBase.DockExpanded, $logAfter.DockExpanded, $logBase.DockRetracted, $logAfter.DockRetracted)
-    Add-Check 'log: exactly one drop reached the canvas, and no click' `
-        ((($logAfter.ItemDropped -eq ($logBase.ItemDropped + 1)) -and ($logAfter.ItemClicked -eq $logBase.ItemClicked))) `
-        ("dropped {0}->{1}, clicked {2}->{3}" -f $logBase.ItemDropped, $logAfter.ItemDropped, $logBase.ItemClicked, $logAfter.ItemClicked)
+    $logAfter = Get-LogCounts $logPatterns
+    Add-Sample 'logs' ([pscustomobject]@{ Base = $logBase; After = $logAfter })
+    Add-Check 'log: the first frame settled in this run' ($logAfter.UiIdle -gt $logBase['UiIdle']) ("{0} -> {1}" -f $logBase['UiIdle'], $logAfter.UiIdle)
+    Add-Check 'log: the canvas mounted in this run' ($logAfter.CanvasShowing -gt $logBase['CanvasShowing']) ("{0} -> {1}" -f $logBase['CanvasShowing'], $logAfter.CanvasShowing)
+    Add-Check 'log: the router attached exactly once' ($logAfter.RouterListening -eq ($logBase['RouterListening'] + 1)) ("{0} -> {1}" -f $logBase['RouterListening'], $logAfter.RouterListening)
+    Add-Check 'log: the router released exactly once, at the exit' ($logAfter.RouterReleased -eq ($logBase['RouterReleased'] + 1)) ("{0} -> {1}" -f $logBase['RouterReleased'], $logAfter.RouterReleased)
+    Add-Check 'log: the dock expanded and retracted' (($logAfter.DockExpanded -gt $logBase['DockExpanded']) -and ($logAfter.DockRetracted -gt $logBase['DockRetracted'])) `
+        ("expanded {0}->{1}, retracted {2}->{3}" -f $logBase['DockExpanded'], $logAfter.DockExpanded, $logBase['DockRetracted'], $logAfter.DockRetracted)
+    Add-Check 'log: exactly one drop reached the canvas, and nothing was selected or launched' `
+        ((($logAfter.ItemDropped -eq ($logBase['ItemDropped'] + 1)) -and ($logAfter.ItemSelected -eq $logBase['ItemSelected']))) `
+        ("dropped {0}->{1}, selected {2}->{3}" -f $logBase['ItemDropped'], $logAfter.ItemDropped, $logBase['ItemSelected'], $logAfter.ItemSelected)
     if (-not $SkipExplorerRestart) {
-        Add-Check 'log: the shell put the content back' ($logAfter.SurfaceBack -gt $logBase.SurfaceBack) ("{0} -> {1}" -f $logBase.SurfaceBack, $logAfter.SurfaceBack)
+        Add-Check 'log: the shell put the content back' ($logAfter.SurfaceBack -gt $logBase['SurfaceBack']) ("{0} -> {1}" -f $logBase['SurfaceBack'], $logAfter.SurfaceBack)
     }
 
-    # --- report
-    Write-Host ''
-    Write-Host '=== checks ==='
-    $failed = 0
-    foreach ($check in $script:checks) { if (-not $check.Ok) { $failed++ } }
-    Write-Host ("{0} checks, {1} failed" -f $script:checks.Count, $failed)
-
-    $report = [pscustomobject]@{
-        Stage = 'full'
-        At = (Get-Date).ToString('s')
-        Exe = $exePath
-        Display = @{
-            Width = [P3Win]::GetSystemMetrics(0)
-            Height = [P3Win]::GetSystemMetrics(1)
-        }
-        Checks = $script:checks
-        Samples = $script:samples
-    }
-    $reportPath = Join-Path $outPath 'p3a-verify.json'
-    $report | ConvertTo-Json -Depth 8 | Set-Content -Path $reportPath -Encoding UTF8
-    Write-Host "report written to $reportPath"
-
-    if ($failed -gt 0) { Write-Host "FAILED CHECKS: $failed" } else { Write-Host 'ALL CHECKS PASSED' }
+    Write-CheckReport 'full' $outPath 'p3a-verify.json' | Out-Null
 }
 
 # ---------------------------------------------------------------- entry
