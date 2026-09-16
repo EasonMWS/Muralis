@@ -252,6 +252,22 @@ public class P3Win {
     return list.ToArray();
   }
 
+  // The first window of a process whose class starts with a prefix. The canvas window is a child of
+  // Explorer's icon host, so the search descends into every top level window's children, not only
+  // into the ones this process owns.
+  public static IntPtr FindWindowByPrefix(int processId, string prefix) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows(delegate(IntPtr h, IntPtr l) {
+      if (ProcessOf(h) == processId && ClassOf(h).StartsWith(prefix)) { found = h; return false; }
+      EnumChildWindows(h, delegate(IntPtr child, IntPtr l2) {
+        if (ProcessOf(child) == processId && ClassOf(child).StartsWith(prefix)) { found = child; return false; }
+        return true;
+      }, IntPtr.Zero);
+      return found == IntPtr.Zero;
+    }, IntPtr.Zero);
+    return found;
+  }
+
   public static IntPtr[] VisibleTopLevel(int minWidth, int minHeight) {
     var list = new System.Collections.Generic.List<IntPtr>();
     EnumWindows(delegate(IntPtr h, IntPtr l) {
@@ -775,6 +791,7 @@ function Parse-Diag([string]$text) {
         ItemCount = $null; MissingCount = $null; SelectedId = $null
         LaunchId = $null; LaunchOutcome = $null; IconEntries = $null; IconMb = $null
         MonitorW = $null; MonitorH = $null; MonitorX = $null; MonitorY = $null; ScaleFactor = $null
+        DockItems = $null; DockEnabled = $null; DockEdge = $null
     }
     if ([string]::IsNullOrEmpty($text)) { return $state }
 
@@ -795,7 +812,13 @@ function Parse-Diag([string]$text) {
     if ($text -match 'icons\s+(\d+)\s+cached\s+.\s+([0-9.]+)\s+MB') {
         $state.IconEntries = [int]$Matches[1]; $state.IconMb = [double]$Matches[2]
     }
-    if ($text -match 'dock\s+(\w+)\s+at\s+([0-9.]+)x') { $state.DockPhase = $Matches[1]; $state.DockScale = [double]$Matches[2] }
+    if ($text -match 'dock\s+(\w+)\s+.\s+(\d+)\s+items\s+.\s+(on|off)\s+.\s+(\w+)\s+edge\s+.\s+reveal\s+([0-9.]+)') {
+        $state.DockPhase = $Matches[1]
+        $state.DockItems = [int]$Matches[2]
+        $state.DockEnabled = ($Matches[3] -eq 'on')
+        $state.DockEdge = $Matches[4]
+        $state.DockScale = [double]$Matches[5]
+    }
     if ($text -match 'router\s+(\w+)\s+.\s+([0-9.]+)/s\s+.\s+(\d+)\s+reports\s+.\s+(\d+)\s+dispatches') {
         $state.Context = $Matches[1]; $state.Rate = [double]$Matches[2]
         $state.Reports = [long]$Matches[3]; $state.Dispatches = [long]$Matches[4]
