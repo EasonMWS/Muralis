@@ -7,12 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-The experimental desktop canvas stops drawing placeholders: its items now stand for real
+The desktop canvas gains its edge dock: a rail on any of the four display edges that holds
+the items you keep closest, magnifies whatever the pointer passes over, slides out of its
+edge when you come to it, and takes items from the canvas and gives them back — while the
+native desktop keeps every one of its own icons, clicks and drags.
+
+The canvas also stopped drawing placeholders earlier in this cycle: its items stand for real
 programs, shortcuts, files, folders and web addresses — imported by hand, drawn with the
 icons the shell shows, opened by double-clicking them, and marked rather than thrown away
 when what they point at goes missing.
 
 ### Added
+
+**The dock**
+
+- A dock of its own, not a tag on the canvas: which edge it hugs, whether it retracts, how
+  it magnifies and what it holds are its own settings, and the canvas is simply every item
+  the dock does not name. The layout document is version 3 and carries the dock as its own
+  section; a version 2 document is read once and brought forward
+- A rail on any edge — left, right, top or bottom — with one set of geometry behind all
+  four: the same rail, the same run of items, the same trigger strip, turned to face the
+  edge it is on. Moving the dock to another edge is a setting, not another code path
+- Magnification the way a dock should feel: the item under the pointer is the largest, its
+  neighbours grow less the further away they are, every item is placed so nothing overlaps
+  however large it gets, and the whole run stays centred instead of sliding away as it grows
+- Auto-hide with explicit states — hidden, revealing, visible, hiding and dragging — and the
+  two delays that keep it from reacting to a pointer that is only passing by. A rail that is
+  dragged something onto stays out, and the rail never blinks away from under the pointer
+- The rail leaves a sliver of itself showing when it is away; the strip along the edge that
+  summons it is four DIP wide, narrower than the first column of your own icons
+- Dock items open on a single click — a rail is a launcher — while free canvas items keep
+  their double-click, and a press that travels becomes a drag, so a drag never opens anything
+- Dragging an item from the canvas onto the dock adds it; dragging it along the rail
+  reorders it with the neighbours making room as you go; dragging it out puts it back on the
+  canvas where you let go. The document changes only on the drop
+- Settings for the dock in the Dynamic Wallpaper page: on or off, which edge, and whether it
+  retracts. These live in the desktop layout document, not in `settings.json`
+
+**Single instance**
+
+- Launching Muralis right after closing it no longer does nothing: the single-instance name
+  is a real lock that is released as the process exits, and a launch that finds the name
+  taken asks whether that instance can still show itself before giving up instead of
+  assuming it is alive
 
 **Desktop canvas items**
 
@@ -40,9 +77,22 @@ when what they point at goes missing.
 
 ### Changed
 
-- The canvas now saves to `%LOCALAPPDATA%\Muralis\desktop\layout.json` (document version 2)
-  instead of the prototype file; the old document is read once — the canvas settings carry
-  over, the placeholder tiles do not — and is kept beside the new one as a `.v1.bak` backup
+- The desktop layout document is version 3; a version 2 file is read once, brought forward
+  and kept beside the new one as `.v2.bak`
+- Dock items no longer sit in the item list with a placement tag: where an item lives is
+  said by the dock alone, so nothing can disagree about it
+- The dock's own spring and its magnification settings now live with the rest of its
+  parameters rather than under the canvas' motion and proximity options
+- The canvas previously saved to `%LOCALAPPDATA%\Muralis\desktop\layout.json` (document
+  version 2) instead of the prototype file; the old document was read once — the canvas
+  settings carried over, the placeholder tiles did not — and was kept beside the new one as
+  a `.v1.bak` backup
+
+### Fixed
+
+- Closing Muralis and reopening it within a second could leave the icon apparently doing
+  nothing, because the name the second launch found was still held by the process that had
+  just exited
 
 ### Removed
 

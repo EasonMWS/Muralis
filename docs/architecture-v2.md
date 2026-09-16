@@ -1178,4 +1178,99 @@ Phase 0 到此结束。下一动作 = 你批准本文件后，按 §14 的 Commi
 | --- | --- |
 | Phase 3A = Desktop Input Foundation | 完成（见 §17.3；提交见 §17.4） |
 | Phase 3B = Real Desktop Items & App Launching | 完成（见 §18.3；提交见 §18.4） |
-| Phase 3C 及以后 | 未开始（按指令停在 3B） |
+| Phase 3C = Interactive Edge Dock | 完成（见 §19.3；提交见 §19.4） |
+| Phase 3D 及以后 | 未开始（按指令停在 3C） |
+
+## 19. Phase 3C 落地记录：Interactive Edge Dock（2026-09-16）
+
+### 19.1 交付内容
+
+- **单实例重启竞态修正（spec §一）**：互斥体从“创建标志”改成真正的锁（`initiallyOwned:false` + `WaitOne`），`AbandonedMutexException` 视为“上一个持有者已死，名字归我”，干净退出时在 `ProcessExit` 里显式 `ReleaseMutex`，不再依赖内核回收；名字被占时不再假设持有者还活着，而是**用命名 ack 事件做一次“你还能把自己显示出来吗”的握手**（`AllowSetForegroundWindow(ASFW_ANY)` + 广播 + 最长 500 ms 等应答），应答只在主窗口真的 `Activate()` 成功之后才发。全部有界重试，没有固定 sleep。
+- **正式的 Dock 模型（spec §二、§十）**：新建 `Muralis.Core/Dock/` 命名空间——`DockEdge`/`DockAxis`（四边 + 方向抽象）、`DockEntry`（只持有 `ItemId`，**引用而不是复制** `DesktopItem`）、`DockOptions`（`Enabled`/`Edge`/`AutoHide`/`TriggerThicknessDip`/`PeekSizeDip`/`ShowDelay`/`HideDelay`/`ItemSizeDip`/`SpacingDip`/`EdgeMarginDip`/`PaddingDip`/`MaxScale`/`InfluenceRadiusDip`/`Falloff`/`Spring`/`Entries`）。**Dock 不再是 Canvas 的一种 placement**：`DesktopItem.Placement` 与 `CanvasItemPlacement` 一并删除，成员关系唯一来源是 `Dock.Entries`，Canvas 就是“dock 没有点名的那些 item”；`Validate()` 会拒绝“点了不存在的 item”“同一 item 进两次”“两边不一致”。文档升级为 **schema 3**（`DesktopLayout { Proximity, Motion, Dock, Items }`），Phase 2 原型（v1）与 Phase 3B 文档（v2）各有一条一次性升级路径（v2 把 `items[].placement` 读成 entries、把 `motion.dock` 搬进 `dock.spring`、把 `collapsedScale` 折算成 peek），原文件保留为 `.v1.bak` / `.v2.bak`。
+- **四边统一几何（spec §三、§十四）**：`DockFrame` 把“沿边坐标 + 离边深度”映射到屏幕点/矩形，四边共用一套公式，没有四份分支；`DockGeometry` 给出 rail 矩形（reveal 0→1 是从边外滑入，不是缩放）、沿边条目中心、触发带、以及“dock 可能画到的全部像素”外接矩形（窗口 region 用它，动画永不裁切）。显示器原点与倍率只出现在 `DockFrame` 构造里。
+- **macOS 风格邻近放大（spec §四、§五）**：`DockMagnification` ——先按“指针到**静止**中心的距离”算每项 scale（用共享的 `CanvasProximity.ScaleAt` 曲线，避免把位移反馈进距离），再按“每项按自己的放大后宽度占位、间隙随两侧 scale 等比放大”顺序铺开，最后整段重新居中到 rail 中心：**任何 scale 组合下都不重叠**（有单测逐点扫过验证）。参数全部来自 dock 配置（`MaxScale`/`InfluenceRadiusDip`/`SpacingDip`/`Spring.PeriodSeconds`/`Spring.DampingRatio`），动画走 WUC spring（`SpringVector3NaturalMotionAnimation`），滑轨与条目各一条。
+- **显式 Auto-hide 状态机（spec §六）**：`DockState { Hidden, Revealing, Visible, Hiding, Dragging }` + `DockAutoHide`（无自己的时钟，调用方喂时间与“动效是否停稳”）。指针离开而 rail 还在外滑时按“离开那一刻”起算 hide delay，条目不闪；拖动期间状态为 `Dragging`，rail 一定在外，不会在手下收回；点开一个条目不会让它抖动（指针就在 rail 上）。
+- **Dock 交互（spec §七、§八、§九）**：**Dock 单击启动，自由画布双击启动**；按下不立即定性，越过系统拖拽矩形才成为拖拽（拖拽永不启动）。沿 rail 拖动 = 重排（插入位预览 + 邻居平滑让位，**松手才写文档**）；拖出 rail = 移回画布（落点写成 anchor + DIP 偏移）；画布条目拖到 dock 上 = 加入（同一 item，只换层与尺寸）。指针上下文完全依赖 `DesktopPointerRouter` 的 Foreign/Desktop/Surface 判定：指针在普通窗口上时 dock 什么都不做（日志与 panel 都可证）。
+- **App 侧（spec §十、§十一）**：动态壁纸页新增 Dock 卡片（开关 / 自动隐藏 / 四边选择器，`AutomationId` = `CanvasDockEnabled` / `CanvasDockAutoHide` / `CanvasDockEdge`），读写走 `IDesktopCanvasService.GetDockAsync/UpdateDockAsync`；dock 参数存在桌面布局文档里，**不写 `settings.json`**。开发面板新增 dock 一行（状态 · 条目数 · 开关 · 边 · reveal），并新增 `DockItemCount` / `DockEdge` / `DockEnabled` 诊断字段。
+
+### 19.2 关键实现决定
+
+- **成员关系只有一个来源**：删掉 `DesktopItem.Placement` 而不是让 `Entries` 与它并存。一个 item 住在哪里由 dock 说了算，画布就是剩下的全部；这样“拖动换家”只改一处，也不会出现“文档说我 docked、画布说我不在 dock”的裂缝。
+- **动画里不重建视觉树**：指针事件只写属性——条目 offset/scale 交给 spring，rail 长度跟着放大后的 run 直接设尺寸（比插值更顺），rail 的圆角背板只在**尺寸真的变了**时重建几何。窗口 region 用的是“dock 可能画到的全部像素”外接矩形，所以动画期间 region 不动；隐藏时 region 收缩到触发带（4 DIP），rail 的像素不再属于窗口——这也是 harness 用 `PtInRegion` 直接验证“rail 真的出来了”的依据。
+- **整段重排而不是钉住指针下的条目**：整段跟着放大重新居中保证连续、无跳变；代价是边界处指针可能落在两个放大的条目之间，此时**画面与命中都按渲染位置来**（`HitTest` 用 `RenderedXDip`），单测里把这个“最大项与最近项最多差一位”的性质固定下来。
+- **不在放大态下也保持稳定**：`_dockPointerAlongDip` 只在 dock 处于外滑状态时才计算，所以 rail 收起时既无放大也无 hover，指针在远处扫过不产生任何工作（§十二“idle ≈ 0 CPU”）。
+- **隐藏即让位**：dock 收起时，它的像素不在窗口 region 里，点击会落回桌面；只有 4 DIP 的触发带始终属于窗口（默认 `TriggerThicknessDip = 4`、`PeekSizeDip = 4`，都比原生桌面图标的第一列更靠边）。
+- **v2→v3 升级是“读一次、写回一次、留一份 `.v2.bak`”**，不是就地改写：失败的升级绝不动原文件（沿用 3B 的迁移承诺）。
+
+### 19.3 逐条验收（spec §十六 的验收演示，全部实测通过）
+
+`tools/p3c-dock-verify.ps1 -Stage dock` 共 **41 项检查全通过**（`artifacts/p3c/p3-dock-verify.json`），覆盖 spec §十六 的每一步：
+
+| spec §十六 | 实测（节选 harness 文案） |
+| --- | --- |
+| 启用左 dock，真实条目出现 | `the document was read as it was planted : Hidden · 3 items · on · Left edge · reveal 0` |
+| 指针接近 → dock 展开 | `the pointer at the edge reveals it : Visible · … · reveal 1`；像素证据 `a revealed rail owns the pixels it draws into` |
+| 图标连续放大 | `the item under the pointer is the one magnified : hovered dock_link` / `the magnified item reaches the dock maximum : hovered scale 1.6` |
+| 邻居平滑位移且不重叠 | 单测逐点验证（`NoTwoItemsEverOverlap_HoweverLargeTheyGrow`、`TheRunStaysCentredOnTheRail_WhereverThePointerIs`）；真机 `a neighbour is smaller than the item under the pointer` |
+| 快速扫过保持连续 | 单测 `AContinuousSweep_IsContinuous`；真机 sweep 覆盖整条 rail 并读到 hover |
+| 指针离开 → auto-hide | `the rail retracts once the pointer is away : Hidden · … · reveal 0` |
+| 单击启动 | `a single click opens the item : openings: 1` + `what it opens really starts : new notepads: …` |
+| 拖动不会误启动 | `a reorder never opens anything : openings during the drag: 0`、`leaving the dock never opens anything : openings: 0`、汇总 `nothing was opened by the pointer alone : openings after everything: 1` |
+| dock 内重排 | `carrying an item along the rail reorders the dock : dock_app,dock_link,dock_folder -> dock_link,dock_folder,dock_app` |
+| Canvas → Dock | `a canvas item dropped on the dock joins it : dock holds …,free_folder,…` |
+| Dock → Canvas | `a dock item dropped on the canvas leaves the dock` + `the item is on the canvas where it was let go : offset -384,-143 DIP, expected about -384,-144` |
+| 切换 Right / Top / Bottom | `the page moves the dock to the Right edge : picker said Right` 等三条 + 各自 `the rail comes out on the … edge and magnifies there` |
+| 重启 Muralis 后恢复 | `the dock comes back after Muralis restarts : Hidden · 3 items · on · Bottom edge` + `the order is the order the user left` |
+| 重启 Explorer 后恢复 | `the canvas comes back after Explorer restarts : mount 1 -> 2`、`the order survives the shell restart`、`the icons are still the ones already resolved : 4 cached before, 5 now`、`the pointer works the dock again after the shell restart : Left; hovered free_folder at 1.6` |
+| 指针在普通窗口上不触发桌面 dock | `a pointer over an ordinary window never brings the dock out : Hidden` + `… magnifies nothing : hovered none`（用的是 Muralis 自己的主窗口盖住左边缘） |
+| 连续 20 次退出→启动无单实例竞态 | `-Stage restart`：20/20 起来、0 次“被当成第二个实例”、0 次双实例、退出后名字**最慢 10 ms** 就空出；`-Stage wake` 5/5 叫醒并前台 |
+| 原生桌面未被永久修改 | 未新增/删除任何桌面窗口；脚本结束恢复 `settings.json`、布局文档与被最小化的用户窗口（`Restoring the desktop documents …`） |
+
+### 19.4 测试与提交
+
+- 新增 / 重写测试：Core——新建 `Dock/DockGeometryTests`、`Dock/DockMagnificationTests`、`Dock/DockAutoHideTests`、`Dock/DockReorderTests`（替换已删除的 `CanvasRailLayoutTests`、`CanvasDockAutoHideTests`），`DesktopLayoutTests` / `DesktopLayoutMigratorTests` / `DesktopItemPlacerTests` / `DesktopItemTests` / `DesktopItemSerializationTests` 按 v3 与新签名更新，并新增 v2→v3 升级用例（placement→entries、spring 搬家、collapsedScale→peek、非法 target 拒绝）。覆盖四边几何与 125 %/150 %/200 % 倍率 + 非零显示器原点、放大不重叠与整段居中、五个状态与两个延迟、重排插入位与预览置换。Core 366 → **415**，Desktop **125** 不变（共 540），Debug / Release 双配置 0 警告 0 错误。
+- 提交（`architecture-v2` 分支）：`eb3f93a` fix: make single instance restart reliable → `5e62a10` feat: add interactive edge dock → `3449e23` test: cover interactive dock behavior → `docs: record the phase 3C landing`（本次提交，见 §19.7）。
+- 验收脚本：`tools/p3c-dock-verify.ps1`，新增 `-Stage dock`（41 项）与 `-Stage perf`（18 项，10/25/50 三档）；`-Stage restart` / `-Stage wake` 为 §一 的回归；`tools/p3-common.ps1` 新增 `FindWindowByPrefix`（画布窗口是 Explorer 图标宿主的子窗口）、`GetWindowRgn`/`PtInRegion`/`GetRgnBox` 区域探针，`Parse-Diag` 跟随新的 dock 诊断行。产物在 `artifacts/p3c/`（未入库）。
+
+### 19.5 性能（dock 全为真实条目，单屏 2560×1440 @96 DPI）
+
+| 项目 | 10 项 | 25 项 | 50 项 |
+| --- | --- | --- | --- |
+| 启动 → 全部在 dock（含 3 次进程启动） | 2025 ms | 1847 ms | 1873 ms |
+| 图标缓存条目 / 内存 | 6 / 1.5 MB | 21 / 5.3 MB | 46 / 11.5 MB |
+| Idle CPU（rail 收起，10 s） | 93.75 ms = 单核 **0.94 %** | 46.875 ms = **0.47 %** | 140.625 ms = **1.40 %** |
+| 沿 rail 连续扫动 CPU | 375 ms / 2.5 s = **15.1 %** | 343.75 ms / 5.9 s = **5.8 %** | 968.75 ms / 5.8 s = **16.7 %** |
+| 扫动 GPU 峰值 | 0.017 % | 0.021 % | 0.021 % |
+| 句柄 / GDI / USER 对象 | 1641 / 95 / 65 | 1767 / 97 / 68 | 1961 / 107 / 69 |
+| 工作集 | 229.6 MB | 238.4 MB | 253.9 MB |
+| 布局保存（原子写） | 1.4 ms | 1.4 ms | 1.4 ms |
+| 展开→收起循环（各 5 次） | 5/5 | 5/5 | 5/5 |
+| 图标条目 vs 需解析项 | 6 / 7 | 21 / 22 | 46 / 47 |
+
+最后一行少 1 是**去重**：fixture 里 `windir` 与 `SystemRoot` 指向同一个目录，缓存按 (路径, 像素) 计一条。
+
+### 19.6 已知限制 / 诚实记录
+
+- **hover 名称标签未实现**：spec §十一 的“至少视觉上”四项里，图标 ✓、选中描边 ✓、rail 背板 ✓ 都在，**唯独 hover 名称标签没做**。当前桌面上方的合成层没有文本渲染路径（要么引入 Win2D/DirectWrite 依赖，要么自己走 GDI 位图 + 掩膜合成），本轮没有把它塞进 3C 的收尾里——留成一个明确的缺口，而不是画一个假的。其余三项与 §十一 的“运行指示可以是 model-only”一致：本轮**不画**运行小点（没有进程跟踪时画一个点等于骗人）。
+- **底部 dock 会被任务栏盖住**：rail 在 y = 边到 72 DIP 之间，Windows 默认任务栏约 48 px——底部任务栏一开，Bottom dock 的指针就够不着（harness 用 `Test-EdgeCoveredByTaskbar` 直接把这一档记成“rail 像素属于画布，但指针不可达”，而不是假装通过）。这是 Windows 上“贴边 dock + 贴底任务栏”的固有冲突，需要用户把任务栏挪开或改边。
+- **50 项时 rail 比屏幕高**：50 × 56 + 49 × 12 = 3388 DIP > 1440 DIP，超出的条目在屏幕外（本轮 dock **没有滚动/分页**）。性能矩阵仍然测了 50 项（放大、状态机、CPU 都正常），但“第 30 项之后在哪”是未定义行为。
+- **多屏与高 DPI 仍未实测**：四边几何的单测覆盖了 125 %/150 %/200 % 与非零显示器原点（`DockFrame` 只从 bounds/scale 取坐标系），但真机验证仍在单屏 96 DPI；`monitor  \\.\DISPLAY5 · 2560x1440 at 0,0 · 96 dpi (1x)`。
+- **Auto-hide 的“擦边抖动”没有专门的抗抖参数**：靠 ShowDelay(120 ms)/HideDelay(600 ms) 与“指针在 rail 上即算想要”来吸收；极端来回扫动下可能出现展开—收起的追赶，但没有实测到抖动（5/5 循环与 sweep 都稳定）。
+- **重排的插入判定是“数有几个中心在指针之前”**，因此切换到下一槽位发生在邻居中心处，而不是严格的几何中点；有意选择“单调、不来回跳”。
+- **拖动 dock 条目时放大暂停**：拖拽期间（`Dragging`）条目按静止尺寸排布、被拖的那一项贴着指针，rail 长度取静止长度——换来了“手下的东西不会跳”，代价是拖动时看不到放大。
+- **验收脚本会最小化挡住桌面的窗口（结束恢复）、会关闭自己启动的 notepad 进程、会 `taskkill explorer.exe` 后重启它**（沿用 Phase 1G/3B 已获授权的做法，可用 `-SkipExplorerRestart` 跳过）；只移动真实指针、只读自家窗口/文档/日志，不读用户屏幕内容。
+- **`DockEntry` 目前只有 `ItemId` 一个字段**：spec §二 举例提到 `Pinned`/`Group`/separator；本轮**没有加**这些还没有消费方的字段（“分组不是必须的”），条目是对象而不是裸 id，将来加字段不改文档形状。
+- **性能是一次测量**，不是分布；idle/sweep 各 10 s 与 2.5–5.9 s 单段。sweep CPU 百分比是“单核占比”，且包含 harness 自身 `SendInput` 的节奏影响。
+- **`feat:` 提交包含了它必须一起带上的测试改动**：删除 `CanvasRailLayoutTests` / `CanvasDockAutoHideTests` 与更新既有 Desktop 测试，否则 `Muralis.slnx`（含测试项目）在那次提交上编不过；新增的 `Dock/*Tests` 与 harness 在随后的 `test:` 提交里。四个提交都经 Debug 全量构建验证（0 警告 0 错误）。
+
+### 19.7 提交与验收产物
+
+| 提交 | 内容 |
+| --- | --- |
+| `eb3f93a` | fix: make single instance restart reliable（含 `tools/p3c-dock-verify.ps1` 的 restart/wake 阶段） |
+| `5e62a10` | feat: add interactive edge dock（Core Dock 命名空间 + 文档 v3 + Desktop 表面 + App 设置与本地化） |
+| `3449e23` | test: cover interactive dock behavior（`Dock/*Tests` + harness 的 dock/perf 阶段 + `p3-common` 探针） |
+| `docs: record the phase 3C landing` | 本节 + CHANGELOG（就是包含本表的那次提交，哈希见 `git log -1`） |
+
+验收产物（`artifacts/`，未入库）：`p3c/p3-dock-verify.json`（41 项全通过）、`p3c/p3-perf-verify.json`（18 项全通过）、`p3c/p3-restart-verify.json` 与 `p3c/p3-wake-verify.json`（10 项全通过）。
+
