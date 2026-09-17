@@ -4,9 +4,8 @@ using Muralis.Core.Models;
 namespace Muralis.Core.Abstractions;
 
 /// <summary>
-/// Product-level desktop mode coordinator. It delegates the experimental takeover to the frozen Phase 3
-/// service and the Clean Desktop lifecycle to its own presentation boundary, so the modes never grow into
-/// three copies of the same shell logic.
+/// Product-level desktop mode coordinator. The public model is deliberately limited to Native and
+/// Muralis; the frozen Phase 3 service is retained only for startup recovery and internal diagnostics.
 /// </summary>
 public interface IDesktopExperienceService
 {
@@ -23,11 +22,11 @@ public interface IDesktopExperienceService
 
 public sealed record DesktopExperienceStatus(
     DesktopExperienceMode Mode,
-    bool IsCleanDesktopAvailable,
+    bool IsMuralisAvailable,
     DesktopModeStatus Phase3,
     string? Error = null)
 {
     public bool HasError => !string.IsNullOrWhiteSpace(Error);
 
-    public bool IsExperimentalTakeover => Mode == DesktopExperienceMode.FullTakeoverExperimental;
+    public bool IsMuralis => Mode == DesktopExperienceMode.Muralis;
 }

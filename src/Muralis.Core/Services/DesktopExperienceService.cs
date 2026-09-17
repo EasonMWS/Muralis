@@ -6,13 +6,25 @@ using Muralis.Core.Models;
 namespace Muralis.Core.Services;
 
 /// <summary>
-/// Coordinates product modes without changing the Phase 3 takeover implementation. Clean Desktop stays
-/// fails safely back to Native unless its independent presentation reports that its complete lifecycle is available.
+/// The product's desktop experience: the native Windows desktop, or Muralis Mode. It owns the mode's
+/// lifecycle and nothing else — hiding and restoring Explorer's icons belongs to the presentation
+/// layer, and the dock and the Shelf belong to the dock's own service.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The frozen Phase 3 service is kept for one job: a desktop that still owes Explorer its icons back
+/// is handed back to Windows. It is never a destination, because the withdrawn takeover is not
+/// re-entered and an older settings file naming it reads as Native.
+/// </para>
+/// <para>
+/// Every failure fails open. A mode that could not be established is reported as Native, which is what
+/// really is in place, so nobody is left with hidden icons and nothing to click.
+/// </para>
+/// </remarks>
 public sealed class DesktopExperienceService : IDesktopExperienceService, IDisposable
 {
     private readonly IDesktopModeService _phase3;
-    private readonly ICleanDesktopPresentation _cleanDesktop;
+    private readonly ICleanDesktopPresentation _presentation;
     private readonly ISettingsService _settings;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
@@ -22,7 +34,7 @@ public sealed class DesktopExperienceService : IDesktopExperienceService, IDispo
         ISettingsService settings)
     {
         _phase3 = phase3 ?? throw new ArgumentNullException(nameof(phase3));
-        _cleanDesktop = cleanDesktop ?? throw new ArgumentNullException(nameof(cleanDesktop));
+        _presentation = cleanDesktop ?? throw new ArgumentNullException(nameof(cleanDesktop));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         Status = new DesktopExperienceStatus(
             DesktopExperienceMode.Native,
@@ -40,24 +52,16 @@ public sealed class DesktopExperienceService : IDesktopExperienceService, IDispo
         await _mutex.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // Settings written before Phase 4A stored the Phase 3 choice in the canvas document. Restore
-            // it once so an existing takeover remains compatible, then migrate to the product-level mode.
-            if (_settings.Current.SchemaVersion < AppSettings.CurrentSchemaVersion)
+            UpgradeTheSavedShape();
+
+            // A desktop that still owes Explorer its icons back is given back before any mode is
+            // applied, and what is remembered afterwards is Native: the withdrawn takeover is never
+            // restored, whatever an older file asked for.
+            var legacy = _phase3.Status;
+            if (legacy.NeedsRecovery || legacy.EffectiveMode != DesktopMode.Native)
             {
-                var legacy = await _phase3.RestoreAsync(cancellationToken).ConfigureAwait(false);
-                if (legacy.EffectiveMode == DesktopMode.Takeover && legacy.OwnsTheDesktop)
-                {
-                    return PublishAndPersist(DesktopExperienceMode.FullTakeoverExperimental, legacy, legacy.Error);
-                }
-
-                // Preview was a Phase 3 development state, not a product-level experience. A migration
-                // ends it explicitly so the new safe Native default describes what is actually visible.
-                if (legacy.EffectiveMode != DesktopMode.Native || legacy.IsShowingCanvas)
-                {
-                    legacy = await _phase3.ApplyAsync(DesktopMode.Native, cancellationToken).ConfigureAwait(false);
-                }
-
-                return PublishAndPersist(DesktopExperienceMode.Native, legacy, legacy.Error);
+                var given = await _phase3.ApplyAsync(DesktopMode.Native, cancellationToken).ConfigureAwait(false);
+                return PublishAndPersist(DesktopExperienceMode.Native, given, given.Error);
             }
 
             return await ApplyCoreAsync(_settings.Current.DesktopExperience.Mode, persist: false, cancellationToken)
@@ -94,19 +98,14 @@ public sealed class DesktopExperienceService : IDesktopExperienceService, IDispo
         bool persist,
         CancellationToken cancellationToken)
     {
-        if (mode == DesktopExperienceMode.CleanDesktop && !_cleanDesktop.IsAvailable)
+        // Leaving Muralis Mode is one move, and it starts with the icons: the desktop is the user's
+        // again before anything else is touched, so a later step that fails has nothing to answer for.
+        if (Status.Mode == DesktopExperienceMode.Muralis && mode != DesktopExperienceMode.Muralis)
         {
-            var native = await EnsureNativeAsync(cancellationToken).ConfigureAwait(false);
-            const string unavailable = "Clean Desktop is unavailable because a safe Explorer icon-visibility lifecycle could not be established.";
-            return PublishAndPersist(DesktopExperienceMode.Native, native, unavailable, persist: true);
-        }
-
-        if (Status.Mode == DesktopExperienceMode.CleanDesktop && mode != DesktopExperienceMode.CleanDesktop)
-        {
-            var stopped = await _cleanDesktop.DeactivateAsync(cancellationToken).ConfigureAwait(false);
+            var stopped = await _presentation.DeactivateAsync(cancellationToken).ConfigureAwait(false);
             if (stopped.IsActive || stopped.Error is not null)
             {
-                return Publish(Status.Mode, _phase3.Status, stopped.Error ?? "Clean Desktop could not be deactivated.");
+                return Publish(Status.Mode, _phase3.Status, stopped.Error ?? "Muralis Mode could not be stopped.");
             }
         }
 
@@ -119,41 +118,38 @@ public sealed class DesktopExperienceService : IDesktopExperienceService, IDispo
                     ? PublishAndPersist(mode, native, native.Error)
                     : Publish(mode, native, native.Error);
             }
-            case DesktopExperienceMode.CleanDesktop:
+            case DesktopExperienceMode.Muralis:
             {
+                if (!_presentation.IsAvailable)
+                {
+                    var unavailable = await EnsureNativeAsync(cancellationToken).ConfigureAwait(false);
+                    return PublishAndPersist(
+                        DesktopExperienceMode.Native,
+                        unavailable,
+                        "Muralis Mode is unavailable because Explorer's desktop icons cannot be hidden safely on this system.");
+                }
+
+                // The dock has to be up before the icons go, and the icons have to be the user's before
+                // the dock is asked for: the presentation enforces the first, and this is the second.
                 var native = await EnsureNativeAsync(cancellationToken).ConfigureAwait(false);
                 if (native.EffectiveMode != DesktopMode.Native || native.NeedsRecovery)
                 {
                     return PublishAndPersist(DesktopExperienceMode.Native, native, native.Error, persist: true);
                 }
 
-                var activated = await _cleanDesktop.ActivateAsync(cancellationToken).ConfigureAwait(false);
+                var activated = await _presentation.ActivateAsync(cancellationToken).ConfigureAwait(false);
                 if (!activated.IsActive)
                 {
                     return PublishAndPersist(
                         DesktopExperienceMode.Native,
                         native,
-                        activated.Error ?? "Clean Desktop could not be activated.",
+                        activated.Error ?? "Muralis Mode could not be started.",
                         persist: true);
                 }
 
                 return persist
                     ? PublishAndPersist(mode, native, activated.Error)
                     : Publish(mode, native, activated.Error);
-            }
-            case DesktopExperienceMode.FullTakeoverExperimental:
-            {
-                var takeover = await _phase3.ApplyAsync(DesktopMode.Takeover, cancellationToken).ConfigureAwait(false);
-                if (takeover.EffectiveMode != DesktopMode.Takeover || !takeover.OwnsTheDesktop)
-                {
-                    var problem = takeover.Error ?? "The experimental takeover could not hide Explorer's desktop icons.";
-                    var native = await EnsureNativeAsync(cancellationToken).ConfigureAwait(false);
-                    return PublishAndPersist(DesktopExperienceMode.Native, native, problem, persist: true);
-                }
-
-                return persist
-                    ? PublishAndPersist(mode, takeover, takeover.Error)
-                    : Publish(mode, takeover, takeover.Error);
             }
             default:
                 throw new ArgumentOutOfRangeException(nameof(mode));
@@ -162,6 +158,20 @@ public sealed class DesktopExperienceService : IDesktopExperienceService, IDispo
 
     private Task<DesktopModeStatus> EnsureNativeAsync(CancellationToken cancellationToken) =>
         _phase3.ApplyAsync(DesktopMode.Native, cancellationToken);
+
+    /// <summary>
+    /// A file written by an older version is brought up to the current shape once, so the withdrawn
+    /// mode names stop existing on disk rather than being translated every time they are read.
+    /// </summary>
+    private void UpgradeTheSavedShape()
+    {
+        if (_settings.Current.SchemaVersion == AppSettings.CurrentSchemaVersion)
+        {
+            return;
+        }
+
+        _settings.Update(settings => settings.SchemaVersion = AppSettings.CurrentSchemaVersion);
+    }
 
     private DesktopExperienceStatus PublishAndPersist(
         DesktopExperienceMode mode,
@@ -191,27 +201,18 @@ public sealed class DesktopExperienceService : IDesktopExperienceService, IDispo
         DesktopModeStatus phase3,
         string? error)
     {
-        Status = new DesktopExperienceStatus(mode, _cleanDesktop.IsAvailable, phase3, error);
+        Status = new DesktopExperienceStatus(mode, _presentation.IsAvailable, phase3, error);
         Changed?.Invoke(this, Status);
         return Status;
     }
 
     /// <summary>
-    /// Keeps the compatibility surface honest when the existing Phase 3 diagnostics page or tray
-    /// changes the legacy service directly. A successful takeover is remembered as experimental;
-    /// every other legacy state has a safe Native product-level restart policy.
+    /// Keeps the reported desktop honest when the frozen Phase 3 service moves it on its own — which,
+    /// now that its interface is gone, is the desktop being handed back. The mode the user chose is
+    /// left alone: what the retired layer does is not a choice the product offers.
     /// </summary>
-    private void OnPhase3Changed(object? sender, DesktopModeStatus phase3)
-    {
-        var mode = phase3.EffectiveMode == DesktopMode.Takeover && phase3.OwnsTheDesktop
-            ? DesktopExperienceMode.FullTakeoverExperimental
-            : DesktopExperienceMode.Native;
-        var error = phase3.EffectiveMode == DesktopMode.Preview
-            ? "The legacy Phase 3 preview is active; it will restart as Native."
-            : phase3.Error;
-
-        PublishAndPersist(mode, phase3, error);
-    }
+    private void OnPhase3Changed(object? sender, DesktopModeStatus phase3) =>
+        Publish(Status.Mode, phase3, phase3.Error);
 
     public void Dispose() => _phase3.Changed -= OnPhase3Changed;
 }

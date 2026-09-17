@@ -14,7 +14,12 @@ public sealed class SettingsService : ISettingsService
     {
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() },
+
+        // Order matters: the first converter that claims a type is the one used, and the string-enum
+        // converter claims every enum. The desktop mode reads former value names, so its converter has to
+        // come first — with the general one first, the retired names were unknown and the whole file
+        // silently fell back to defaults.
+        Converters = { new DesktopExperienceModeJsonConverter(), new JsonStringEnumConverter() },
     };
 
     private readonly ILogger<SettingsService> _logger;

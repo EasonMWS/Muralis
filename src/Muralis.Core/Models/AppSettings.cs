@@ -6,7 +6,7 @@ namespace Muralis.Core.Models;
 /// </summary>
 public sealed class AppSettings
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     /// <summary>Bumped whenever the on-disk shape changes in a breaking way.</summary>
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
@@ -42,7 +42,7 @@ public sealed class AppSettings
 
     /// <summary>
     /// The product-level desktop experience. This deliberately lives outside the Phase 3 canvas
-    /// document: Native and Clean Desktop do not belong to the takeover layout.
+    /// document: Native and Muralis Mode do not belong to the legacy takeover layout.
     /// </summary>
     public DesktopExperienceSettings DesktopExperience { get; set; } = new();
 
