@@ -1334,7 +1334,7 @@ Phase 0 到此结束。下一动作 = 你批准本文件后，按 §14 的 Commi
 
 - 新增测试：Core——`Desktop/Takeover/DesktopTakeoverMachineTests`（五态迁移与非法迁移）、`DesktopTakeoverRecordStoreTests`（原子写、坏文件搁置、脏 schema 拒绝）、`DesktopTakeoverOptionsTests`、`DesktopLayoutMigratorTests`（v3→v4 与 `.v3.bak`）、`DesktopContentScannerTests`、`DesktopContentAdoptionTests`（含三条"身份是路径"的用例）；Desktop——`Modes/DesktopModeServiceTests`（10 项：顺序、失败语义、欠归还、紧急归还、20 轮进出）、`Takeover/DesktopTakeoverLiveTests`（真桌面上的接管/归还/崩溃恢复/坏标记）、`Sync/DesktopItemSyncServiceTests`、`Architecture/ArchitectureGuardTests`（禁止注册表 `HideIcons` 主路径、禁止注入、禁止 `SysListView32` 定位）。Core 415 → **485**，Desktop 125 → **150**（共 635）；Debug / Release 双配置 **0 警告 0 错误**。
 - 提交（`architecture-v2` 分支，见 §20.7）。
-- 验收脚本：`tools/p3d-takeover-verify.ps1`（`-Stage probe|ui|recover|explorer|tray|perf|full`）、`tools/p3d-shell-api-probe.ps1`、`tools/p3d-shell-interop.ps1`（PowerShell 侧直接问 shell view 的探针）；`tools/p3-common.ps1` 增加图标 flags/native 状态的读取、桌面前后快照比对、`Read-StateAt` 的角落模式自救与 notepad 基线工具。产物在 `artifacts/p3d/`（未入库）。
+- 验收脚本：`tools/p3d-takeover-verify.ps1`（`-Stage probe|ui|recover|explorer|tray|perf|full`）、`tools/p3d-shell-api-probe.ps1`、`tools/p3d-shell-interop.ps1`（PowerShell 侧直接问 shell view 的探针）；`tools/p3-common.ps1` 增加图标 flags/native 状态的读取、桌面前后快照比对、`Read-StateAt` 的角落模式自救与 notepad 基线工具。产物在 `artifacts/p3d/`（未入库）。（**事后注**：三态接管随 §23 的两模式收敛撤出产品路径，`tools/p3d-takeover-verify.ps1` 已退役删除；`tools/p3-common.ps1`、`tools/p3d-shell-api-probe.ps1` 与 `tools/p3d-shell-interop.ps1` 仍在用。）
 
 ### 20.5 性能（接管期间的真实桌面，10 / 50 / 100 个条目）
 
@@ -1696,4 +1696,124 @@ App：
 **Phase 4 状态**：Phase 4A（Design Foundation 与三分区 dock 外壳）、4B（Desktop Experience 架构）与 4C（Pinned Apps & Launcher）三段全部落地。dock 现在是一个真正的启动区：可以加 `.exe` 与 `.lnk`、拒绝重复、单击启动、拖动排序、重启恢复、目标消失时仍然留在那里并说得出原因，而且**从不碰用户桌面上的任何文件**。Pinned Apps 不依赖 Clean Desktop，在原生桌面与 Clean Desktop 下同样可用。
 
 按 spec §45，**Phase 4C 到此为止，等待人工验收，不自行进入下一阶段**。
+
+---
+
+## 23. Desktop Experience UX Consolidation 落地记录：两种模式（2026-09-17）
+
+Phase 4C 之后，产品里同时有四处在说"用户与桌面的关系"：壁纸页上的桌面模式三选一、设置页上独立的 Dock 卡片、托盘里两条桌面命令、以及 `settings.json` 里的 `DesktopExperience.Mode`。本节把它们收敛成两种模式。这一段必须在 Phase 4D（Nexus Motion Engine）之前完成——动效要挂在一个稳定的模式概念上。
+
+**先说结论：产品现在只承认 Native 与 Muralis Mode 两种关系。这是"收敛"，不是"删 legacy"。** 冻结的 Phase 3 服务一行未改、recovery 代码一行未删、Dock / Shelf / Pinned Apps 的业务逻辑一行未动。用户可见的第三、第四种关系（Clean Desktop 开关、FullTakeoverExperimental）从产品里消失，只剩下转换器里"旧文件读得进来"的那几行读法。
+
+### 23.1 产品模型：两个模式，一条分界
+
+正式路线就此定下：
+
+| 归 Windows / Explorer | 归 Muralis |
+| --- | --- |
+| 文件、Shell、桌面文件夹、文件关联、系统行为 | 壁纸、Dock、Desktop Shelf、Pinned Apps、Widgets、主题、动效、桌面组织 |
+
+**Windows manages the content. Muralis manages the experience.**
+
+两个模式各自是什么：
+
+| 模式 | 桌面内容归谁 | Explorer 的桌面图标 | Muralis 层 |
+| --- | --- | --- | --- |
+| **Native** | Explorer | Explorer 画，一切不动 | 壁纸；dock 可用（§21 起它已是独立体验层，不依赖模式） |
+| **Muralis Mode** | Explorer（Muralis 不碰任何文件） | 被隐藏（`IFolderView2::SetCurrentFolderFlags(FWF_NOICONS)`） | Dock（必开）+ Desktop Shelf + 壁纸 |
+
+也就是说，两个模式区分的**不是"有没有 dock"**，而是**"Explorer 的图标在不在、桌面内容由谁呈现"**。这也解释了为什么退出 Muralis Mode 的第一件事是把图标还回去：桌面是用户的，Muralis 只是替它画。
+
+撤下的名字与它们的读法（转换器的读取侧，见 §23.2）：
+
+| 文件里写的 | 读成 | 为什么 |
+| --- | --- | --- |
+| `"Muralis"` | Muralis | 当前名 |
+| `"CleanDesktop"` | Muralis | 旧名，同一个模式（干净桌面就是 Muralis Mode 的旧称） |
+| `1` | Muralis | 旧数值枚举里 `CleanDesktop = 1`，新枚举里 `Muralis = 1` |
+| `"Native"` / `0` | Native | 当前名 / 当前值 |
+| `"FullTakeoverExperimental"`、`2`、其它数字、其它字符串、`null`、任何别的 JSON | Native | 撤下的接管不是目的地；不认识的输入一律 fail open，落在"Windows 什么都没变"上 |
+
+### 23.2 落盘形状与迁移（schema 2 → 3）
+
+- `AppSettings.CurrentSchemaVersion` = **3**；`DesktopExperienceService.RestoreAsync` 开头的 `UpgradeTheSavedShape()` 把老文件一次性抬到 3，让旧模式名在磁盘上不再存在，而不是每次读的时候翻译一遍。
+- **marker 文件名与桌面文档版本一个都没动**：`clean-desktop-state.json`、`takeover-state.json`、`layout.json`（文档 v4）仍是原来的契约。本轮只动"产品怎么称呼它"，不动"底层怎么记它"。
+- 迁移是 fail open 的：任何读不出来的值落到 Native，也就是"Windows 什么都没变"。没有哪条路径会因为一个坏值把用户的图标藏起来。
+
+**顺手修掉的一个真 bug（属于本任务范围：migration 安全）**：`SettingsService` 的 `JsonSerializerOptions` 里，`Converters = { new JsonStringEnumConverter() }` 排在类型级 `[JsonConverter(typeof(DesktopExperienceModeJsonConverter))]` **之前**。`JsonSerializerOptions.Converters` 是**先**被咨询的，而 `JsonStringEnumConverter` 认领所有枚举类型——于是 `DesktopExperienceModeJsonConverter` 从来没有被调用过：旧文件里的 `"CleanDesktop"` 对通用转换器而言是一个不存在的枚举名，整份文件反序列化失败，`SettingsService` 吞掉异常、**整份 settings 静默回到默认值**。本次迁移第一次真的会读到旧名，所以这条路径必须修：把 `DesktopExperienceModeJsonConverter` 排在前面，并把"第一个认领类型的转换器胜出"写进注释。修完之后这条读法才有测试（§23.4）。
+
+### 23.3 交付内容
+
+**Core（`Muralis.Core`）**
+
+- `DesktopExperienceMode` 收敛为 `{ Native, Muralis }`。撤下的名字**不在公开枚举里**，只存在于 `DesktopExperienceModeJsonConverter` 的读取分支。
+- `DesktopExperienceStatus`：`IsCleanDesktopAvailable` → `IsMuralisAvailable`，`IsExperimentalTakeover` → `IsMuralis`。
+- `DesktopExperienceService`：`RestoreAsync` 保留"启动时还欠 Explorer 就还给 Explorer"的那一次读，其余不变；进入 / 退出 / 失败路径的语义一行未动（失败一律落回 Native）。**改的是模式名与注释**。
+- `AppSettings.CurrentSchemaVersion` 2 → 3；`SettingsService` 的转换器顺序修正。
+
+**App（用户可见的收敛）**
+
+- **设置页**：原来的 Dock 独立卡片并入新的「Muralis Mode」分组（卡片流不变、导航不变、其它页面不动）。分组里有分组说明 + Dock 开关；Muralis Mode 下 Dock 开关被锁（`CanChangeDockVisibility`）并显示 `Settings_Dock_Required` 说明。
+- **动态壁纸页**：「你的桌面」与「边缘 Dock」两段删除（441 → **318** 行）；「桌面项目」画布卡片、它的 5 个入口与 URL 输入框原样保留。
+- **托盘**：`MenuTurnOffDesktop` 删除，只留一条 `MenuRestoreDesktop`（走 `IDesktopExperienceService.ApplyAsync(Native)`），菜单固定 5 项。`RunDesktopChange` 现在也把失败说清楚：有 error 就记 Warning 并把消息带出来。
+- **ViewModels**：`DesktopModeRow.cs`、`DesktopDockEdgeRow.cs` 删除；`DynamicWallpaperViewModel` 少 484 行；`SettingsViewModel` 增 `IsMuralisMode` / `CanChangeDockVisibility`，模式选项变成两项。
+- **字符串**：两个 resx 各**删 46 条、加 6 条** `<data>`（新增的是 `Settings_Section_MuralisMode`、`Settings_Section_MuralisMode_Description`、`Settings_Dock_Required`、`Settings_DesktopExperience_Muralis`、`Settings_DesktopExperience_Muralis_Description`、`Settings_DesktopExperience_StateUnavailable`）。`Dynamic_Desktop_*` 只剩 5 条（`Refresh`、`Refresh_Hint`、`Status_ItemsAdded`、`Status_NothingNew`、`Status_RefreshFailed`），全部属于保留下来的「桌面项目」卡片。
+
+**Harness**
+
+- `tools/p3d-takeover-verify.ps1` **退役并删除**：它验的 88 + 62 项检查属于已经撤下产品路径的三态接管。
+- **保留**：`tools/p3-common.ps1`（共享基建）、`tools/p3d-shell-api-probe.ps1`、`tools/p3d-shell-interop.ps1`（直接问 shell view 的探针——本次验收仍然用它读 Explorer 自己的图标状态）。
+- `tools/p4c-pinned-verify.ps1` 的 `clean` 阶段改为种 `Mode: 'Muralis'` 与 `SchemaVersion = 3`。
+
+### 23.4 测试与提交
+
+新增 / 改动的测试：
+
+| 测试文件 | 内容 |
+| --- | --- |
+| `Architecture/DesktopExperienceConsolidationTests.cs`（新，4 项） | 壁纸页不再是桌面设置页（7 个 token 在 XAML 与 VM 里都不存在，而 `Dynamic_Section_Canvas_Items` 仍在）；托盘只有一条回原生桌面的路；Dock 设置住在 Muralis Mode 分组里（`Settings_Section_Dock` 不得回来）；撤下的措辞已从字符串里消失 |
+| `Models/DesktopExperienceModeTests.cs`（新，6 项） | 转换器的读表逐条：`CleanDesktop` → Muralis、`FullTakeoverExperimental` → Native、其它值 → Native；写出只有 `"Muralis"` / `"Native"`；以及"历史上写过的每一种形状都读得回来" |
+| `Services/DesktopExperienceServiceTests.cs`（重写，+123/−35） | 两模式的状态机、失败落回 Native、`RestoreAsync` 的欠归还分支、`OnPhase3Changed` 只发布不落盘 |
+| `Architecture/Phase4AArchitectureTests.cs` | 守卫从 `Phase3Takeover_RemainsPresentAsCompatibilityLayer` 改名为 `Phase3Takeover_RemainsPresentButIsNoLongerAProductMode`：冻结层的文件仍在，但公开枚举体里只有 `Native` 与 `Muralis` |
+| `Services/SettingsServiceTests.cs` | 往返测试改用 `Muralis` |
+
+同一份 HEAD 上复跑：**Core 602 + Desktop 165 = 767 通过，0 失败**；Debug 与 Release 双配置 **0 警告 0 错误**（Release 复跑输出：`0 个警告` / `0 个错误`，602 + 165）。
+
+提交按"底层 / 界面 / 测试 / 记录"切：
+
+| 提交 | 内容 |
+| --- | --- |
+| `a316883` `refactor: finish the two-mode desktop experience model` | Core：枚举与转换器、状态改名、schema 3、转换器顺序修正；退役的 `tools/p3d-takeover-verify.ps1` 随之删除（它的删除在上一轮就已 staged，一并落在这里） |
+| `99b093d` `refactor: consolidate the desktop surfaces onto Muralis Mode` | App：设置页分组、壁纸页删两段、托盘并命令、删两个 Row VM、两个 resx |
+| `579d08e` `test: lock the two-mode product model and fix the perf harness` | 两个新测试文件、服务测试重写、架构守卫改名、`p4c` 的 `clean` 阶段改种 `Muralis` 与 schema 3 |
+| `docs: record the desktop experience consolidation` | 本节 + CHANGELOG（就是包含本表的那次提交，哈希见 `git log -1`） |
+
+### 23.5 验收（运行时：两种模式走一圈）
+
+验收落在"用户声称的每一件事都能在机器上读出来"，共四个互相独立的来源：UIA 树、`settings.json`、**Explorer 自己的 `IFolderView2` 图标 flags**、**真的把原生托盘菜单弹出来读**。
+
+`%TEMP%\muralis\p5a_consolidation_ui.ps1 -Stage full`（临时脚本，不入库）**32 项检查，0 失败**：
+
+| 阶段 | 项数 | 断言要点 |
+| --- | --- | --- |
+| probe | 4 | 进任何模式之前先读 Explorer 图标状态并留作基线；无残留 marker；没有已在跑的 Muralis |
+| page | 5 | 7 个撤下的控件一个都不在（`DesktopModeSelector`、`DesktopModeState`、`CanvasDockEnabled`、`CanvasDockAutoHide`、`CanvasDockEdge`、`RestoreWindowsDesktop`、`DesktopModeRow`）；「你的桌面」「边缘 Dock」两段标题在 UIA 树里出现 **0 次**；「画布上的项目」卡片仍在且标题未变 |
+| settings | 5 | 模式下拉在、**恰好两项**；Muralis Mode 分组在；Dock 开关在分组里；Native 下 `Settings_Dock_Required` 提示不在屏幕上 |
+| modes | 9 | 切 Muralis → 文件落 `Muralis`、**Explorer 自己的 `FWF_NOICONS` 真的为真**、dock 窗口真的在、Dock 开关被锁、必开提示可见；切回 Native → 文件落 `Native`、`FWF_NOICONS` 回到假、Dock 开关交还给用户、无 marker 残留 |
+| tray | 5 | 托盘宿主窗口在、菜单能开、**「还原 Windows 桌面」恰好 1 项**、5 项全部来自本应用的资源、菜单恰好等于某一语言的完整命令集 |
+| clean | 4 | 关窗口真的退出（exit code 0）、无进程残留、无 marker 残留、**Explorer 图标与进入前逐位相同** |
+
+回归闸门：`tools/p4c-pinned-verify.ps1 -Stage full` **69 项，0 失败**——dock、pins、Shelf、Clean Desktop 一条都没被这次收敛碰到。
+
+**一处值得记下的方法**：「真的藏了图标」那条用 `IFolderView2` 问 shell 自己，而不是问应用——因为本次要证明的正是"用户看到的桌面真的变了"，应用自己的状态对象在这件事上没有资格作证。
+
+### 23.6 已知偏差 / 诚实记录
+
+1. **Dock 开关在 Native 下没有置灰，分组也没有收起。** spec 给的选项是"整组收起（或置灰）"，实际实现只做了：Muralis Mode 下锁住 Dock 开关并显示必开说明，Native 下开关可用。理由：§21 已经把 dock 做成**独立体验层**——Pinned Apps 不依赖 Clean Desktop，原生桌面下 dock 同样可用；在 Native 下把开关拿走会与 §21 的结论矛盾。整组收起没有做。
+2. **「桌面项目」卡片现在编辑的是一份不再被挂载的画布。** 模式选择器删除之后，没有任何产品路径再调用 `IDesktopCanvasService.EnableAsync`，而桌面内容按 §15 / §16 由 Desktop Shelf 呈现。卡片按用户决定保留（只删前两段）。要处理它必须动 `DesktopModeService` / canvas，属本轮明令禁止，因此记录在案、不绕开、也不假装它不存在。
+3. **`RestoreAsync` 仍然读一次 Phase 3 状态。** 因为"启动时欠着 Explorer 的图标"只可能由 Phase 3 的 marker 表达。产品不进入那条路，只是把它还清；这条读是 §20 的兼容承诺，不是产品模式。
+4. **退役 harness 的托盘互操作搬进了临时验收脚本。** `P3Tray` 那段 Add-Type 只存在于被删的 `tools/p3d-takeover-verify.ps1` 里，而"托盘只剩一条还原命令"这条断言必须真的把原生菜单弹出来读，所以临时脚本自带这一段（在 `%TEMP%` 下，不入库）。
+5. **本轮没做**：Nexus Motion Engine（Phase 4D）、Wallpaper Runtime；**Release 配置的 UI 巡检**（验收跑在 Debug 上，与 §21 / §22 口径一致）；高刷 / 多屏 / 高 DPI 下的模式切换。
+
+**Phase 4 状态**：4A / 4B / 4C / 4C.1 与本节（模式收敛）全部落地。产品对用户只承认两种桌面关系，第三、第四种只剩"旧文件读得进来"这一件事。Phase 4D 的前置条件——一个稳定的模式概念——已经满足；按惯例**等待人工验收，不自行进入下一阶段**。
 

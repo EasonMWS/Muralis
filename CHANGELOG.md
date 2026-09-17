@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Muralis now offers two ways to relate to the desktop and no more. The native Windows desktop is
+the one where Explorer keeps drawing its own icons; Muralis Mode is the one where those icons are
+hidden and the dock and the Shelf present what is on the desktop instead. They are one choice in
+Settings rather than four surfaces that could disagree with each other — a mode picker on the
+wallpaper page, a Clean Desktop switch, and two tray commands whose endings nobody could predict.
+Windows keeps the files, the folders, the associations and its own behaviour; Muralis keeps the
+wallpaper, the dock, the Shelf and the organization over them. **Windows manages the content.
+Muralis manages the experience.** Nothing underneath moved to make that true: the takeover, the
+recovery marker and the clean-desktop shell are the same code, and every read of a mode fails open
+to the native desktop rather than hiding anything.
+
 The dock is now a product surface of its own rather than a corner of the canvas, and its left
 zone is a real launcher: pin a program or a shortcut, click it to start it, drag it along the
 zone to put it in order, unpin it from its own menu — and it all comes back on the next launch.
@@ -193,6 +204,19 @@ them, and never copies, moves, renames or deletes one.
 
 ### Changed
 
+- `settings.json` is schema version 3: the desktop experience carries the native desktop and
+  Muralis Mode and nothing else, and a file written by an older version is read once and brought
+  forward. A former mode name is still understood while reading — clean desktop is Muralis Mode,
+  the withdrawn takeover and anything unrecognised are the native desktop
+- A mode is read with its own converter: the general string-enum converter was claiming the type
+  first, so a file that named a former mode failed to load at all and the whole settings file
+  silently fell back to its defaults
+- The desktop experience offers two options, and the dock's switch sits in the Muralis Mode group
+  on the settings page: while Muralis Mode is on the dock is required, so its switch is off and the
+  row says so. On the native desktop the switch is the user's to change, because the dock is useful
+  there too
+- The tray offers one way back to the Windows desktop — "Restore the Windows desktop" — instead of
+  a separate turn-off and a separate restore whose names did not say which was which
 - Reordering the pinned applications updates only the pins whose own name or warning changed,
   instead of asking every pin in the zone to work out its tooltip again
 - `settings.json` is schema version 2: it carries the desktop experience and the dock with its
@@ -229,6 +253,17 @@ them, and never copies, moves, renames or deletes one.
 
 ### Removed
 
+- The "Your desktop" and "Edge dock" sections of the wallpaper page, with the mode picker, its
+  state line and the dock's four edge options: the wallpaper page is about the wallpaper, and the
+  mode is chosen where the rest of the desktop experience lives. The desktop items card stays —
+  the Shelf reads the very same document and that card is where it is edited
+- The desktop's third and fourth relationships: clean desktop is Muralis Mode under its old name,
+  and the experimental takeover is no longer something the product offers. The frozen layer that
+  implemented it stays for the one job it still has — giving a desktop that owes Windows its icons
+  back to Windows at startup
+- The tray's separate "turn off the desktop" command
+- `tools/p3d-takeover-verify.ps1`, the takeover acceptance harness: the path it verified is not a
+  product path any more. The shared `tools/p3-common.ps1` and the shell probes stay
 - The desktop canvas on/off setting: the desktop mode says which of the three the desktop is
   in, and a document that still carries the old setting is read into the mode it described
 - The Steam / Chrome / Blender / ComfyUI placeholder tiles: the canvas starts empty and
