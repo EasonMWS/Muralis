@@ -211,6 +211,11 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<IDockExperienceService, DockExperienceService>();
         services.AddSingleton<ICleanDesktopPresentation, CleanDesktopPresentation>();
         services.AddSingleton<IDesktopExperienceService, DesktopExperienceService>();
+
+        // The home page's Muralis Mode hero: the state machine over the desktop experience above. One
+        // for the process, like the service it reads, so the page that shows it can come and go.
+        services.AddSingleton<MuralisModeHero>();
+
         services.AddSingleton<DesktopShutdown>();
 
         services.AddSingleton<RotationService>();
