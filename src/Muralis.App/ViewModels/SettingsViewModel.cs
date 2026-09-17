@@ -139,7 +139,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     /// <summary>
     /// The user's own answer to whether the dock is on the desktop. It is the saved preference rather
-    /// than whether the window is up: while Clean Desktop runs, the dock is up whatever this says.
+    /// than whether the window is up: in Muralis Mode the dock is up whatever this says.
     /// </summary>
     [ObservableProperty]
     public partial bool ShowDock { get; set; }
@@ -259,9 +259,19 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     public DesktopExperienceMode DesktopExperienceMode => _desktopExperience.Status.Mode;
 
-    public string DesktopExperienceStateText => _desktopExperience.Status.IsCleanDesktopAvailable
+    /// <summary>True while the desktop is Muralis Mode, which is what the dock's settings belong to.</summary>
+    public bool IsMuralisMode => DesktopExperienceMode == DesktopExperienceMode.Muralis;
+
+    /// <summary>
+    /// Whether the dock's own switch may still be moved. In Muralis Mode the dock is what stands in for
+    /// the hidden Windows icons, so it is required there and only the mode can turn it off — a state
+    /// with no icons and no dock has no way back to the user's desktop.
+    /// </summary>
+    public bool CanChangeDockVisibility => !IsMuralisMode;
+
+    public string DesktopExperienceStateText => _desktopExperience.Status.IsMuralisAvailable
         ? Loc.Get("Settings_DesktopExperience_StateReady")
-        : Loc.Get("Settings_DesktopExperience_StatePhase4A");
+        : Loc.Get("Settings_DesktopExperience_StateUnavailable");
 
     public ObservableCollection<MonitorInfo> Monitors { get; } = [];
 
@@ -355,6 +365,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(LanguageOptions));
         OnPropertyChanged(nameof(DesktopExperienceOptions));
         OnPropertyChanged(nameof(DesktopExperienceStateText));
+        OnPropertyChanged(nameof(IsMuralisMode));
+        OnPropertyChanged(nameof(CanChangeDockVisibility));
         OnPropertyChanged(nameof(RotationStatusText));
         OnPropertyChanged(nameof(MonitorCountText));
         OnPropertyChanged(nameof(AppVersion));
@@ -412,6 +424,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
         var result = await _desktopExperience.ApplyAsync(option.Mode);
         OnPropertyChanged(nameof(DesktopExperienceMode));
+        OnPropertyChanged(nameof(IsMuralisMode));
+        OnPropertyChanged(nameof(CanChangeDockVisibility));
         OnPropertyChanged(nameof(DesktopExperienceStateText));
 
         if (result.HasError)
@@ -708,15 +722,10 @@ public sealed partial class SettingsViewModel : ViewModelBase
             Loc.Get("Settings_DesktopExperience_Native_Description"),
             true),
         new(
-            DesktopExperienceMode.CleanDesktop,
-            Loc.Get("Settings_DesktopExperience_Clean"),
-            Loc.Get("Settings_DesktopExperience_Clean_Description"),
-            _desktopExperience.Status.IsCleanDesktopAvailable),
-        new(
-            DesktopExperienceMode.FullTakeoverExperimental,
-            Loc.Get("Settings_DesktopExperience_Full"),
-            Loc.Get("Settings_DesktopExperience_Full_Description"),
-            true),
+            DesktopExperienceMode.Muralis,
+            Loc.Get("Settings_DesktopExperience_Muralis"),
+            Loc.Get("Settings_DesktopExperience_Muralis_Description"),
+            _desktopExperience.Status.IsMuralisAvailable),
     ];
 
     private void BuildProviderSources()

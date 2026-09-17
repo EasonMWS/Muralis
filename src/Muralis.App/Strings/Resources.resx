@@ -529,14 +529,20 @@
   <data name="Settings_Section_DesktopExperience" xml:space="preserve">
     <value>Desktop experience</value>
   </data>
-  <data name="Settings_Section_Dock" xml:space="preserve">
-    <value>Dock</value>
+  <data name="Settings_Section_MuralisMode" xml:space="preserve">
+    <value>Muralis Mode</value>
+  </data>
+  <data name="Settings_Section_MuralisMode_Description" xml:space="preserve">
+    <value>The dock, the pinned applications and the desktop Shelf are the Muralis Mode experience layer. They work on the native desktop as well.</value>
   </data>
   <data name="Settings_Dock_Show_Title" xml:space="preserve">
     <value>Show the Muralis Dock</value>
   </data>
   <data name="Settings_Dock_Show_Description" xml:space="preserve">
-    <value>A strip of pinned applications and desktop items along the bottom of the screen. It is on by default, works on a native desktop, and Clean Desktop keeps it up while Windows icons are hidden.</value>
+    <value>A strip of pinned applications and desktop items along the bottom of the screen.</value>
+  </data>
+  <data name="Settings_Dock_Required" xml:space="preserve">
+    <value>Muralis Mode keeps the dock up, because it is what stands in for the hidden Windows icons.</value>
   </data>
   <data name="Settings_Status_DockShown" xml:space="preserve">
     <value>The Dock is on the desktop.</value>
@@ -548,31 +554,25 @@
     <value>The Dock could not be shown or hidden.</value>
   </data>
   <data name="Settings_DesktopExperience_Title" xml:space="preserve">
-    <value>Desktop Experience Mode</value>
+    <value>Desktop Experience</value>
   </data>
   <data name="Settings_DesktopExperience_Native" xml:space="preserve">
-    <value>Native</value>
+    <value>Native Desktop</value>
   </data>
   <data name="Settings_DesktopExperience_Native_Description" xml:space="preserve">
-    <value>Explorer remains fully responsible for the desktop.</value>
+    <value>Keep the standard Windows desktop, its icons and its system interaction.</value>
   </data>
-  <data name="Settings_DesktopExperience_Clean" xml:space="preserve">
-    <value>Clean Desktop</value>
+  <data name="Settings_DesktopExperience_Muralis" xml:space="preserve">
+    <value>Muralis Mode</value>
   </data>
-  <data name="Settings_DesktopExperience_Clean_Description" xml:space="preserve">
-    <value>Hides Explorer's icons and presents the real User + Public Desktop in the Muralis Shelf.</value>
-  </data>
-  <data name="Settings_DesktopExperience_Full" xml:space="preserve">
-    <value>Full Takeover (Experimental)</value>
-  </data>
-  <data name="Settings_DesktopExperience_Full_Description" xml:space="preserve">
-    <value>The preserved Phase 3 canvas takeover. Explorer recovery remains available.</value>
+  <data name="Settings_DesktopExperience_Muralis_Description" xml:space="preserve">
+    <value>Hide the traditional desktop icons and use the Muralis dock and Shelf to reach desktop content.</value>
   </data>
   <data name="Settings_DesktopExperience_StateReady" xml:space="preserve">
-    <value>Choose how Muralis relates to the Windows desktop.</value>
+    <value>Choose how Muralis integrates with Windows.</value>
   </data>
-  <data name="Settings_DesktopExperience_StatePhase4A" xml:space="preserve">
-    <value>Clean Desktop is unavailable on this system; Native remains active.</value>
+  <data name="Settings_DesktopExperience_StateUnavailable" xml:space="preserve">
+    <value>Muralis Mode is unavailable on this system, so Native Desktop stays active.</value>
   </data>
   <data name="Settings_Status_DesktopExperienceChanged" xml:space="preserve">
     <value>Desktop experience changed to {0}.</value>
@@ -940,74 +940,11 @@
   </data>
 
   <!--  Desktop modes  -->
-  <data name="Dynamic_Section_Desktop" xml:space="preserve">
-    <value>Your desktop</value>
-  </data>
-  <data name="Dynamic_Desktop_Title" xml:space="preserve">
-    <value>Desktop mode</value>
-  </data>
-  <data name="Dynamic_Desktop_Description" xml:space="preserve">
-    <value>Choose what the desktop is. Leave it to Windows and nothing is touched; show the canvas and Muralis draws its items over your icons while Windows keeps working; take it over and Muralis stops Windows drawing the icons and becomes the desktop instead. Turning it off puts your desktop back exactly as it was.</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode" xml:space="preserve">
-    <value>Mode</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Native" xml:space="preserve">
-    <value>Windows' own desktop</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Native_Description" xml:space="preserve">
-    <value>Windows draws the desktop and its icons. Muralis puts nothing on it.</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Preview" xml:space="preserve">
-    <value>Preview over the icons</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Preview_Description" xml:space="preserve">
-    <value>Muralis draws its items above your icons as a layer. Your own icons still work, and nothing about them is changed.</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Takeover" xml:space="preserve">
-    <value>Full Takeover (Experimental)</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Takeover_Description" xml:space="preserve">
-    <value>Preserved Phase 3 mode: Windows stops drawing desktop icons and the Muralis canvas becomes the desktop. Turning it off restores your icons.</value>
-  </data>
-  <data name="Dynamic_Desktop_State_Preview" xml:space="preserve">
-    <value>Showing the canvas over your icons: {0} items. Your own icons still work.</value>
-  </data>
-  <data name="Dynamic_Desktop_State_Takeover" xml:space="preserve">
-    <value>Muralis is showing the desktop: {0} items, and Windows is not drawing the icons. Turn the mode off to get them back.</value>
-  </data>
-  <data name="Dynamic_Desktop_State_RecoveryRequired" xml:space="preserve">
-    <value>Your desktop icons still have to be given back. Use Restore the Windows desktop; Muralis will not touch the desktop again until it succeeds. ({0})</value>
-  </data>
-  <data name="Dynamic_Desktop_State_Problem" xml:space="preserve">
-    <value>What happened instead: {0}</value>
-  </data>
-  <data name="Dynamic_Desktop_State_Native" xml:space="preserve">
-    <value>Windows is drawing your desktop. Muralis has put nothing on it.</value>
-  </data>
-  <data name="Dynamic_Desktop_Recovery_Title" xml:space="preserve">
-    <value>The Windows desktop is owed a give-back</value>
-  </data>
-  <data name="Dynamic_Desktop_Recovery_Message" xml:space="preserve">
-    <value>A previous takeover could not put the native desktop icons back, so they may still be hidden. Restoring the Windows desktop always works, whatever state the canvas is in.</value>
-  </data>
-  <data name="Dynamic_Desktop_Restore" xml:space="preserve">
-    <value>Restore the Windows desktop</value>
-  </data>
   <data name="Dynamic_Desktop_Refresh" xml:space="preserve">
     <value>Bring across my desktop items</value>
   </data>
   <data name="Dynamic_Desktop_Refresh_Hint" xml:space="preserve">
     <value>Reads your own desktop and adds what is not on the canvas yet. Nothing is moved, copied or changed — each entry only points at where the file already is.</value>
-  </data>
-  <data name="Dynamic_Desktop_Status_Changed" xml:space="preserve">
-    <value>The desktop is now showing {0}.</value>
-  </data>
-  <data name="Dynamic_Desktop_Status_Restored" xml:space="preserve">
-    <value>Your Windows desktop is back, icons and all.</value>
-  </data>
-  <data name="Dynamic_Desktop_Status_Failed" xml:space="preserve">
-    <value>The desktop could not be changed: {0}</value>
   </data>
   <data name="Dynamic_Desktop_Status_ItemsAdded" xml:space="preserve">
     <value>Brought {0} items from your own desktop onto the canvas.</value>
@@ -1017,27 +954,6 @@
   </data>
   <data name="Dynamic_Desktop_Status_RefreshFailed" xml:space="preserve">
     <value>Your own desktop could not be read: {0}</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Title" xml:space="preserve">
-    <value>Show the desktop canvas?</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Summary" xml:space="preserve">
-    <value>{0} items from your own desktop will be added to the canvas, and {1} are already on it.</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Declined" xml:space="preserve">
-    <value>{0} entries you turned down will stay off it.</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Unsupported" xml:space="preserve">
-    <value>These entries cannot be shown and will be left where they are:</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_MoreUnsupported" xml:space="preserve">
-    <value>  … and {0} more.</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Ownership" xml:space="preserve">
-    <value>Muralis does not own your desktop files: nothing is copied, moved, renamed or deleted, and each item only remembers where the file already is.</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Continue" xml:space="preserve">
-    <value>Show it</value>
   </data>
 
   <!--  Desktop canvas items  -->
@@ -1085,39 +1001,6 @@
   </data>
 
   <!--  Edge dock  -->
-  <data name="Dynamic_Section_Dock" xml:space="preserve">
-    <value>Edge dock</value>
-  </data>
-  <data name="Dynamic_Dock_Title" xml:space="preserve">
-    <value>Dock</value>
-  </data>
-  <data name="Dynamic_Dock_Description" xml:space="preserve">
-    <value>A rail on one edge of the display, holding the desktop items you keep closest. Drag an item from the canvas onto it to add one, drag it along to reorder, and drag it back out to return it to the canvas. Nothing about your own icons changes.</value>
-  </data>
-  <data name="Dynamic_Dock_Enabled" xml:space="preserve">
-    <value>Show the dock</value>
-  </data>
-  <data name="Dynamic_Dock_AutoHide" xml:space="preserve">
-    <value>Retract when the pointer is away</value>
-  </data>
-  <data name="Dynamic_Dock_Edge" xml:space="preserve">
-    <value>Edge</value>
-  </data>
-  <data name="Dynamic_Dock_Edge_Left" xml:space="preserve">
-    <value>Left</value>
-  </data>
-  <data name="Dynamic_Dock_Edge_Right" xml:space="preserve">
-    <value>Right</value>
-  </data>
-  <data name="Dynamic_Dock_Edge_Top" xml:space="preserve">
-    <value>Top</value>
-  </data>
-  <data name="Dynamic_Dock_Edge_Bottom" xml:space="preserve">
-    <value>Bottom</value>
-  </data>
-  <data name="Dynamic_Dock_Status_Changed" xml:space="preserve">
-    <value>The dock was updated.</value>
-  </data>
 
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">
@@ -1131,9 +1014,6 @@
   </data>
   <data name="Tray_Settings" xml:space="preserve">
     <value>Settings</value>
-  </data>
-  <data name="Tray_TurnOffDesktop" xml:space="preserve">
-    <value>Turn off the desktop takeover</value>
   </data>
   <data name="Tray_RestoreDesktop" xml:space="preserve">
     <value>Restore the Windows desktop</value>

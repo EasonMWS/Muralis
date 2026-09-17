@@ -529,14 +529,20 @@
   <data name="Settings_Section_DesktopExperience" xml:space="preserve">
     <value>桌面体验</value>
   </data>
-  <data name="Settings_Section_Dock" xml:space="preserve">
-    <value>Dock</value>
+  <data name="Settings_Section_MuralisMode" xml:space="preserve">
+    <value>Muralis 模式</value>
+  </data>
+  <data name="Settings_Section_MuralisMode_Description" xml:space="preserve">
+    <value>Dock、固定应用与桌面架是 Muralis 模式的交互层，在原生桌面上同样可用。</value>
   </data>
   <data name="Settings_Dock_Show_Title" xml:space="preserve">
     <value>显示 Muralis Dock</value>
   </data>
   <data name="Settings_Dock_Show_Description" xml:space="preserve">
-    <value>屏幕底部的一条工具栏，放固定的应用和桌面项目。默认开启，在原生的 Windows 桌面上也可用；在干净桌面隐藏 Windows 图标期间它会保持显示。</value>
+    <value>屏幕底部的一条工具栏，放固定的应用和桌面项目。</value>
+  </data>
+  <data name="Settings_Dock_Required" xml:space="preserve">
+    <value>Muralis 模式下 Dock 会保持显示，因为它就是被隐藏的 Windows 图标的替代入口。</value>
   </data>
   <data name="Settings_Status_DockShown" xml:space="preserve">
     <value>Dock 已显示在桌面上。</value>
@@ -548,31 +554,25 @@
     <value>Dock 无法显示或隐藏。</value>
   </data>
   <data name="Settings_DesktopExperience_Title" xml:space="preserve">
-    <value>桌面体验模式</value>
+    <value>桌面体验</value>
   </data>
   <data name="Settings_DesktopExperience_Native" xml:space="preserve">
     <value>原生桌面</value>
   </data>
   <data name="Settings_DesktopExperience_Native_Description" xml:space="preserve">
-    <value>桌面仍完全由 Explorer 负责。</value>
+    <value>保留 Windows 原生桌面、图标与系统交互。</value>
   </data>
-  <data name="Settings_DesktopExperience_Clean" xml:space="preserve">
-    <value>清爽桌面</value>
+  <data name="Settings_DesktopExperience_Muralis" xml:space="preserve">
+    <value>Muralis 模式</value>
   </data>
-  <data name="Settings_DesktopExperience_Clean_Description" xml:space="preserve">
-    <value>隐藏 Explorer 原生图标，并在 Muralis Shelf 中呈现真实的用户与公共桌面内容。</value>
-  </data>
-  <data name="Settings_DesktopExperience_Full" xml:space="preserve">
-    <value>完全接管（实验性）</value>
-  </data>
-  <data name="Settings_DesktopExperience_Full_Description" xml:space="preserve">
-    <value>保留的 Phase 3 画布接管模式，继续支持 Explorer 恢复。</value>
+  <data name="Settings_DesktopExperience_Muralis_Description" xml:space="preserve">
+    <value>隐藏传统桌面图标，并使用 Muralis Dock 与桌面架整理和访问桌面内容。</value>
   </data>
   <data name="Settings_DesktopExperience_StateReady" xml:space="preserve">
-    <value>选择 Muralis 与 Windows 桌面的协作方式。</value>
+    <value>选择 Muralis 与 Windows 的协作方式。</value>
   </data>
-  <data name="Settings_DesktopExperience_StatePhase4A" xml:space="preserve">
-    <value>当前系统不支持清爽桌面，已保持原生桌面模式。</value>
+  <data name="Settings_DesktopExperience_StateUnavailable" xml:space="preserve">
+    <value>当前系统不支持 Muralis 模式，已保持原生桌面。</value>
   </data>
   <data name="Settings_Status_DesktopExperienceChanged" xml:space="preserve">
     <value>桌面体验已切换为“{0}”。</value>
@@ -940,74 +940,11 @@
   </data>
 
   <!--  桌面模式  -->
-  <data name="Dynamic_Section_Desktop" xml:space="preserve">
-    <value>你的桌面</value>
-  </data>
-  <data name="Dynamic_Desktop_Title" xml:space="preserve">
-    <value>桌面模式</value>
-  </data>
-  <data name="Dynamic_Desktop_Description" xml:space="preserve">
-    <value>选择桌面由谁负责。交给 Windows：什么都不动。显示画布：Muralis 把图标项画在你的图标之上，Windows 照常工作。接管桌面：Windows 不再绘制桌面图标，画布就是桌面。关闭后会把桌面还原成原样。</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode" xml:space="preserve">
-    <value>模式</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Native" xml:space="preserve">
-    <value>Windows 自己的桌面</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Native_Description" xml:space="preserve">
-    <value>桌面和图标由 Windows 绘制，Muralis 不往上放任何东西。</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Preview" xml:space="preserve">
-    <value>覆盖在图标之上的预览</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Preview_Description" xml:space="preserve">
-    <value>Muralis 把图标项作为一层画在你的图标之上。你的图标照常可用，且不会有任何改动。</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Takeover" xml:space="preserve">
-    <value>完全接管（实验性）</value>
-  </data>
-  <data name="Dynamic_Desktop_Mode_Takeover_Description" xml:space="preserve">
-    <value>保留的 Phase 3 模式：Windows 不再绘制桌面图标，Muralis 画布成为桌面。关闭后会还原原生图标。</value>
-  </data>
-  <data name="Dynamic_Desktop_State_Preview" xml:space="preserve">
-    <value>画布正覆盖在你的图标之上：{0} 个图标项。你的图标照常可用。</value>
-  </data>
-  <data name="Dynamic_Desktop_State_Takeover" xml:space="preserve">
-    <value>Muralis 正在显示桌面：{0} 个图标项，Windows 未绘制桌面图标。关闭该模式即可取回图标。</value>
-  </data>
-  <data name="Dynamic_Desktop_State_RecoveryRequired" xml:space="preserve">
-    <value>你的桌面图标还没有还原。请使用“还原 Windows 桌面”；在还原成功之前，Muralis 不会再改动桌面。（{0}）</value>
-  </data>
-  <data name="Dynamic_Desktop_State_Problem" xml:space="preserve">
-    <value>实际结果是：{0}</value>
-  </data>
-  <data name="Dynamic_Desktop_State_Native" xml:space="preserve">
-    <value>桌面由 Windows 绘制，Muralis 没有往上放任何东西。</value>
-  </data>
-  <data name="Dynamic_Desktop_Recovery_Title" xml:space="preserve">
-    <value>Windows 桌面尚未还原</value>
-  </data>
-  <data name="Dynamic_Desktop_Recovery_Message" xml:space="preserve">
-    <value>上一次接管没能把原生桌面图标还回来，它们可能仍处于隐藏状态。“还原 Windows 桌面”在任何情况下都可用，无论画布处于什么状态。</value>
-  </data>
-  <data name="Dynamic_Desktop_Restore" xml:space="preserve">
-    <value>还原 Windows 桌面</value>
-  </data>
   <data name="Dynamic_Desktop_Refresh" xml:space="preserve">
     <value>导入我的桌面图标项</value>
   </data>
   <data name="Dynamic_Desktop_Refresh_Hint" xml:space="preserve">
     <value>读取你自己的桌面，把画布上还没有的条目加进来。不会移动、复制或修改任何东西——每个条目只记住文件原本所在的位置。</value>
-  </data>
-  <data name="Dynamic_Desktop_Status_Changed" xml:space="preserve">
-    <value>桌面现在显示为：{0}。</value>
-  </data>
-  <data name="Dynamic_Desktop_Status_Restored" xml:space="preserve">
-    <value>你的 Windows 桌面已经回来了，图标都在。</value>
-  </data>
-  <data name="Dynamic_Desktop_Status_Failed" xml:space="preserve">
-    <value>无法切换桌面状态：{0}</value>
   </data>
   <data name="Dynamic_Desktop_Status_ItemsAdded" xml:space="preserve">
     <value>已从你自己的桌面导入 {0} 个图标项到画布。</value>
@@ -1017,27 +954,6 @@
   </data>
   <data name="Dynamic_Desktop_Status_RefreshFailed" xml:space="preserve">
     <value>无法读取你自己的桌面：{0}</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Title" xml:space="preserve">
-    <value>要显示桌面画布吗？</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Summary" xml:space="preserve">
-    <value>将把你自己桌面上的 {0} 个条目加入画布，另外 {1} 个已经在画布上。</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Declined" xml:space="preserve">
-    <value>你拒绝过的 {0} 个条目不会被加进来。</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Unsupported" xml:space="preserve">
-    <value>以下条目无法显示，会原封不动地留在原处：</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_MoreUnsupported" xml:space="preserve">
-    <value>  ……以及另外 {0} 个。</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Ownership" xml:space="preserve">
-    <value>Muralis 不拥有你的桌面文件：不会复制、移动、重命名或删除任何文件，每个图标项只记住文件原本所在的位置。</value>
-  </data>
-  <data name="Dynamic_Desktop_Preview_Continue" xml:space="preserve">
-    <value>显示</value>
   </data>
 
 
@@ -1086,39 +1002,6 @@
   </data>
 
   <!--  Edge dock  -->
-  <data name="Dynamic_Section_Dock" xml:space="preserve">
-    <value>边缘 Dock</value>
-  </data>
-  <data name="Dynamic_Dock_Title" xml:space="preserve">
-    <value>Dock</value>
-  </data>
-  <data name="Dynamic_Dock_Description" xml:space="preserve">
-    <value>贴在屏幕某一条边上的条栏，放着你最常用的桌面项目。把项目从画布拖进去即可加入，沿条栏拖动可调整顺序，拖出条栏则放回画布。你自己的桌面图标不会因此改变。</value>
-  </data>
-  <data name="Dynamic_Dock_Enabled" xml:space="preserve">
-    <value>显示 Dock</value>
-  </data>
-  <data name="Dynamic_Dock_AutoHide" xml:space="preserve">
-    <value>指针离开时收起</value>
-  </data>
-  <data name="Dynamic_Dock_Edge" xml:space="preserve">
-    <value>边缘</value>
-  </data>
-  <data name="Dynamic_Dock_Edge_Left" xml:space="preserve">
-    <value>左</value>
-  </data>
-  <data name="Dynamic_Dock_Edge_Right" xml:space="preserve">
-    <value>右</value>
-  </data>
-  <data name="Dynamic_Dock_Edge_Top" xml:space="preserve">
-    <value>上</value>
-  </data>
-  <data name="Dynamic_Dock_Edge_Bottom" xml:space="preserve">
-    <value>下</value>
-  </data>
-  <data name="Dynamic_Dock_Status_Changed" xml:space="preserve">
-    <value>Dock 已更新。</value>
-  </data>
 
   <!--  Tray  -->
   <data name="Tray_Tooltip" xml:space="preserve">
@@ -1132,9 +1015,6 @@
   </data>
   <data name="Tray_Settings" xml:space="preserve">
     <value>设置</value>
-  </data>
-  <data name="Tray_TurnOffDesktop" xml:space="preserve">
-    <value>关闭桌面接管</value>
   </data>
   <data name="Tray_RestoreDesktop" xml:space="preserve">
     <value>还原 Windows 桌面</value>
