@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Semantic values live in theme dictionaries; controls consume only these stable names. -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default" Source="ms-appx:///UI/Tokens/Colors.Dark.xaml" />
+        <ResourceDictionary x:Key="Dark" Source="ms-appx:///UI/Tokens/Colors.Dark.xaml" />
+        <ResourceDictionary x:Key="Light" Source="ms-appx:///UI/Tokens/Colors.Light.xaml" />
+    </ResourceDictionary.ThemeDictionaries>
+
+    <SolidColorBrush x:Key="MuralisBackground0Brush" Color="{ThemeResource MuralisBackground0Color}" />
+    <SolidColorBrush x:Key="MuralisBackground1Brush" Color="{ThemeResource MuralisBackground1Color}" />
+    <SolidColorBrush x:Key="MuralisSidebarBrush" Color="{ThemeResource MuralisSidebarColor}" />
+    <SolidColorBrush x:Key="MuralisSurfaceLowBrush" Color="{ThemeResource MuralisSurfaceLowColor}" />
+    <SolidColorBrush x:Key="MuralisSurfaceMediumBrush" Color="{ThemeResource MuralisSurfaceMediumColor}" />
+    <SolidColorBrush x:Key="MuralisSurfaceHighBrush" Color="{ThemeResource MuralisSurfaceHighColor}" />
+    <SolidColorBrush x:Key="MuralisSurfaceHoverBrush" Color="{ThemeResource MuralisSurfaceHoverColor}" />
+    <SolidColorBrush x:Key="MuralisSurfacePressedBrush" Color="{ThemeResource MuralisSurfacePressedColor}" />
+    <SolidColorBrush x:Key="MuralisSurfaceSelectedBrush" Color="{ThemeResource MuralisSurfaceSelectedColor}" />
+    <SolidColorBrush x:Key="MuralisTextPrimaryBrush" Color="{ThemeResource MuralisTextPrimaryColor}" />
+    <SolidColorBrush x:Key="MuralisTextSecondaryBrush" Color="{ThemeResource MuralisTextSecondaryColor}" />
+    <SolidColorBrush x:Key="MuralisTextTertiaryBrush" Color="{ThemeResource MuralisTextTertiaryColor}" />
+    <SolidColorBrush x:Key="MuralisTextDisabledBrush" Color="{ThemeResource MuralisTextDisabledColor}" />
+    <SolidColorBrush x:Key="MuralisOnImagePrimaryBrush" Color="{ThemeResource MuralisOnImagePrimaryColor}" />
+    <SolidColorBrush x:Key="MuralisOnImageSecondaryBrush" Color="{ThemeResource MuralisOnImageSecondaryColor}" />
+    <SolidColorBrush x:Key="MuralisBorderSubtleBrush" Color="{ThemeResource MuralisBorderSubtleColor}" />
+    <SolidColorBrush x:Key="MuralisBorderNormalBrush" Color="{ThemeResource MuralisBorderNormalColor}" />
+    <SolidColorBrush x:Key="MuralisBorderHoverBrush" Color="{ThemeResource MuralisBorderHoverColor}" />
+    <SolidColorBrush x:Key="MuralisBorderActiveBrush" Color="{ThemeResource MuralisBorderActiveColor}" />
+    <SolidColorBrush x:Key="MuralisEdgeHighlightBrush" Color="{ThemeResource MuralisEdgeHighlightColor}" />
+    <SolidColorBrush x:Key="MuralisEdgeHighlightLowBrush" Color="{ThemeResource MuralisEdgeHighlightLowColor}" />
+    <SolidColorBrush x:Key="MuralisEdgeHighlightMediumBrush" Color="{ThemeResource MuralisEdgeHighlightMediumColor}" />
+    <SolidColorBrush x:Key="MuralisEdgeHighlightHighBrush" Color="{ThemeResource MuralisEdgeHighlightHighColor}" />
+    <SolidColorBrush x:Key="MuralisAccentPrimaryBrush" Color="{ThemeResource MuralisAccentPrimaryColor}" />
+    <SolidColorBrush x:Key="MuralisAccentSecondaryBrush" Color="{ThemeResource MuralisAccentSecondaryColor}" />
+    <SolidColorBrush x:Key="MuralisAccentForegroundBrush" Color="{ThemeResource MuralisAccentForegroundColor}" />
+    <SolidColorBrush x:Key="MuralisSurfaceTintBrush" Color="{ThemeResource MuralisSurfaceTintColor}" />
+    <SolidColorBrush x:Key="MuralisGlowTintBrush" Color="{ThemeResource MuralisGlowTintColor}" />
+    <SolidColorBrush x:Key="MuralisWallpaperMoodBrush" Color="{ThemeResource MuralisWallpaperMoodColor}" />
+
+    <LinearGradientBrush x:Key="MuralisAppBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="{ThemeResource MuralisAppBackgroundStartColor}" />
+        <GradientStop Offset="0.55" Color="{ThemeResource MuralisAppBackgroundMiddleColor}" />
+        <GradientStop Offset="1" Color="{ThemeResource MuralisAppBackgroundEndColor}" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="MuralisGlassLowBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="{ThemeResource MuralisGlassLowTopColor}" />
+        <GradientStop Offset="1" Color="{ThemeResource MuralisGlassLowBottomColor}" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="MuralisGlassMediumBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="{ThemeResource MuralisGlassMediumTopColor}" />
+        <GradientStop Offset="1" Color="{ThemeResource MuralisGlassMediumBottomColor}" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="MuralisGlassHighBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="{ThemeResource MuralisGlassHighTopColor}" />
+        <GradientStop Offset="1" Color="{ThemeResource MuralisGlassHighBottomColor}" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="MuralisPrimaryButtonBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="{ThemeResource MuralisPrimaryButtonTopColor}" />
+        <GradientStop Offset="1" Color="{ThemeResource MuralisPrimaryButtonBottomColor}" />
+    </LinearGradientBrush>
+</ResourceDictionary>

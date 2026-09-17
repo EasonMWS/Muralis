@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Muralis.App.UI.Dock.DockLabPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:dock="using:Muralis.App.UI.Dock"
+    xmlns:materials="using:Muralis.App.UI.Materials"
+    Background="{ThemeResource MuralisAppBackgroundBrush}">
+
+    <Grid Padding="{StaticResource MuralisPageInset}">
+        <Grid IsHitTestVisible="False" Opacity="0.9">
+            <Border>
+                <Border.Background>
+                    <RadialGradientBrush Center="0.72,0.34" GradientOrigin="0.72,0.34" RadiusX="0.9" RadiusY="0.9">
+                        <GradientStop Offset="0" Color="{ThemeResource MuralisSurfaceTintColor}" />
+                        <GradientStop Offset="0.48" Color="{ThemeResource MuralisWallpaperMoodColor}" />
+                        <GradientStop Offset="1" Color="{ThemeResource MuralisBackground0Color}" />
+                    </RadialGradientBrush>
+                </Border.Background>
+            </Border>
+        </Grid>
+
+        <Grid MaxWidth="1180">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource MuralisDisplayTextStyle}" Text="Dock Lab" />
+                <TextBlock
+                    MaxWidth="820"
+                    Foreground="{ThemeResource MuralisTextSecondaryBrush}"
+                    Style="{StaticResource MuralisBodyTextStyle}"
+                    Text="Phase 4C · the Pinned Apps zone is a real launcher: add a program or shortcut, open it with one click, unpin it, or drop a file onto it. The Shelf stays independent and keeps projecting the real Desktop."
+                    TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock VerticalAlignment="Center" Style="{StaticResource MuralisBodyTextStyle}" Text="Shelf data" />
+                    <ComboBox x:Name="ShelfMode" SelectedIndex="1" SelectionChanged="OnShelfModeChanged">
+                        <x:String>Mock</x:String>
+                        <x:String>Real Desktop</x:String>
+                    </ComboBox>
+                </StackPanel>
+                <TextBlock
+                    x:Name="Diagnostics"
+                    Foreground="{ThemeResource MuralisTextSecondaryBrush}"
+                    Style="{StaticResource MuralisCaptionTextStyle}"
+                    Text="Loading real Desktop…"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    x:Name="PinnedStatus"
+                    AutomationProperties.Name="Pinned app status"
+                    Foreground="{ThemeResource MuralisTextSecondaryBrush}"
+                    Style="{StaticResource MuralisCaptionTextStyle}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Grid Grid.Row="1" ColumnSpacing="16" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <materials:GlassSurface Level="Medium">
+                    <StackPanel Spacing="7">
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Pinned Apps" />
+                        <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Fixed zone · real launcher · add, open, unpin, reorder" TextWrapping="Wrap" />
+                    </StackPanel>
+                </materials:GlassSurface>
+                <materials:GlassSurface Grid.Column="1" Level="High">
+                    <StackPanel Spacing="7">
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Desktop Shelf" />
+                        <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Independent horizontal viewport · wheel or trackpad" TextWrapping="Wrap" />
+                    </StackPanel>
+                </materials:GlassSurface>
+                <materials:GlassSurface Grid.Column="2" Level="Medium">
+                    <StackPanel Spacing="7">
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Utilities" />
+                        <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Fixed zone · settings, trash and desktop" TextWrapping="Wrap" />
+                    </StackPanel>
+                </materials:GlassSurface>
+            </Grid>
+
+            <dock:DockHost
+                x:Name="Dock"
+                Grid.Row="2"
+                HorizontalAlignment="Center"
+                PinnedApps="{x:Bind PinnedApps}"
+                ShelfItems="{x:Bind ShelfItems}"
+                UtilityItems="{x:Bind UtilityItems}" />
+        </Grid>
+    </Grid>
+</Page>

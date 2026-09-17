@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Muralis.App.Infrastructure;
 using Muralis.App.Services;
 using Muralis.App.Services.Platform;
@@ -18,6 +19,7 @@ public sealed partial class MainWindow : Window
     private readonly TrayService _trayService;
     private readonly DesktopShutdown _desktopShutdown;
     private readonly ILogger<MainWindow> _logger;
+    private string _activePageKey = Routes.Home;
     private bool _allowClose;
     private bool _shuttingDown;
 
@@ -62,7 +64,6 @@ public sealed partial class MainWindow : Window
 
         AppWindow.Closing += OnWindowClosing;
 
-        RootNavigationView.SelectedItem = RootNavigationView.MenuItems[0];
         _navigation.NavigateTo(Routes.Home);
     }
 
@@ -228,19 +229,36 @@ public sealed partial class MainWindow : Window
         if (args.InvokedItemContainer is NavigationViewItem { Tag: string key } && !_navigation.NavigateTo(key))
         {
             _logger.LogWarning("Navigation to '{Key}' was not possible", key);
+            ApplyNavigationSelection(_activePageKey);
         }
     }
 
     private void OnNavigated(object? sender, NavigatedEventArgs e)
     {
         AppTitleBar.IsBackButtonVisible = _navigation.CanGoBack;
+        _activePageKey = e.PageKey;
+        ApplyNavigationSelection(e.PageKey);
+    }
 
-        // Detail and other sub-pages are not represented in the navigation pane;
-        // keep the previously selected item in that case.
-        var matchingItem = FindNavigationItem(e.PageKey);
-        if (matchingItem is not null && !ReferenceEquals(RootNavigationView.SelectedItem, matchingItem))
+    /// <summary>
+    /// Selection describes the route that is actually visible, never the last item the user clicked.
+    /// Routes without a formal pane entry (details and the hidden design playground) deliberately
+    /// clear the selection so Home or Browse cannot appear active behind another page.
+    /// </summary>
+    private void ApplyNavigationSelection(string pageKey)
+    {
+        var matchingItem = FindNavigationItem(pageKey);
+        if (!ReferenceEquals(RootNavigationView.SelectedItem, matchingItem))
         {
             RootNavigationView.SelectedItem = matchingItem;
+        }
+
+        // NavigationView can retain the previous container's internal selected visual even after
+        // SelectedItem becomes null (notably when a route has no pane item). Keep every container's
+        // state route-derived as well so its selection indicator cannot survive on Playground/detail.
+        foreach (var item in RootNavigationView.MenuItems.Concat(RootNavigationView.FooterMenuItems).OfType<NavigationViewItem>())
+        {
+            item.IsSelected = ReferenceEquals(item, matchingItem);
         }
     }
 
@@ -267,4 +285,14 @@ public sealed partial class MainWindow : Window
 
     private void OnTitleBarPaneToggleRequested(TitleBar sender, object args) =>
         RootNavigationView.IsPaneOpen = !RootNavigationView.IsPaneOpen;
+
+    private void OnDesignPlaygroundInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = _navigation.NavigateTo(Routes.DesignPlayground);
+    }
+
+    private void OnDockLabInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = _navigation.NavigateTo(Routes.DockLab);
+    }
 }

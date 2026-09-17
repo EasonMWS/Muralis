@@ -4,6 +4,7 @@ using Serilog;
 using Muralis.App.Services;
 using Muralis.App.Services.Platform;
 using Muralis.App.ViewModels;
+using Muralis.App.UI.Dock;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Canvas;
 using Muralis.Core.Desktop;
@@ -14,11 +15,15 @@ using Muralis.Core.Repositories;
 using Muralis.Core.Services;
 using Muralis.Core.Desktop.Takeover;
 using Muralis.Desktop.Input;
+using Muralis.Desktop.CleanDesktop;
+using Muralis.Desktop.Icons;
 using Muralis.Desktop.Items;
+using Muralis.Desktop.Launch;
 using Muralis.Desktop.Modes;
 using Muralis.Desktop.Shell;
 using Muralis.Desktop.Surfaces.Compatibility;
 using Muralis.Desktop.Sync;
+using Muralis.Desktop.Shelf;
 using Muralis.Desktop.Takeover;
 
 namespace Muralis.App.Infrastructure;
@@ -192,6 +197,20 @@ public sealed class AppHost : IDisposable
             return takeover;
         });
         services.AddSingleton<IDesktopModeService, DesktopModeService>();
+        services.AddSingleton<IDesktopShelfService, DesktopShelfService>();
+        services.AddSingleton<IShellIconProvider, ShellIconProvider>();
+
+        // The pinned applications: what the desktop layer can say about a file, what it can do with
+        // one, and the list the dock draws from the settings file.
+        services.AddSingleton<IApplicationInspector, ShellApplicationInspector>();
+        services.AddSingleton<IApplicationLauncher, ShellApplicationLauncher>();
+        services.AddSingleton<IApplicationLocationRevealer, ShellLocationRevealer>();
+        services.AddSingleton<IPinnedAppService, PinnedAppService>();
+
+        services.AddSingleton<IDesktopDockHost, DesktopDockHost>();
+        services.AddSingleton<IDockExperienceService, DockExperienceService>();
+        services.AddSingleton<ICleanDesktopPresentation, CleanDesktopPresentation>();
+        services.AddSingleton<IDesktopExperienceService, DesktopExperienceService>();
         services.AddSingleton<DesktopShutdown>();
 
         services.AddSingleton<RotationService>();

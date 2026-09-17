@@ -8,51 +8,78 @@
     mc:Ignorable="d">
 
     <Border
+        x:Name="MotionRoot"
+        BorderBrush="{ThemeResource MuralisBorderNormalBrush}"
+        BorderThickness="1"
         Background="{x:Bind Wallpaper.Id, Mode=OneWay, Converter={StaticResource IdToPlaceholderBrush}}"
-        CornerRadius="8">
+        CornerRadius="{StaticResource MuralisRadiusS}"
+        Shadow="{StaticResource MuralisElevation2Shadow}">
         <Grid>
             <Image
+                x:Name="PreviewImage"
                 Source="{x:Bind Wallpaper.DisplayImagePath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
                 Stretch="UniformToFill" />
 
             <!--  Bottom scrim so the title stays readable on any image  -->
-            <Border Height="84" VerticalAlignment="Bottom" CornerRadius="0,0,8,8">
+            <Border Height="78" VerticalAlignment="Bottom" CornerRadius="0,0,12,12">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="#00000000" />
-                        <GradientStop Offset="0.5" Color="#8C000000" />
-                        <GradientStop Offset="1" Color="#D9000000" />
+                        <GradientStop Offset="0" Color="{ThemeResource MuralisScrimTransparentColor}" />
+                        <GradientStop Offset="0.58" Color="{ThemeResource MuralisScrimMediumColor}" />
+                        <GradientStop Offset="1" Color="{ThemeResource MuralisScrimStrongColor}" />
                     </LinearGradientBrush>
                 </Border.Background>
             </Border>
 
+            <Border
+                Height="1"
+                Margin="14,0"
+                VerticalAlignment="Top"
+                Background="{ThemeResource MuralisEdgeHighlightMediumBrush}"
+                CornerRadius="{StaticResource MuralisRadiusPill}"
+                IsHitTestVisible="False" />
+
             <!--  Favorite badge  -->
             <Border
-                Margin="8"
-                Padding="5"
+                Margin="{StaticResource MuralisInsetXS}"
+                Padding="{StaticResource MuralisInsetXXS}"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"
-                Background="#66000000"
-                CornerRadius="12"
+                Background="{ThemeResource MuralisSurfaceHighBrush}"
+                BorderBrush="{ThemeResource MuralisBorderNormalBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource MuralisRadiusPill}"
                 Visibility="{x:Bind Wallpaper.IsFavorite, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                 <FontIcon
-                    FontSize="11"
-                    Foreground="#FFFF6B81"
+                    FontSize="12"
+                    Foreground="{ThemeResource MuralisAccentPrimaryBrush}"
                     Glyph="&#xEB51;" />
             </Border>
 
+            <Border
+                x:Name="SelectionIndicator"
+                Width="24"
+                Height="3"
+                Margin="{StaticResource MuralisInsetXS}"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Background="{ThemeResource MuralisAccentPrimaryBrush}"
+                CornerRadius="{StaticResource MuralisRadiusPill}"
+                Opacity="0" />
+
             <StackPanel
-                Margin="12,0,12,10"
+                Margin="12,0,12,12"
                 VerticalAlignment="Bottom"
                 Spacing="1">
                 <TextBlock
+                    Style="{StaticResource MuralisBodyTextStyle}"
                     FontWeight="SemiBold"
-                    Foreground="White"
+                    Foreground="{ThemeResource MuralisOnImagePrimaryBrush}"
                     Text="{x:Bind Wallpaper.Title, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
                 <TextBlock
-                    FontSize="12"
-                    Foreground="#B3FFFFFF"
+                    Style="{StaticResource MuralisCaptionTextStyle}"
+                    Foreground="{ThemeResource MuralisOnImageSecondaryBrush}"
                     Text="{x:Bind Wallpaper.MetaText, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
             </StackPanel>

@@ -526,6 +526,60 @@
   <data name="Settings_Theme_Dark" xml:space="preserve">
     <value>深色</value>
   </data>
+  <data name="Settings_Section_DesktopExperience" xml:space="preserve">
+    <value>桌面体验</value>
+  </data>
+  <data name="Settings_Section_Dock" xml:space="preserve">
+    <value>Dock</value>
+  </data>
+  <data name="Settings_Dock_Show_Title" xml:space="preserve">
+    <value>显示 Muralis Dock</value>
+  </data>
+  <data name="Settings_Dock_Show_Description" xml:space="preserve">
+    <value>屏幕底部的一条工具栏，放固定的应用和桌面项目。默认开启，在原生的 Windows 桌面上也可用；在干净桌面隐藏 Windows 图标期间它会保持显示。</value>
+  </data>
+  <data name="Settings_Status_DockShown" xml:space="preserve">
+    <value>Dock 已显示在桌面上。</value>
+  </data>
+  <data name="Settings_Status_DockHidden" xml:space="preserve">
+    <value>Dock 已隐藏。</value>
+  </data>
+  <data name="Settings_Status_DockFailed" xml:space="preserve">
+    <value>Dock 无法显示或隐藏。</value>
+  </data>
+  <data name="Settings_DesktopExperience_Title" xml:space="preserve">
+    <value>桌面体验模式</value>
+  </data>
+  <data name="Settings_DesktopExperience_Native" xml:space="preserve">
+    <value>原生桌面</value>
+  </data>
+  <data name="Settings_DesktopExperience_Native_Description" xml:space="preserve">
+    <value>桌面仍完全由 Explorer 负责。</value>
+  </data>
+  <data name="Settings_DesktopExperience_Clean" xml:space="preserve">
+    <value>清爽桌面</value>
+  </data>
+  <data name="Settings_DesktopExperience_Clean_Description" xml:space="preserve">
+    <value>隐藏 Explorer 原生图标，并在 Muralis Shelf 中呈现真实的用户与公共桌面内容。</value>
+  </data>
+  <data name="Settings_DesktopExperience_Full" xml:space="preserve">
+    <value>完全接管（实验性）</value>
+  </data>
+  <data name="Settings_DesktopExperience_Full_Description" xml:space="preserve">
+    <value>保留的 Phase 3 画布接管模式，继续支持 Explorer 恢复。</value>
+  </data>
+  <data name="Settings_DesktopExperience_StateReady" xml:space="preserve">
+    <value>选择 Muralis 与 Windows 桌面的协作方式。</value>
+  </data>
+  <data name="Settings_DesktopExperience_StatePhase4A" xml:space="preserve">
+    <value>当前系统不支持清爽桌面，已保持原生桌面模式。</value>
+  </data>
+  <data name="Settings_Status_DesktopExperienceChanged" xml:space="preserve">
+    <value>桌面体验已切换为“{0}”。</value>
+  </data>
+  <data name="Settings_Status_DesktopExperienceUnavailable" xml:space="preserve">
+    <value>未启用所选桌面体验，Muralis 已回到原生桌面。{0}</value>
+  </data>
   <data name="Settings_Section_Language" xml:space="preserve">
     <value>语言</value>
   </data>
@@ -911,10 +965,10 @@
     <value>Muralis 把图标项作为一层画在你的图标之上。你的图标照常可用，且不会有任何改动。</value>
   </data>
   <data name="Dynamic_Desktop_Mode_Takeover" xml:space="preserve">
-    <value>Muralis 桌面（接管）</value>
+    <value>完全接管（实验性）</value>
   </data>
   <data name="Dynamic_Desktop_Mode_Takeover_Description" xml:space="preserve">
-    <value>Windows 不再绘制桌面图标，Muralis 的图标项就是桌面。关闭后会把你原来的图标还原回来。</value>
+    <value>保留的 Phase 3 模式：Windows 不再绘制桌面图标，Muralis 画布成为桌面。关闭后会还原原生图标。</value>
   </data>
   <data name="Dynamic_Desktop_State_Preview" xml:space="preserve">
     <value>画布正覆盖在你的图标之上：{0} 个图标项。你的图标照常可用。</value>
@@ -1100,5 +1154,38 @@
     <value>Muralis 遇到了意外错误，详细信息已写入日志。
 
 {0}</value>
+  </data>
+  <data name="Dock_Pinned_Missing" xml:space="preserve">
+    <value>{0} 已不在 {1}。请取消固定，或把文件放回原处。</value>
+  </data>
+  <data name="Dock_Pinned_Empty" xml:space="preserve">
+    <value>把常用的应用固定到这里。</value>
+  </data>
+  <data name="Dock_Pinned_AddApp" xml:space="preserve">
+    <value>添加应用</value>
+  </data>
+  <data name="Dock_Pinned_Full" xml:space="preserve">
+    <value>Dock 最多固定 {0} 个应用。取消其中一个即可继续添加。</value>
+  </data>
+  <data name="Dock_Pinned_Open" xml:space="preserve">
+    <value>打开</value>
+  </data>
+  <data name="Dock_Pinned_Unpin" xml:space="preserve">
+    <value>从 Dock 取消固定</value>
+  </data>
+  <data name="Dock_Pinned_OpenLocation" xml:space="preserve">
+    <value>打开文件所在位置</value>
+  </data>
+  <data name="Dock_Pinned_Unavailable" xml:space="preserve">
+    <value>不可用</value>
+  </data>
+  <data name="Dock_Pinned_AlreadyPinned" xml:space="preserve">
+    <value>{0} 已经固定过了。</value>
+  </data>
+  <data name="Dock_Pinned_Added" xml:space="preserve">
+    <value>已固定 {0}。</value>
+  </data>
+  <data name="Dock_Pinned_Unpinned" xml:space="preserve">
+    <value>已取消固定 {0}，文件仍留在原处。</value>
   </data>
 </root>

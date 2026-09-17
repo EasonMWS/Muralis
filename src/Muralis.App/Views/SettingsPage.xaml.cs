@@ -78,6 +78,10 @@ public sealed partial class SettingsPage : Page
                 .FirstOrDefault(option => option.Preference == ViewModel.SelectedLanguageOption?.Preference)
                 ?? ViewModel.LanguageOptions[0];
 
+            DesktopExperienceCombo.ItemsSource = ViewModel.DesktopExperienceOptions;
+            DesktopExperienceCombo.SelectedItem = ViewModel.DesktopExperienceOptions
+                .First(option => option.Mode == ViewModel.DesktopExperienceMode);
+
             SyncDefaultSourceSelection();
         }
         finally
@@ -141,6 +145,22 @@ public sealed partial class SettingsPage : Page
     private void OnLightThemeClick(object sender, RoutedEventArgs e) => ViewModel.SelectTheme(AppTheme.Light);
 
     private void OnDarkThemeClick(object sender, RoutedEventArgs e) => ViewModel.SelectTheme(AppTheme.Dark);
+
+    private async void OnDesktopExperienceSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing || DesktopExperienceCombo.SelectedItem is not DesktopExperienceOption option)
+        {
+            return;
+        }
+
+        await ViewModel.SelectDesktopExperienceAsync(option);
+
+        // A failed or unavailable mode always reports and persists the safe mode it really reached.
+        _initializing = true;
+        DesktopExperienceCombo.SelectedItem = ViewModel.DesktopExperienceOptions
+            .First(item => item.Mode == ViewModel.DesktopExperienceMode);
+        _initializing = false;
+    }
 
     private void OnFitModeSelectionChanged(object sender, SelectionChangedEventArgs e)
     {

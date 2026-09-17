@@ -3,6 +3,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Muralis.App.Views;
+using Muralis.App.UI.Playground;
+using Muralis.App.UI.Dock;
 
 namespace Muralis.App.Services;
 
@@ -106,6 +108,8 @@ public static class Routes
     public const string Dynamic = "dynamic";
     public const string Settings = "settings";
     public const string Detail = "detail";
+    public const string DesignPlayground = "design-playground";
+    public const string DockLab = "dock-lab";
 
     private static readonly NavigationRoute[] AllRoutes =
     [
@@ -117,6 +121,8 @@ public static class Routes
         new(Dynamic, typeof(DynamicWallpaperPage), "Dynamic wallpaper"),
         new(Settings, typeof(SettingsPage), "Settings"),
         new(Detail, typeof(DetailPage), "Details"),
+        new(DesignPlayground, typeof(DesignPlaygroundPage), "Design playground"),
+        new(DockLab, typeof(DockLabPage), "Dock Lab"),
     ];
 
     public static NavigationRoute? Find(string key) =>

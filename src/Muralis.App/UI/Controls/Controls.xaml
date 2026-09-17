@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Muralis.App.UI.Controls">
+
+    <Style x:Key="MuralisButtonBaseStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="Padding" Value="16,8" />
+        <Setter Property="FontFamily" Value="{StaticResource MuralisFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource MuralisRadiusS}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualStateGroup.Transitions>
+                                    <VisualTransition GeneratedDuration="{StaticResource MuralisMotionStandard}" />
+                                    <VisualTransition To="Pressed" GeneratedDuration="{StaticResource MuralisMotionFast}" />
+                                </VisualStateGroup.Transitions>
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="StateOverlay" Storyboard.TargetProperty="Opacity" To="1" Duration="{StaticResource MuralisMotionStandard}" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PressedOverlay" Storyboard.TargetProperty="Opacity" To="1" Duration="{StaticResource MuralisMotionFast}" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.42" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Unfocused" />
+                                <VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="Focused">
+                                    <VisualState.Setters>
+                                        <Setter Target="ButtonBorder.BorderBrush" Value="{ThemeResource MuralisBorderActiveBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <Border
+                            x:Name="ButtonBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter
+                                Padding="{TemplateBinding Padding}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <Border
+                            Height="1"
+                            Margin="10,0"
+                            VerticalAlignment="Top"
+                            Background="{ThemeResource MuralisEdgeHighlightBrush}"
+                            CornerRadius="{StaticResource MuralisRadiusPill}"
+                            IsHitTestVisible="False"
+                            Opacity="0.62" />
+                        <Border
+                            x:Name="StateOverlay"
+                            Background="{ThemeResource MuralisSurfaceHoverBrush}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            IsHitTestVisible="False"
+                            Opacity="0" />
+                        <Border
+                            x:Name="PressedOverlay"
+                            Background="{ThemeResource MuralisSurfacePressedBrush}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            IsHitTestVisible="False"
+                            Opacity="0" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="MuralisPrimaryButtonStyle" TargetType="controls:MuralisButton" BasedOn="{StaticResource MuralisButtonBaseStyle}">
+        <Setter Property="Background" Value="{ThemeResource MuralisPrimaryButtonBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource MuralisBorderActiveBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource MuralisAccentForegroundBrush}" />
+        <Setter Property="Shadow" Value="{StaticResource MuralisElevation1Shadow}" />
+    </Style>
+    <Style x:Key="MuralisSecondaryButtonStyle" TargetType="controls:MuralisButton" BasedOn="{StaticResource MuralisButtonBaseStyle}">
+        <Setter Property="Background" Value="{ThemeResource MuralisGlassMediumBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource MuralisBorderNormalBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource MuralisTextPrimaryBrush}" />
+    </Style>
+    <Style x:Key="MuralisGhostButtonStyle" TargetType="controls:MuralisButton" BasedOn="{StaticResource MuralisButtonBaseStyle}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{ThemeResource MuralisTextSecondaryBrush}" />
+    </Style>
+    <Style TargetType="controls:MuralisButton" BasedOn="{StaticResource MuralisPrimaryButtonStyle}" />
+
+    <Style x:Key="MuralisIconButtonStyle" TargetType="controls:MuralisIconButton" BasedOn="{StaticResource MuralisButtonBaseStyle}">
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="Padding" Value="8" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{ThemeResource MuralisTextSecondaryBrush}" />
+    </Style>
+    <Style TargetType="controls:MuralisIconButton" BasedOn="{StaticResource MuralisIconButtonStyle}" />
+
+    <Style TargetType="controls:MuralisCard">
+        <Setter Property="Padding" Value="{StaticResource MuralisInsetM}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="Shadow" Value="{StaticResource MuralisElevation2Shadow}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:MuralisCard">
+                    <Grid x:Name="Root">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CardStates">
+                                <VisualStateGroup.Transitions>
+                                    <VisualTransition GeneratedDuration="{StaticResource MuralisMotionStandard}" />
+                                    <VisualTransition To="Pressed" GeneratedDuration="{StaticResource MuralisMotionFast}" />
+                                </VisualStateGroup.Transitions>
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardBorder.BorderBrush" Value="{ThemeResource MuralisBorderHoverBrush}" />
+                                        <Setter Target="HoverOverlay.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="PressedOverlay.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Selected">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardBorder.Background" Value="{ThemeResource MuralisSurfaceSelectedBrush}" />
+                                        <Setter Target="CardBorder.BorderBrush" Value="{ThemeResource MuralisBorderActiveBrush}" />
+                                        <Setter Target="SelectionIndicator.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border
+                            x:Name="CardBorder"
+                            Background="{ThemeResource MuralisGlassMediumBrush}"
+                            BorderBrush="{ThemeResource MuralisBorderNormalBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource MuralisRadiusM}">
+                            <ContentPresenter
+                                Padding="{TemplateBinding Padding}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <Border x:Name="HoverOverlay" Background="{ThemeResource MuralisSurfaceHoverBrush}" CornerRadius="{StaticResource MuralisRadiusM}" IsHitTestVisible="False" Opacity="0" />
+                        <Border x:Name="PressedOverlay" Background="{ThemeResource MuralisSurfacePressedBrush}" CornerRadius="{StaticResource MuralisRadiusM}" IsHitTestVisible="False" Opacity="0" />
+                        <Border x:Name="TopHighlight" Height="1" Margin="14,0" VerticalAlignment="Top" Background="{ThemeResource MuralisEdgeHighlightMediumBrush}" CornerRadius="{StaticResource MuralisRadiusPill}" IsHitTestVisible="False" />
+                        <Border x:Name="SelectionIndicator" Width="2" Height="22" Margin="8" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{ThemeResource MuralisAccentPrimaryBrush}" CornerRadius="{StaticResource MuralisRadiusPill}" IsHitTestVisible="False" Opacity="0" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="controls:MuralisNavigationItem">
+        <Setter Property="MinHeight" Value="46" />
+        <Setter Property="Padding" Value="17,10" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Foreground" Value="{ThemeResource MuralisTextSecondaryBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:MuralisNavigationItem">
+                    <Grid x:Name="Root">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualStateGroup.Transitions>
+                                    <VisualTransition GeneratedDuration="{StaticResource MuralisMotionStandard}" />
+                                </VisualStateGroup.Transitions>
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Surface.Background" Value="{ThemeResource MuralisSurfaceHoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Surface.Background" Value="{ThemeResource MuralisSurfacePressedBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.42" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="SelectionStates">
+                                <VisualState x:Name="Unselected" />
+                                <VisualState x:Name="Selected">
+                                    <VisualState.Setters>
+                                        <Setter Target="Surface.Background" Value="{ThemeResource MuralisSurfaceSelectedBrush}" />
+                                        <Setter Target="Indicator.Opacity" Value="1" />
+                                        <Setter Target="Presenter.Foreground" Value="{ThemeResource MuralisTextPrimaryBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="{StaticResource MuralisRadiusS}" />
+                        <Border x:Name="Indicator" Width="2" Height="18" Margin="6,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{ThemeResource MuralisAccentPrimaryBrush}" CornerRadius="{StaticResource MuralisRadiusPill}" Opacity="0" />
+                        <ContentPresenter x:Name="Presenter" Padding="{TemplateBinding Padding}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

@@ -526,6 +526,60 @@
   <data name="Settings_Theme_Dark" xml:space="preserve">
     <value>Dark</value>
   </data>
+  <data name="Settings_Section_DesktopExperience" xml:space="preserve">
+    <value>Desktop experience</value>
+  </data>
+  <data name="Settings_Section_Dock" xml:space="preserve">
+    <value>Dock</value>
+  </data>
+  <data name="Settings_Dock_Show_Title" xml:space="preserve">
+    <value>Show the Muralis Dock</value>
+  </data>
+  <data name="Settings_Dock_Show_Description" xml:space="preserve">
+    <value>A strip of pinned applications and desktop items along the bottom of the screen. It is on by default, works on a native desktop, and Clean Desktop keeps it up while Windows icons are hidden.</value>
+  </data>
+  <data name="Settings_Status_DockShown" xml:space="preserve">
+    <value>The Dock is on the desktop.</value>
+  </data>
+  <data name="Settings_Status_DockHidden" xml:space="preserve">
+    <value>The Dock is hidden.</value>
+  </data>
+  <data name="Settings_Status_DockFailed" xml:space="preserve">
+    <value>The Dock could not be shown or hidden.</value>
+  </data>
+  <data name="Settings_DesktopExperience_Title" xml:space="preserve">
+    <value>Desktop Experience Mode</value>
+  </data>
+  <data name="Settings_DesktopExperience_Native" xml:space="preserve">
+    <value>Native</value>
+  </data>
+  <data name="Settings_DesktopExperience_Native_Description" xml:space="preserve">
+    <value>Explorer remains fully responsible for the desktop.</value>
+  </data>
+  <data name="Settings_DesktopExperience_Clean" xml:space="preserve">
+    <value>Clean Desktop</value>
+  </data>
+  <data name="Settings_DesktopExperience_Clean_Description" xml:space="preserve">
+    <value>Hides Explorer's icons and presents the real User + Public Desktop in the Muralis Shelf.</value>
+  </data>
+  <data name="Settings_DesktopExperience_Full" xml:space="preserve">
+    <value>Full Takeover (Experimental)</value>
+  </data>
+  <data name="Settings_DesktopExperience_Full_Description" xml:space="preserve">
+    <value>The preserved Phase 3 canvas takeover. Explorer recovery remains available.</value>
+  </data>
+  <data name="Settings_DesktopExperience_StateReady" xml:space="preserve">
+    <value>Choose how Muralis relates to the Windows desktop.</value>
+  </data>
+  <data name="Settings_DesktopExperience_StatePhase4A" xml:space="preserve">
+    <value>Clean Desktop is unavailable on this system; Native remains active.</value>
+  </data>
+  <data name="Settings_Status_DesktopExperienceChanged" xml:space="preserve">
+    <value>Desktop experience changed to {0}.</value>
+  </data>
+  <data name="Settings_Status_DesktopExperienceUnavailable" xml:space="preserve">
+    <value>The requested desktop experience was not enabled. Muralis returned to Native. {0}</value>
+  </data>
   <data name="Settings_Section_Language" xml:space="preserve">
     <value>Language</value>
   </data>
@@ -911,10 +965,10 @@
     <value>Muralis draws its items above your icons as a layer. Your own icons still work, and nothing about them is changed.</value>
   </data>
   <data name="Dynamic_Desktop_Mode_Takeover" xml:space="preserve">
-    <value>Muralis desktop (takeover)</value>
+    <value>Full Takeover (Experimental)</value>
   </data>
   <data name="Dynamic_Desktop_Mode_Takeover_Description" xml:space="preserve">
-    <value>Windows stops drawing the desktop icons and Muralis's items are the desktop. Turning it off restores your icons as they were.</value>
+    <value>Preserved Phase 3 mode: Windows stops drawing desktop icons and the Muralis canvas becomes the desktop. Turning it off restores your icons.</value>
   </data>
   <data name="Dynamic_Desktop_State_Preview" xml:space="preserve">
     <value>Showing the canvas over your icons: {0} items. Your own icons still work.</value>
@@ -1099,5 +1153,38 @@
     <value>Muralis hit an unexpected error and logged the details.
 
 {0}</value>
+  </data>
+  <data name="Dock_Pinned_Missing" xml:space="preserve">
+    <value>{0} is no longer at {1}. Unpin it, or put the file back.</value>
+  </data>
+  <data name="Dock_Pinned_Empty" xml:space="preserve">
+    <value>Pin the apps you use most.</value>
+  </data>
+  <data name="Dock_Pinned_AddApp" xml:space="preserve">
+    <value>Add app</value>
+  </data>
+  <data name="Dock_Pinned_Full" xml:space="preserve">
+    <value>The dock holds {0} pinned apps. Unpin one to add another.</value>
+  </data>
+  <data name="Dock_Pinned_Open" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="Dock_Pinned_Unpin" xml:space="preserve">
+    <value>Unpin from dock</value>
+  </data>
+  <data name="Dock_Pinned_OpenLocation" xml:space="preserve">
+    <value>Open file location</value>
+  </data>
+  <data name="Dock_Pinned_Unavailable" xml:space="preserve">
+    <value>Unavailable</value>
+  </data>
+  <data name="Dock_Pinned_AlreadyPinned" xml:space="preserve">
+    <value>{0} is already pinned.</value>
+  </data>
+  <data name="Dock_Pinned_Added" xml:space="preserve">
+    <value>{0} was pinned.</value>
+  </data>
+  <data name="Dock_Pinned_Unpinned" xml:space="preserve">
+    <value>{0} was unpinned. Its file was left where it is.</value>
   </data>
 </root>

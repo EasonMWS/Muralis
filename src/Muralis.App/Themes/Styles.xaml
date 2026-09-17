@@ -5,33 +5,42 @@
 
     <!--  Typography  -->
 
-    <Style x:Key="PageTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource TitleLargeTextBlockStyle}">
+    <Style x:Key="PageTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource MuralisTitleLargeTextStyle}">
         <Setter Property="Margin" Value="0,0,0,4" />
     </Style>
 
-    <Style x:Key="PageSubtitleStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
-        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+    <Style x:Key="PageSubtitleStyle" TargetType="TextBlock" BasedOn="{StaticResource MuralisBodyTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource MuralisTextSecondaryBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
-    <Style x:Key="SectionTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}" />
+    <Style x:Key="SectionTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource MuralisTitleTextStyle}" />
 
-    <Style x:Key="CardCaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
-        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+    <Style x:Key="SectionActionStyle" TargetType="HyperlinkButton">
+        <Setter Property="Foreground" Value="{ThemeResource MuralisTextSecondaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="CardCaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource MuralisCaptionTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource MuralisTextSecondaryBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
     <!--  Surfaces  -->
 
     <Style x:Key="CardBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="Background" Value="{ThemeResource MuralisSurfaceHighBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource MuralisBorderNormalBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="CornerRadius" Value="{StaticResource MuralisRadiusS}" />
     </Style>
 
     <Style x:Key="LargeCardBorderStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
-        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Background" Value="{ThemeResource MuralisGlassHighBrush}" />
+        <Setter Property="CornerRadius" Value="{StaticResource MuralisRadiusM}" />
+        <Setter Property="Shadow" Value="{StaticResource MuralisElevation3Shadow}" />
     </Style>
 
     <!--  Item containers  -->

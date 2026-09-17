@@ -100,8 +100,9 @@ public partial class App : Application
             // its own thread, and a missing or broken file must not delay the window.
             _ = RestoreVideoWallpaperAsync(logger);
 
-            // The desktop mode comes back the same way, after the crash marker has been dealt with.
-            _ = RestoreDesktopAsync(logger);
+            // The dock and then the desktop mode, in that order: the dock is a product surface with its
+            // own setting, and a desktop mode restored after it may still require the dock to be up.
+            _ = RestoreDockThenDesktopAsync(logger);
 
             // SQLite and the catalog are not needed for the first frame; loading them in
             // the background keeps the window's appear time short. Pages listening to
@@ -162,6 +163,32 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Brings the dock back, and only then the desktop mode. They are ordered rather than run side by
+    /// side because both prepare the same window, and because Clean Desktop has nothing to show if the
+    /// dock is not there.
+    /// </summary>
+    private async Task RestoreDockThenDesktopAsync(Microsoft.Extensions.Logging.ILogger logger)
+    {
+        await RestoreDockAsync(logger).ConfigureAwait(true);
+        await RestoreDesktopAsync(logger).ConfigureAwait(true);
+    }
+
+    private async Task RestoreDockAsync(Microsoft.Extensions.Logging.ILogger logger)
+    {
+        try
+        {
+            if (!await _host.Services.GetRequiredService<IDockExperienceService>().RestoreAsync().ConfigureAwait(true))
+            {
+                logger.LogWarning("The dock could not be put back the way it was left");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The dock could not be restored");
+        }
+    }
+
+    /// <summary>
     /// Gives the native desktop back if a previous run was killed while it owned the desktop, and only
     /// then puts the saved mode back. The order is the whole point: a marker is the one record that the
     /// native icons may still be hidden, and nothing may be built on a desktop that is owed a give-back.
@@ -170,6 +197,25 @@ public partial class App : Application
     {
         try
         {
+            var cleanMarkerWasPresent = File.Exists(AppPaths.CleanDesktopRecoveryFile);
+            var cleanRecovery = await _host.Services
+                .GetRequiredService<ICleanDesktopPresentation>()
+                .RecoverIfNeededAsync()
+                .ConfigureAwait(true);
+            if (cleanRecovery.IsActive)
+            {
+                logger.LogWarning("Clean Desktop recovery could not restore native icons: {Error}", cleanRecovery.Error);
+                return;
+            }
+
+            if (cleanMarkerWasPresent)
+            {
+                // A crashed Clean Desktop session always restarts in Native. The user may opt in
+                // again after the app and real Shelf are completely ready.
+                _host.Services.GetRequiredService<ISettingsService>().Update(settings =>
+                    settings.DesktopExperience.Mode = DesktopExperienceMode.Native);
+            }
+
             var recovered = await _host.Services
                 .GetRequiredService<IDesktopTakeoverService>()
                 .RecoverIfNeededAsync()
@@ -189,13 +235,13 @@ public partial class App : Application
             }
 
             var status = await _host.Services
-                .GetRequiredService<IDesktopModeService>()
+                .GetRequiredService<IDesktopExperienceService>()
                 .RestoreAsync()
                 .ConfigureAwait(true);
 
             if (status.HasError)
             {
-                logger.LogWarning("The desktop is {Mode}: {Error}", status.EffectiveMode, status.Error);
+                logger.LogWarning("The desktop experience is {Mode}: {Error}", status.Mode, status.Error);
             }
         }
         catch (Exception ex)

@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Muralis.App.UI.Playground.DesignPlaygroundPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:appControls="using:Muralis.App.Controls"
+    xmlns:controls="using:Muralis.App.UI.Controls"
+    xmlns:materials="using:Muralis.App.UI.Materials"
+    Background="{ThemeResource MuralisAppBackgroundBrush}">
+
+    <Grid>
+        <!-- Built-in nightscape: varied enough to test readability without looking like a style-guide graphic. -->
+        <Grid IsHitTestVisible="False" Opacity="0.82">
+            <Border>
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Offset="0" Color="{ThemeResource MuralisWallpaperMoodColor}" />
+                        <GradientStop Offset="0.42" Color="{ThemeResource MuralisScrimTransparentColor}" />
+                        <GradientStop Offset="1" Color="{ThemeResource MuralisSurfaceTintColor}" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <Viewbox Margin="0,170,0,0" Stretch="Fill" VerticalAlignment="Bottom">
+                <Grid Width="1200" Height="520">
+                    <Path
+                        Data="M 0,410 L 95,330 L 186,374 L 310,220 L 420,344 L 560,180 L 706,338 L 842,235 L 956,350 L 1080,250 L 1200,332 L 1200,520 L 0,520 Z"
+                        Fill="{ThemeResource MuralisBackground1Brush}"
+                        Opacity="0.78" />
+                    <Path
+                        Data="M 0,438 L 138,364 L 256,420 L 390,310 L 522,414 L 672,300 L 812,430 L 958,340 L 1094,414 L 1200,360 L 1200,520 L 0,520 Z"
+                        Fill="{ThemeResource MuralisBackground0Brush}"
+                        Opacity="0.9" />
+                </Grid>
+            </Viewbox>
+            <Border Height="240" VerticalAlignment="Bottom">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="{ThemeResource MuralisScrimTransparentColor}" />
+                        <GradientStop Offset="1" Color="{ThemeResource MuralisBackground0Color}" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+        </Grid>
+
+        <ScrollViewer Padding="{StaticResource MuralisPageInset}" VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="1160" Spacing="36">
+                <StackPanel Spacing="{StaticResource MuralisSpace8}">
+                    <TextBlock Style="{StaticResource MuralisDisplayTextStyle}" Text="Muralis Design Foundation" />
+                    <TextBlock Style="{StaticResource MuralisBodyTextStyle}" Foreground="{ThemeResource MuralisTextSecondaryBrush}" Text="A live reference for tokens, materials, controls and motion against a cinematic test background." TextWrapping="Wrap" />
+                    <controls:MuralisButton
+                        Margin="0,8,0,0"
+                        HorizontalAlignment="Left"
+                        Click="OnOpenDockLabClick"
+                        Content="Open Dock Lab"
+                        Variant="Secondary" />
+                </StackPanel>
+
+                <materials:GlassSurface Level="High">
+                    <StackPanel Spacing="{StaticResource MuralisSpace16}">
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Typography" />
+                        <TextBlock Style="{StaticResource MuralisDisplayTextStyle}" Text="Display · 32 Semibold" />
+                        <TextBlock Style="{StaticResource MuralisTitleLargeTextStyle}" Text="Title Large · 24 Semibold" />
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Title · 18 Semibold" />
+                        <TextBlock Style="{StaticResource MuralisBodyTextStyle}" Text="Body · 14 Regular" />
+                        <TextBlock Style="{StaticResource MuralisBodySmallTextStyle}" Text="Body Small · 13 Regular" />
+                        <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Caption · 12 Regular" />
+                    </StackPanel>
+                </materials:GlassSurface>
+
+                <materials:GlassSurface Level="Medium">
+                    <StackPanel Spacing="{StaticResource MuralisSpace16}">
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Semantic colors" />
+                        <Grid ColumnSpacing="{StaticResource MuralisSpace12}" RowSpacing="{StaticResource MuralisSpace12}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Padding="12" Background="{ThemeResource MuralisBackground1Brush}" CornerRadius="{StaticResource MuralisRadiusXS}"><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Background" /></Border>
+                            <Border Grid.Column="1" Padding="12" Background="{ThemeResource MuralisSurfaceHighBrush}" CornerRadius="{StaticResource MuralisRadiusXS}"><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Surface" /></Border>
+                            <Border Grid.Column="2" Padding="12" Background="{ThemeResource MuralisTextPrimaryBrush}" CornerRadius="{StaticResource MuralisRadiusXS}"><TextBlock Foreground="{ThemeResource MuralisBackground0Brush}" Text="Text" /></Border>
+                            <Border Grid.Column="3" Padding="12" Background="{ThemeResource MuralisAccentPrimaryBrush}" CornerRadius="{StaticResource MuralisRadiusXS}"><TextBlock Foreground="{ThemeResource MuralisAccentForegroundBrush}" Text="Accent" /></Border>
+                            <Border Grid.Column="4" Padding="11" BorderBrush="{ThemeResource MuralisBorderHoverBrush}" BorderThickness="1" CornerRadius="{StaticResource MuralisRadiusXS}"><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Border" /></Border>
+                        </Grid>
+                    </StackPanel>
+                </materials:GlassSurface>
+
+                <StackPanel Spacing="{StaticResource MuralisSpace16}">
+                    <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Materials" />
+                    <Grid ColumnSpacing="{StaticResource MuralisSpace16}" Height="144">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <materials:GlassSurface Level="Low"><StackPanel VerticalAlignment="Bottom" Spacing="5"><TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Glass Low" /><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Dock · close to the environment" /></StackPanel></materials:GlassSurface>
+                        <materials:GlassSurface Grid.Column="1" Level="Medium"><StackPanel VerticalAlignment="Bottom" Spacing="5"><TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Glass Medium" /><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Card · thin independent surface" /></StackPanel></materials:GlassSurface>
+                        <materials:GlassSurface Grid.Column="2" Level="High"><StackPanel VerticalAlignment="Bottom" Spacing="5"><TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Glass High" /><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Panel · maximum reading stability" /></StackPanel></materials:GlassSurface>
+                    </Grid>
+                </StackPanel>
+
+                <materials:GlassSurface Level="Medium">
+                    <StackPanel Spacing="{StaticResource MuralisSpace24}">
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Buttons and icon buttons" />
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource MuralisSpace12}">
+                            <controls:MuralisButton Content="Primary" Variant="Primary" />
+                            <controls:MuralisButton Content="Secondary" Variant="Secondary" />
+                            <controls:MuralisButton Content="Ghost" Variant="Ghost" />
+                            <controls:MuralisButton Content="Disabled" IsEnabled="False" />
+                            <controls:MuralisIconButton AutomationProperties.Name="Settings">
+                                <FontIcon Glyph="&#xE713;" />
+                            </controls:MuralisIconButton>
+                        </StackPanel>
+
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Cards" />
+                        <Grid ColumnSpacing="{StaticResource MuralisSpace16}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <controls:MuralisCard Variant="Default"><StackPanel><TextBlock Style="{StaticResource MuralisBodyTextStyle}" Text="Default" /><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Quiet information surface" /></StackPanel></controls:MuralisCard>
+                            <controls:MuralisCard Grid.Column="1" Variant="Interactive"><StackPanel><TextBlock Style="{StaticResource MuralisBodyTextStyle}" Text="Interactive" /><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Hover and press me" /></StackPanel></controls:MuralisCard>
+                            <controls:MuralisCard Grid.Column="2" Variant="Selected"><StackPanel Margin="12,0,0,0"><TextBlock Style="{StaticResource MuralisBodyTextStyle}" Text="Selected" /><TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="Restrained accent cue" /></StackPanel></controls:MuralisCard>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="Navigation" />
+                        <Grid ColumnSpacing="{StaticResource MuralisSpace12}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <controls:MuralisNavigationItem Content="Normal" />
+                            <controls:MuralisNavigationItem Grid.Column="1" Content="Hover me" />
+                            <controls:MuralisNavigationItem Grid.Column="2" Content="Selected" IsSelected="True" />
+                        </Grid>
+                    </StackPanel>
+                </materials:GlassSurface>
+
+                    <Grid ColumnSpacing="32">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="{StaticResource MuralisSpace12}">
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="WallpaperCard" />
+                        <appControls:WallpaperCard Width="440" Height="248" HorizontalAlignment="Left" IsSelected="True" Wallpaper="{x:Bind SampleWallpaper}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="{StaticResource MuralisSpace12}">
+                        <TextBlock Style="{StaticResource MuralisTitleTextStyle}" Text="DockIcon states" />
+                        <materials:GlassSurface Padding="16,20" Level="Low">
+                            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="6">
+                                <controls:DockIcon Label="Normal"><controls:DockIcon.IconContent><FontIcon FontSize="24" Glyph="&#xE80F;" /></controls:DockIcon.IconContent></controls:DockIcon>
+                                <controls:DockIcon Label="Hover"><controls:DockIcon.IconContent><FontIcon FontSize="24" Glyph="&#xE8F1;" /></controls:DockIcon.IconContent></controls:DockIcon>
+                                <controls:DockIcon IsRunning="True" Label="Running"><controls:DockIcon.IconContent><FontIcon FontSize="24" Glyph="&#xE768;" /></controls:DockIcon.IconContent></controls:DockIcon>
+                                <controls:DockIcon IsPressedPreview="True" Label="Pressed" UsePointerMotion="False"><controls:DockIcon.IconContent><FontIcon FontSize="24" Glyph="&#xE713;" /></controls:DockIcon.IconContent></controls:DockIcon>
+                                <controls:DockIcon IsSelected="True" Label="Selected"><controls:DockIcon.IconContent><FontIcon FontSize="24" Glyph="&#xE7F4;" /></controls:DockIcon.IconContent></controls:DockIcon>
+                            </StackPanel>
+                        </materials:GlassSurface>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Color x:Key="MuralisBackground0Color">#060A10</Color>
+    <Color x:Key="MuralisBackground1Color">#0B111A</Color>
+    <Color x:Key="MuralisSidebarColor">#F20B111A</Color>
+    <Color x:Key="MuralisSurfaceLowColor">#70111A25</Color>
+    <Color x:Key="MuralisSurfaceMediumColor">#A816202D</Color>
+    <Color x:Key="MuralisSurfaceHighColor">#E01B2635</Color>
+    <Color x:Key="MuralisSurfaceHoverColor">#0DFFFFFF</Color>
+    <Color x:Key="MuralisSurfacePressedColor">#12000000</Color>
+    <Color x:Key="MuralisSurfaceSelectedColor">#1067D7F5</Color>
+
+    <Color x:Key="MuralisTextPrimaryColor">#EBFFFFFF</Color>
+    <Color x:Key="MuralisTextSecondaryColor">#B8FFFFFF</Color>
+    <Color x:Key="MuralisTextTertiaryColor">#78FFFFFF</Color>
+    <Color x:Key="MuralisTextDisabledColor">#42FFFFFF</Color>
+    <Color x:Key="MuralisOnImagePrimaryColor">#F5FFFFFF</Color>
+    <Color x:Key="MuralisOnImageSecondaryColor">#C7FFFFFF</Color>
+
+    <Color x:Key="MuralisBorderSubtleColor">#0DFFFFFF</Color>
+    <Color x:Key="MuralisBorderNormalColor">#18FFFFFF</Color>
+    <Color x:Key="MuralisBorderHoverColor">#32FFFFFF</Color>
+    <Color x:Key="MuralisBorderActiveColor">#8067D7F5</Color>
+    <Color x:Key="MuralisEdgeHighlightColor">#22FFFFFF</Color>
+    <Color x:Key="MuralisEdgeHighlightLowColor">#13FFFFFF</Color>
+    <Color x:Key="MuralisEdgeHighlightMediumColor">#28FFFFFF</Color>
+    <Color x:Key="MuralisEdgeHighlightHighColor">#3AFFFFFF</Color>
+
+    <Color x:Key="MuralisAccentPrimaryColor">#67D7F5</Color>
+    <Color x:Key="MuralisAccentSecondaryColor">#8BA7FF</Color>
+    <Color x:Key="MuralisAccentForegroundColor">#F2080B10</Color>
+    <Color x:Key="MuralisSurfaceTintColor">#203B7182</Color>
+    <Color x:Key="MuralisGlowTintColor">#4067D7F5</Color>
+    <Color x:Key="MuralisWallpaperMoodColor">#26384872</Color>
+    <Color x:Key="MuralisScrimTransparentColor">#00000000</Color>
+    <Color x:Key="MuralisScrimMediumColor">#70000000</Color>
+    <Color x:Key="MuralisScrimStrongColor">#B8000000</Color>
+    <Color x:Key="MuralisScrimSideColor">#61000000</Color>
+
+    <Color x:Key="MuralisAppBackgroundStartColor">#FF070B12</Color>
+    <Color x:Key="MuralisAppBackgroundMiddleColor">#FF0A1018</Color>
+    <Color x:Key="MuralisAppBackgroundEndColor">#FF070B11</Color>
+    <Color x:Key="MuralisGlassLowTopColor">#7A172331</Color>
+    <Color x:Key="MuralisGlassLowBottomColor">#62101924</Color>
+    <Color x:Key="MuralisGlassMediumTopColor">#B51C2938</Color>
+    <Color x:Key="MuralisGlassMediumBottomColor">#A0141D29</Color>
+    <Color x:Key="MuralisGlassHighTopColor">#EE233143</Color>
+    <Color x:Key="MuralisGlassHighBottomColor">#DF192432</Color>
+    <Color x:Key="MuralisPrimaryButtonTopColor">#FF79D8EE</Color>
+    <Color x:Key="MuralisPrimaryButtonBottomColor">#FF49AFCB</Color>
+</ResourceDictionary>

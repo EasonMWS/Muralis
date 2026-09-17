@@ -54,6 +54,25 @@ public sealed class RotationSourceOption
     public string Label { get; }
 }
 
+public sealed class DesktopExperienceOption
+{
+    public DesktopExperienceOption(DesktopExperienceMode mode, string label, string description, bool isAvailable)
+    {
+        Mode = mode;
+        Label = label;
+        Description = description;
+        IsAvailable = isAvailable;
+    }
+
+    public DesktopExperienceMode Mode { get; }
+
+    public string Label { get; }
+
+    public string Description { get; }
+
+    public bool IsAvailable { get; }
+}
+
 public sealed partial class SettingsViewModel : ViewModelBase
 {
     private static readonly RotationInterval[] IntervalOrder =
@@ -85,6 +104,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly RotationService _rotationService;
     private readonly WallpaperProviderManager _providers;
     private readonly IUpdateChecker _updateChecker;
+    private readonly IDesktopExperienceService _desktopExperience;
+    private readonly IDockExperienceService _dockExperience;
     private readonly WindowContext _windowContext;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _applyingSettings = true;
@@ -116,6 +137,13 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool RotationEnabled { get; set; }
 
+    /// <summary>
+    /// The user's own answer to whether the dock is on the desktop. It is the saved preference rather
+    /// than whether the window is up: while Clean Desktop runs, the dock is up whatever this says.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowDock { get; set; }
+
     [ObservableProperty]
     public partial string UpdateStatusText { get; set; }
 
@@ -135,6 +163,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         RotationService rotationService,
         WallpaperProviderManager providers,
         IUpdateChecker updateChecker,
+        IDesktopExperienceService desktopExperience,
+        IDockExperienceService dockExperience,
         WindowContext windowContext,
         ILocalizationService localization,
         ILogger<SettingsViewModel> logger)
@@ -149,6 +179,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _rotationService = rotationService;
         _providers = providers;
         _updateChecker = updateChecker;
+        _desktopExperience = desktopExperience;
+        _dockExperience = dockExperience;
         _windowContext = windowContext;
         _logger = logger;
 
@@ -162,11 +194,13 @@ public sealed partial class SettingsViewModel : ViewModelBase
         LaunchAtStartup = SafeReadStartupState(settings.LaunchAtStartup);
         CloseToTray = settings.CloseToTray;
         RotationEnabled = settings.Rotation.Enabled;
+        ShowDock = settings.Dock.IsVisible;
 
         FitModes = BuildFitModes();
         IntervalOptions = BuildIntervalOptions();
         RotationSourceOptions = BuildRotationSourceOptions();
         LanguageOptions = BuildLanguageOptions();
+        DesktopExperienceOptions = BuildDesktopExperienceOptions();
         SelectedLanguageOption = FindLanguageOption(localization.Preference);
         BuildProviderSources();
 
@@ -220,6 +254,14 @@ public sealed partial class SettingsViewModel : ViewModelBase
     public IReadOnlyList<RotationSourceOption> RotationSourceOptions { get; private set; } = [];
 
     public IReadOnlyList<LanguageOption> LanguageOptions { get; private set; } = [];
+
+    public IReadOnlyList<DesktopExperienceOption> DesktopExperienceOptions { get; private set; } = [];
+
+    public DesktopExperienceMode DesktopExperienceMode => _desktopExperience.Status.Mode;
+
+    public string DesktopExperienceStateText => _desktopExperience.Status.IsCleanDesktopAvailable
+        ? Loc.Get("Settings_DesktopExperience_StateReady")
+        : Loc.Get("Settings_DesktopExperience_StatePhase4A");
 
     public ObservableCollection<MonitorInfo> Monitors { get; } = [];
 
@@ -305,11 +347,14 @@ public sealed partial class SettingsViewModel : ViewModelBase
         IntervalOptions = BuildIntervalOptions();
         RotationSourceOptions = BuildRotationSourceOptions();
         LanguageOptions = BuildLanguageOptions();
+        DesktopExperienceOptions = BuildDesktopExperienceOptions();
 
         OnPropertyChanged(nameof(FitModes));
         OnPropertyChanged(nameof(IntervalOptions));
         OnPropertyChanged(nameof(RotationSourceOptions));
         OnPropertyChanged(nameof(LanguageOptions));
+        OnPropertyChanged(nameof(DesktopExperienceOptions));
+        OnPropertyChanged(nameof(DesktopExperienceStateText));
         OnPropertyChanged(nameof(RotationStatusText));
         OnPropertyChanged(nameof(MonitorCountText));
         OnPropertyChanged(nameof(AppVersion));
@@ -359,6 +404,23 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
         _settingsService.Update(settings => settings.Rotation.Interval = interval);
         SetStatus("Settings_Status_IntervalUpdated", isError: false);
+    }
+
+    public async Task SelectDesktopExperienceAsync(DesktopExperienceOption option)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+
+        var result = await _desktopExperience.ApplyAsync(option.Mode);
+        OnPropertyChanged(nameof(DesktopExperienceMode));
+        OnPropertyChanged(nameof(DesktopExperienceStateText));
+
+        if (result.HasError)
+        {
+            SetStatus("Settings_Status_DesktopExperienceUnavailable", isError: true, result.Error ?? string.Empty);
+            return;
+        }
+
+        SetStatus("Settings_Status_DesktopExperienceChanged", isError: false, option.Label);
     }
 
     [RelayCommand]
@@ -579,6 +641,39 @@ public sealed partial class SettingsViewModel : ViewModelBase
         SetStatus(value ? "Settings_Status_RotationEnabled" : "Settings_Status_RotationDisabled", isError: false);
     }
 
+    partial void OnShowDockChanged(bool value)
+    {
+        if (_applyingSettings)
+        {
+            return;
+        }
+
+        _ = ApplyDockVisibilityAsync(value);
+    }
+
+    /// <summary>
+    /// Shows or hides the dock and says where it ended up. The service owns the setting and the
+    /// window, so this only reports what it answered.
+    /// </summary>
+    private async Task ApplyDockVisibilityAsync(bool visible)
+    {
+        try
+        {
+            if (!await _dockExperience.SetVisibleAsync(visible))
+            {
+                SetStatus("Settings_Status_DockFailed", isError: true);
+                return;
+            }
+
+            SetStatus(visible ? "Settings_Status_DockShown" : "Settings_Status_DockHidden", isError: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The dock's visibility could not be changed");
+            SetStatus("Settings_Status_DockFailed", isError: true);
+        }
+    }
+
     partial void OnSelectedLanguageOptionChanged(LanguageOption? value)
     {
         if (_applyingSettings || value is null)
@@ -604,6 +699,25 @@ public sealed partial class SettingsViewModel : ViewModelBase
     ];
 
     private IReadOnlyList<LanguageOption> BuildLanguageOptions() => Loc.Languages;
+
+    private IReadOnlyList<DesktopExperienceOption> BuildDesktopExperienceOptions() =>
+    [
+        new(
+            DesktopExperienceMode.Native,
+            Loc.Get("Settings_DesktopExperience_Native"),
+            Loc.Get("Settings_DesktopExperience_Native_Description"),
+            true),
+        new(
+            DesktopExperienceMode.CleanDesktop,
+            Loc.Get("Settings_DesktopExperience_Clean"),
+            Loc.Get("Settings_DesktopExperience_Clean_Description"),
+            _desktopExperience.Status.IsCleanDesktopAvailable),
+        new(
+            DesktopExperienceMode.FullTakeoverExperimental,
+            Loc.Get("Settings_DesktopExperience_Full"),
+            Loc.Get("Settings_DesktopExperience_Full_Description"),
+            true),
+    ];
 
     private void BuildProviderSources()
     {

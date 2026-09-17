@@ -8,6 +8,14 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="ms-appx:///UI/Tokens/Colors.xaml" />
+                <ResourceDictionary Source="ms-appx:///UI/Tokens/Typography.xaml" />
+                <ResourceDictionary Source="ms-appx:///UI/Tokens/Spacing.xaml" />
+                <ResourceDictionary Source="ms-appx:///UI/Tokens/Radius.xaml" />
+                <ResourceDictionary Source="ms-appx:///UI/Tokens/Elevation.xaml" />
+                <ResourceDictionary Source="ms-appx:///UI/Tokens/Motion.xaml" />
+                <ResourceDictionary Source="ms-appx:///UI/Materials/Materials.xaml" />
+                <ResourceDictionary Source="ms-appx:///UI/Controls/Controls.xaml" />
                 <ResourceDictionary Source="ms-appx:///Themes/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 

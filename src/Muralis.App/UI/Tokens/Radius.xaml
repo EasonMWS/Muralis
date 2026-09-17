@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <CornerRadius x:Key="MuralisRadiusXS">8</CornerRadius>
+    <CornerRadius x:Key="MuralisRadiusS">12</CornerRadius>
+    <CornerRadius x:Key="MuralisRadiusM">16</CornerRadius>
+    <CornerRadius x:Key="MuralisRadiusL">22</CornerRadius>
+    <CornerRadius x:Key="MuralisRadiusPill">999</CornerRadius>
+</ResourceDictionary>

@@ -11,7 +11,11 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
+    <Grid Background="{ThemeResource MuralisAppBackgroundBrush}">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="D" Modifiers="Control,Shift" Invoked="OnDesignPlaygroundInvoked" />
+            <KeyboardAccelerator Key="K" Modifiers="Control,Shift" Invoked="OnDockLabInvoked" />
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -23,6 +27,7 @@
             Subtitle="{Binding [App_Tagline], Source={StaticResource Loc}}"
             IsBackButtonVisible="False"
             IsPaneToggleButtonVisible="True"
+            Foreground="{ThemeResource MuralisTextPrimaryBrush}"
             BackRequested="OnTitleBarBackRequested"
             PaneToggleRequested="OnTitleBarPaneToggleRequested">
             <TitleBar.IconSource>
@@ -40,6 +45,24 @@
             ItemInvoked="OnNavigationItemInvoked"
             OpenPaneLength="248"
             PaneDisplayMode="Left">
+            <NavigationView.Resources>
+                <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="{ThemeResource MuralisSidebarColor}" />
+                <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="{ThemeResource MuralisSidebarColor}" />
+                <SolidColorBrush x:Key="NavigationViewContentBackground" Color="{ThemeResource MuralisBackground0Color}" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="{ThemeResource MuralisTextSecondaryColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="{ThemeResource MuralisTextPrimaryColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="{ThemeResource MuralisTextPrimaryColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="{ThemeResource MuralisTextPrimaryColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="{ThemeResource MuralisTextPrimaryColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="{ThemeResource MuralisTextPrimaryColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="{ThemeResource MuralisSurfaceHoverColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="{ThemeResource MuralisSurfacePressedColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="{ThemeResource MuralisSurfaceSelectedColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="{ThemeResource MuralisSurfaceSelectedColor}" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="{ThemeResource MuralisSurfaceSelectedColor}" />
+                <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="{ThemeResource MuralisAccentPrimaryColor}" />
+            </NavigationView.Resources>
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="{Binding [Nav_Home], Source={StaticResource Loc}}" Tag="home">
                     <NavigationViewItem.Icon>
@@ -83,7 +106,7 @@
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <Frame x:Name="RootFrame" />
+            <Frame x:Name="RootFrame" Background="{ThemeResource MuralisAppBackgroundBrush}" />
         </NavigationView>
     </Grid>
 </Window>

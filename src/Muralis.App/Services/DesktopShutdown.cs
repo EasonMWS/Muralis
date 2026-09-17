@@ -17,6 +17,12 @@ namespace Muralis.App.Services;
 /// be used on an ordinary exit.
 /// </para>
 /// <para>
+/// The dock's window is closed here too, and last. It is a window of its own rather than part of the
+/// main one, so leaving it up would keep the process alive with a dock floating over a desktop that has
+/// no window behind it — and it is closed last so that the icons are already back by the time the dock
+/// that stood in for them goes.
+/// </para>
+/// <para>
 /// Idempotent, and never allowed to throw: a desktop that could not be handed back is reported, and the
 /// shutdown carries on, because the alternative is an app that will not close.
 /// </para>
@@ -25,20 +31,31 @@ public sealed class DesktopShutdown
 {
     private readonly ILogger<DesktopShutdown> _logger;
     private readonly IDesktopModeService _mode;
+    private readonly ICleanDesktopPresentation _cleanDesktop;
     private readonly IDesktopShell _shell;
+    private readonly IDockExperienceService _dock;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
     private bool _done;
 
-    public DesktopShutdown(ILogger<DesktopShutdown> logger, IDesktopModeService mode, IDesktopShell shell)
+    public DesktopShutdown(
+        ILogger<DesktopShutdown> logger,
+        IDesktopModeService mode,
+        ICleanDesktopPresentation cleanDesktop,
+        IDesktopShell shell,
+        IDockExperienceService dock)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(mode);
+        ArgumentNullException.ThrowIfNull(cleanDesktop);
         ArgumentNullException.ThrowIfNull(shell);
+        ArgumentNullException.ThrowIfNull(dock);
 
         _logger = logger;
         _mode = mode;
+        _cleanDesktop = cleanDesktop;
         _shell = shell;
+        _dock = dock;
     }
 
     /// <summary>Whether the desktop has already been handed back by this shutdown.</summary>
@@ -64,6 +81,12 @@ public sealed class DesktopShutdown
             // gone and the layout unreadable, and the user's desktop still has to come back.
             try
             {
+                var clean = await _cleanDesktop.DeactivateAsync(cancellationToken).ConfigureAwait(false);
+                if (clean.IsActive)
+                {
+                    _logger.LogWarning("Clean Desktop could not restore native icons during shutdown: {Error}", clean.Error);
+                }
+
                 var status = await _mode.RestoreNativeDesktopAsync(cancellationToken).ConfigureAwait(false);
                 if (status.NeedsRecovery)
                 {
@@ -86,6 +109,20 @@ public sealed class DesktopShutdown
             catch (Exception ex)
             {
                 _logger.LogError(ex, "The desktop layer could not be shut down");
+            }
+
+            // Last, because until this returns the icons are already back and the dock that stood in
+            // for them is still there to cover the moment in between.
+            try
+            {
+                if (!await _dock.ShutdownAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    _logger.LogWarning("The dock's window could not be closed as the app quit");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "The dock could not be shut down");
             }
         }
         finally

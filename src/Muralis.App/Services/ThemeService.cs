@@ -28,7 +28,7 @@ public sealed class ThemeService : IThemeService
         _windowContext = windowContext;
         _logger = logger;
 
-        _settingsService.SettingsChanged += (_, settings) => Apply(settings.Theme);
+        _settingsService.SettingsChanged += OnSettingsChanged;
     }
 
     public void Apply(AppTheme theme)
@@ -50,4 +50,18 @@ public sealed class ThemeService : IThemeService
     }
 
     public void ApplyFromSettings() => Apply(_settingsService.Current.Theme);
+
+    private void OnSettingsChanged(object? sender, AppSettings settings)
+    {
+        var window = _windowContext.MainWindow;
+        if (window is null || window.DispatcherQueue.HasThreadAccess)
+        {
+            Apply(settings.Theme);
+            return;
+        }
+
+        // Settings may be persisted by desktop recovery or the tray. Theme is UI state, so its
+        // reaction must return to the window thread even when the changed setting is unrelated.
+        window.DispatcherQueue.TryEnqueue(() => Apply(settings.Theme));
+    }
 }

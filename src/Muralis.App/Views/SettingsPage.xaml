@@ -112,6 +112,81 @@
                 </Grid>
             </Border>
 
+            <!--  Desktop Experience  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Settings_Section_DesktopExperience], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE7F4;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_DesktopExperience_Title], Source={StaticResource Loc}}" />
+                        <TextBlock
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{x:Bind ViewModel.DesktopExperienceStateText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="DesktopExperienceCombo"
+                        Grid.Column="2"
+                        MinWidth="310"
+                        SelectionChanged="OnDesktopExperienceSelectionChanged">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DesktopExperienceOption">
+                                <StackPanel MaxWidth="360" Spacing="2">
+                                    <TextBlock Text="{x:Bind Label}" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind Description}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+            </Border>
+
+            <!--  Dock  -->
+            <TextBlock
+                Margin="0,14,0,4"
+                Style="{StaticResource SectionTitleStyle}"
+                Text="{Binding [Settings_Section_Dock], Source={StaticResource Loc}}" />
+            <Border Padding="16" Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="20"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE7F4;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Dock_Show_Title], Source={StaticResource Loc}}" />
+                        <TextBlock
+                            Style="{StaticResource CardCaptionStyle}"
+                            Text="{Binding [Settings_Dock_Show_Description], Source={StaticResource Loc}}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding [Settings_Dock_Show_Title], Source={StaticResource Loc}}"
+                        IsOn="{x:Bind ViewModel.ShowDock, Mode=TwoWay}"
+                        OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
+                        OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
+                </Grid>
+            </Border>
+
             <!--  Wallpapers  -->
             <TextBlock
                 Margin="0,14,0,4"
