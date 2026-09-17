@@ -968,6 +968,17 @@ function Get-ItemCentre($item) {
 # user the harness's own settings instead of their own.
 function Backup-Settings {
     if ($script:settingsBackedUp) { return }
+
+    # A backup already on disk was made by a run that never put it back, which means that run died before
+    # its restore: the copy is older than anything this run could take, and the file on disk is whatever
+    # that run left. Adopted rather than overwritten, because overwriting it would put a harness's own
+    # settings where the user's are restored from, and the user would never get them back.
+    if (Test-Path $script:settingsBackup) {
+        Write-Host ("  (a settings backup from an earlier run was left behind and is being kept: {0})" -f $script:settingsBackup)
+        $script:settingsBackedUp = $true
+        return
+    }
+
     if (-not (Test-Path $script:settingsPath)) { throw "settings.json was not found at $script:settingsPath" }
     Copy-Item -Force $script:settingsPath $script:settingsBackup
     $script:settingsBackedUp = $true

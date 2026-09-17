@@ -181,6 +181,25 @@ public sealed class ArchitectureGuardTests
     }
 
     [Fact]
+    public void ActiveCanvasDragHotPathIsCompositionOnly()
+    {
+        var code = Code(Path.Combine(RepoRoot(), "src", "Muralis.Desktop", "Surfaces", "CanvasSurfaceContent.cs"));
+        var start = code.IndexOf("private void TrackCanvasDrag", StringComparison.Ordinal);
+        var end = code.IndexOf("private void DragDockItem", start, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, "the direct canvas drag hot path must stay explicit and reviewable");
+
+        var hotPath = code[start..end];
+        Assert.Contains("held.Visual.Offset", hotPath, StringComparison.Ordinal);
+        Assert.Contains("rawDeltaX", hotPath, StringComparison.Ordinal);
+        Assert.DoesNotContain("SaveLayout", hotPath, StringComparison.Ordinal);
+        Assert.DoesNotContain("Bump()", hotPath, StringComparison.Ordinal);
+        Assert.DoesNotContain("RefreshSnapshot", hotPath, StringComparison.Ordinal);
+        Assert.DoesNotContain("StartAnimation", hotPath, StringComparison.Ordinal);
+        Assert.DoesNotContain("held.CenterXDip =", hotPath, StringComparison.Ordinal);
+        Assert.DoesNotContain("held.RenderedXDip =", hotPath, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OnlyTheTakeoverNamesTheDesktopIconList()
     {
         // Phase 3D changed the rule the canvas prototype was built on: hiding the desktop icons is now

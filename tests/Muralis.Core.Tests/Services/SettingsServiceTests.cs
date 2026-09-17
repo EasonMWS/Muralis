@@ -30,6 +30,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.False(service.Current.VideoWallpaper.Enabled);
         Assert.Equal(string.Empty, service.Current.VideoWallpaper.VideoPath);
         Assert.True(service.Current.VideoWallpaper.Muted);
+        Assert.Equal(DesktopExperienceMode.Native, service.Current.DesktopExperience.Mode);
     }
 
     [Fact]
@@ -48,6 +49,7 @@ public sealed class SettingsServiceTests : IDisposable
             settings.VideoWallpaper.Enabled = true;
             settings.VideoWallpaper.VideoPath = @"C:\videos\aurora.mp4";
             settings.VideoWallpaper.Muted = false;
+            settings.DesktopExperience.Mode = DesktopExperienceMode.FullTakeoverExperimental;
         });
 
         // Update saves in the background; wait for the written file to carry what was asked for.
@@ -64,6 +66,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.True(reloaded.Current.VideoWallpaper.Enabled);
         Assert.Equal(@"C:\videos\aurora.mp4", reloaded.Current.VideoWallpaper.VideoPath);
         Assert.False(reloaded.Current.VideoWallpaper.Muted);
+        Assert.Equal(DesktopExperienceMode.FullTakeoverExperimental, reloaded.Current.DesktopExperience.Mode);
     }
 
     [Fact]
