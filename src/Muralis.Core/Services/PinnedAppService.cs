@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Diagnostics;
 using Muralis.Core.DockShell;
 using Muralis.Core.Models;
 
@@ -200,22 +201,41 @@ public sealed class PinnedAppService : IPinnedAppService
         int targetIndex,
         CancellationToken cancellationToken = default)
     {
+        var waiting = DropProfile.Measure("commit.mutex");
         await _mutex.WaitAsync(cancellationToken).ConfigureAwait(false);
+        waiting.Dispose();
+
         try
         {
-            var moved = PinnedApps.Move(_items, id, targetIndex);
-            if (SameOrder(moved, _items))
+            IReadOnlyList<PinnedApp> moved;
+            bool unchanged;
+            using (DropProfile.Measure("commit.model"))
+            {
+                moved = PinnedApps.Move(_items, id, targetIndex);
+                unchanged = SameOrder(moved, _items);
+            }
+
+            if (unchanged)
             {
                 return _items;
             }
 
             _items = moved;
             await PersistAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogInformation(
-                "The pinned application {Name} was moved to position {Position}",
-                PinnedApps.Find(_items, id)?.DisplayName ?? id,
-                targetIndex);
-            Publish();
+
+            using (DropProfile.Measure("commit.log"))
+            {
+                _logger.LogInformation(
+                    "The pinned application {Name} was moved to position {Position}",
+                    PinnedApps.Find(_items, id)?.DisplayName ?? id,
+                    targetIndex);
+            }
+
+            using (DropProfile.Measure("publish"))
+            {
+                Publish();
+            }
+
             return _items;
         }
         finally
@@ -266,6 +286,10 @@ public sealed class PinnedAppService : IPinnedAppService
     public bool IsAvailable(PinnedApp app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        // Called once per pin every time the zone is redrawn, so it is a file probe per pin on whichever
+        // thread asked. Recorded because a drop redraws the whole zone.
+        using var probing = DropProfile.Measure("dock.available");
         return File.Exists(app.LaunchTarget);
     }
 
@@ -276,9 +300,24 @@ public sealed class PinnedAppService : IPinnedAppService
     /// </summary>
     private async Task PersistAsync(CancellationToken cancellationToken)
     {
-        var snapshot = _items.Select(PinnedAppSettings.From).ToList();
-        _settings.Update(settings => settings.Dock.PinnedApps = snapshot);
-        await _settings.SaveAsync(cancellationToken).ConfigureAwait(false);
+        List<PinnedAppSettings> snapshot;
+        using (DropProfile.Measure("persist.snapshot"))
+        {
+            snapshot = _items.Select(PinnedAppSettings.From).ToList();
+        }
+
+        using (DropProfile.Measure("persist.update"))
+        {
+            _settings.Update(settings => settings.Dock.PinnedApps = snapshot);
+        }
+
+        // This is the write the user's order is waited for. The settings service also writes the change
+        // off its own bat, and which of the two a reader is looking at is what "settings.save.scheduled"
+        // and this pair of stages are for.
+        using (DropProfile.Measure("persist.awaited"))
+        {
+            await _settings.SaveAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static bool SameOrder(IReadOnlyList<PinnedApp> first, IReadOnlyList<PinnedApp> second)

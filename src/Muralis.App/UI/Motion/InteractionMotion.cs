@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using Muralis.Core.Diagnostics;
 using Windows.UI.ViewManagement;
 
 namespace Muralis.App.UI.Motion;
@@ -101,6 +102,9 @@ public static class MotionPreferences
                 return value;
             }
 
+            // Constructing UISettings is a WinRT activation rather than a field read, and every motion on
+            // the drop path asks for it, so it is timed where it happens.
+            using var asking = DropProfile.Measure("motion.pref");
             try
             {
                 return new UISettings().AnimationsEnabled;
@@ -178,14 +182,38 @@ internal static class TransformMotion
         }
 
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var animation = CreateAnimation(translateX, duration, easing);
-        Storyboard.SetTarget(animation, transform);
-        Storyboard.SetTargetProperty(animation, nameof(CompositeTransform.TranslateX));
+        var startedAtMs = DropProfile.ElapsedMs;
+        var askedForMs = duration.HasTimeSpan ? duration.TimeSpan.TotalMilliseconds : 0;
+        Storyboard storyboard;
+        using (DropProfile.Measure("motion.animate.setup"))
+        {
+            var animation = CreateAnimation(translateX, duration, easing);
+            Storyboard.SetTarget(animation, transform);
+            Storyboard.SetTargetProperty(animation, nameof(CompositeTransform.TranslateX));
 
-        var storyboard = new Storyboard();
-        storyboard.Children.Add(animation);
-        storyboard.Completed += (_, _) => completion.TrySetResult();
-        storyboard.Begin();
+            storyboard = new Storyboard();
+            storyboard.Children.Add(animation);
+
+            // The completion is where the wait ends, so it is stamped where it happens: the gap between it
+            // and the awaiting release is the release's own latency, not the animation's cost.
+            storyboard.Completed += (_, _) =>
+            {
+                DropProfile.Event(
+                    "motion.animate.completed",
+                    "\"ranFor\":" + Number(DropProfile.ElapsedMs - startedAtMs)
+                    + ",\"askedFor\":" + Number(askedForMs));
+                completion.TrySetResult();
+            };
+        }
+
+        // Timed separately from the wait: a storyboard that has begun is handed to the compositor, so if
+        // anything on the UI thread is costing anything here it is in one of these two calls, not in the
+        // hundred and eighty milliseconds that follow them.
+        using (DropProfile.Measure("motion.animate.begin"))
+        {
+            storyboard.Begin();
+        }
+
         return completion.Task;
     }
 
@@ -197,6 +225,9 @@ internal static class TransformMotion
             EasingFunction = easing,
             EnableDependentAnimation = false,
         };
+
+    private static string Number(double value) =>
+        double.IsNaN(value) ? "null" : value.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
 
     private static void Add(Storyboard storyboard, CompositeTransform transform, string property, double value, Duration duration, EasingFunctionBase easing)
     {

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Muralis.App.Services;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Diagnostics;
 using Muralis.Core.DockShell;
 
 namespace Muralis.App.UI.Dock;
@@ -213,38 +214,66 @@ public sealed class PinnedAppsPresenter
     /// <summary>Rebuilds the view items around the saved list, reusing the ones that are still there.</summary>
     private void Project(IReadOnlyList<PinnedApp> apps)
     {
-        for (var position = 0; position < apps.Count; position++)
+        using var projecting = DropProfile.Measure("ui.project");
+
+        using (DropProfile.Measure("ui.project.items"))
         {
-            var app = apps[position];
-            var existing = IndexOf(app.Id, position);
-            if (existing < 0)
+            for (var position = 0; position < apps.Count; position++)
             {
-                Items.Insert(position, Create(app));
-                continue;
-            }
+                var app = apps[position];
+                var existing = IndexOf(app.Id, position);
+                if (existing < 0)
+                {
+                    var created = Create(app);
+                    using (DropProfile.Measure("ui.project.insert"))
+                    {
+                        Items.Insert(position, created);
+                    }
 
-            if (existing > position)
-            {
-                Items.Move(existing, position);
-            }
+                    continue;
+                }
 
-            Apply(Items[position], app);
+                if (existing > position)
+                {
+                    using (DropProfile.Measure("ui.project.move"))
+                    {
+                        Items.Move(existing, position);
+                    }
+                }
+
+                using (DropProfile.Measure("ui.project.apply"))
+                {
+                    Apply(Items[position], app);
+                }
+            }
         }
 
-        while (Items.Count > apps.Count)
+        using (DropProfile.Measure("ui.project.trim"))
         {
-            Items.RemoveAt(Items.Count - 1);
-        }
-
-        foreach (var item in Items)
-        {
-            if (!item.HasIcon)
+            while (Items.Count > apps.Count)
             {
-                _ = LoadIconAsync(item);
+                Items.RemoveAt(Items.Count - 1);
             }
         }
 
-        Projected?.Invoke(this, EventArgs.Empty);
+        using (DropProfile.Measure("ui.project.icons"))
+        {
+            foreach (var item in Items)
+            {
+                if (!item.HasIcon)
+                {
+                    // Not expected on a drop — a pin keeps its picture when the list is reordered — so the
+                    // count of these is what says whether an icon was read again.
+                    DropProfile.Event("ui.project.icons.read", "\"name\":\"" + item.DisplayName.Replace("\"", "'", StringComparison.Ordinal) + "\"");
+                    _ = LoadIconAsync(item);
+                }
+            }
+        }
+
+        using (DropProfile.Measure("ui.project.notify"))
+        {
+            Projected?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private PinnedAppViewItem Create(PinnedApp app)
@@ -307,10 +336,14 @@ public sealed class PinnedAppsPresenter
         if (_dispatcher.HasThreadAccess)
         {
             Project(apps);
+            return;
         }
-        else
-        {
-            _dispatcher.TryEnqueue(() => Project(apps));
-        }
+
+        // The change arrives on whichever thread wrote it, so the redraw is a dispatched callback that
+        // runs after the release handler has returned. Recorded, because that is a second turn of the UI
+        // thread and the drop is not over until it has happened.
+        var marshalling = DropProfile.Measure("publish.marshal");
+        _dispatcher.TryEnqueue(() => Project(apps));
+        marshalling.Dispose();
     }
 }

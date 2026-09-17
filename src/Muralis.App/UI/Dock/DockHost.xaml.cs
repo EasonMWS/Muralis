@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Muralis.App.UI.Controls;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Diagnostics;
 using Muralis.Core.DockShell;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -35,8 +36,19 @@ public sealed partial class DockHost : UserControl
     private readonly List<FrameworkElement> _motionTargets = [];
     private PinnedAppsPresenter? _observed;
     private PinnedZoneDrag? _drag;
+    private DockLayoutMeter? _meter;
 
-    public DockHost() => InitializeComponent();
+    public DockHost()
+    {
+        InitializeComponent();
+
+        // Nothing of the profiler exists unless this process was asked to record: no timeline, no
+        // subscription to layout, and the drop path below is one bool read per stage.
+        if (DropProfile.IsEnabled)
+        {
+            _meter = new DockLayoutMeter(this);
+        }
+    }
 
     /// <summary>The Pinned Apps zone: the saved applications and everything the user can do to them.</summary>
     public PinnedAppsPresenter? PinnedApps
@@ -102,8 +114,15 @@ public sealed partial class DockHost : UserControl
 
     private void OnPinnedAppsProjected(object? sender, EventArgs args)
     {
-        _drag?.OnProjected();
-        UpdatePinnedZone();
+        using (DropProfile.Measure("host.projected"))
+        {
+            _drag?.OnProjected();
+            UpdatePinnedZone();
+        }
+
+        // Last thing before the layout pass the new order forces, so this is where the outside timing of
+        // that pass starts.
+        _meter?.Arm();
     }
 
     /// <summary>The add slot tells the truth about the zone: hidden when there is no presenter to add to,

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Diagnostics;
 using Muralis.Core.Helpers;
 using Muralis.Core.Models;
 
@@ -73,9 +74,15 @@ public sealed class SettingsService : ISettingsService
 
     public async Task SaveAsync(CancellationToken cancellationToken = default)
     {
+        // Waiting for the lock is recorded apart from the write itself, because two saves of the same
+        // change show up here as one of them waiting for the other, not as two slow writes.
+        var waiting = DropProfile.Measure("settings.lock");
         await _saveLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        waiting.Dispose();
+
         try
         {
+            var opening = DropProfile.Measure("settings.open");
             var directory = Path.GetDirectoryName(_settingsFilePath);
             if (!string.IsNullOrEmpty(directory))
             {
@@ -84,14 +91,22 @@ public sealed class SettingsService : ISettingsService
 
             // Write to a temp file first so a crash mid-write cannot corrupt settings.
             var tempPath = _settingsFilePath + ".tmp";
-            await using (var stream = File.Create(tempPath))
+            var stream = File.Create(tempPath);
+            opening.Dispose();
+
+            await using (stream)
             {
+                using var serializing = DropProfile.Measure("settings.serialize");
                 await JsonSerializer
                     .SerializeAsync(stream, _current, SerializerOptions, cancellationToken)
                     .ConfigureAwait(false);
             }
 
-            File.Move(tempPath, _settingsFilePath, overwrite: true);
+            using (DropProfile.Measure("settings.commit"))
+            {
+                File.Move(tempPath, _settingsFilePath, overwrite: true);
+            }
+
             _logger.LogDebug("Settings saved to {Path}", _settingsFilePath);
         }
         catch (OperationCanceledException)
@@ -112,12 +127,24 @@ public sealed class SettingsService : ISettingsService
     {
         ArgumentNullException.ThrowIfNull(mutate);
 
-        lock (_mutateLock)
+        using (DropProfile.Measure("settings.mutate"))
         {
-            mutate(_current);
+            lock (_mutateLock)
+            {
+                mutate(_current);
+            }
         }
 
-        SettingsChanged?.Invoke(this, _current);
+        // The subscribers of this event are not all cheap, and one of them writes UI state, so how long
+        // the notification took is worth having on its own.
+        using (DropProfile.Measure("settings.notify"))
+        {
+            SettingsChanged?.Invoke(this, _current);
+        }
+
+        // This save is the caller's to have asked for or not: it is recorded so a reader can see whether
+        // a change to the pinned list is written once or twice.
+        DropProfile.Event("settings.save.scheduled");
         _ = SaveDetachedAsync();
     }
 

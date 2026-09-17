@@ -104,7 +104,14 @@ public sealed class PinnedAppViewItem : INotifyPropertyChanged
 
         IsAvailable = isAvailable;
         Warning = warning;
-        Raise(nameof(Tooltip));
+
+        // Tooltip is the warning when there is one and the name otherwise, so it changes only with those
+        // two. Raising it on every update would make a reorder — which changes neither — re-evaluate the
+        // tooltip of every pin in the zone.
+        if (renamed)
+        {
+            Raise(nameof(Tooltip));
+        }
     }
 
     /// <summary>

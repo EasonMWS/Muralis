@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
 using Muralis.App.UI.Controls;
 using Muralis.App.UI.Motion;
+using Muralis.Core.Diagnostics;
 using Muralis.Core.Dock;
 
 namespace Muralis.App.UI.Dock;
@@ -148,7 +149,10 @@ internal sealed class PinnedZoneDrag
         }
 
         _pressed = false;
-        _carried!.ReleasePointerCaptures();
+        using (DropProfile.Measure("release.capture"))
+        {
+            _carried!.ReleasePointerCaptures();
+        }
 
         if (!_travelled)
         {
@@ -157,27 +161,44 @@ internal sealed class PinnedZoneDrag
             return;
         }
 
-        var carried = _carried;
-        var from = _from;
-        var target = _target;
+        DropProfile.Begin("release");
 
-        await TransformMotion
-            .AnimateTranslateXAsync(carried, LandingOffset(), MotionDurations.Standard, new CubicEase { EasingMode = EasingMode.EaseOut })
-            .ConfigureAwait(true);
-
-        if (target != from)
+        try
         {
-            _awaitingProjection = true;
-            await _commit(_item!, target).ConfigureAwait(true);
+            var carried = _carried;
+            var from = _from;
+            var target = _target;
+
+            using (DropProfile.Measure("release.settle"))
+            {
+                await TransformMotion
+                    .AnimateTranslateXAsync(carried, LandingOffset(), MotionDurations.Standard, new CubicEase { EasingMode = EasingMode.EaseOut })
+                    .ConfigureAwait(true);
+            }
+
+            if (target != from)
+            {
+                _awaitingProjection = true;
+                using (DropProfile.Measure("release.commit"))
+                {
+                    await _commit(_item!, target).ConfigureAwait(true);
+                }
+            }
+
+            // The projection normally clears the translation from inside the same callback that reorders
+            // the items, which is what stops the icon being drawn at its old place for a frame. This is
+            // the fallback for a drop that was not followed by one, so a carried icon can never be left
+            // floating off its own icon.
+            if (_awaitingProjection)
+            {
+                Finish();
+            }
         }
-
-        // The projection normally clears the translation from inside the same callback that reorders
-        // the items, which is what stops the icon being drawn at its old place for a frame. This is
-        // the fallback for a drop that was not followed by one, so a carried icon can never be left
-        // floating off its own icon.
-        if (_awaitingProjection)
+        finally
         {
-            Finish();
+            // Closed after the commit rather than after the drag ended, so the record covers the whole
+            // transaction the user was waiting for.
+            DropProfile.End();
         }
     }
 
@@ -191,7 +212,14 @@ internal sealed class PinnedZoneDrag
 
         _pressed = false;
         _carried?.ReleasePointerCaptures();
-        Finish();
+        try
+        {
+            Finish();
+        }
+        finally
+        {
+            DropProfile.End();
+        }
     }
 
     /// <summary>
@@ -221,27 +249,30 @@ internal sealed class PinnedZoneDrag
 
     private void Finish()
     {
-        _awaitingProjection = false;
-        _travelled = false;
-        _pressed = false;
-        _indicator.Opacity = 0;
-
-        var carried = _carried;
-        _carried = null;
-        _item = null;
-        _pointerId = 0;
-        _centres = [];
-
-        if (carried is null)
+        using (DropProfile.Measure("release.finish"))
         {
-            return;
+            _awaitingProjection = false;
+            _travelled = false;
+            _pressed = false;
+            _indicator.Opacity = 0;
+
+            var carried = _carried;
+            _carried = null;
+            _item = null;
+            _pointerId = 0;
+            _centres = [];
+
+            if (carried is null)
+            {
+                return;
+            }
+
+            TransformMotion.SetTranslateX(carried, 0);
+
+            // The icon's own handlers describe hover from here on, and they will not run again until
+            // the pointer moves, so the state it is in now has to be the right one.
+            carried.ResumePointerMotion();
         }
-
-        TransformMotion.SetTranslateX(carried, 0);
-
-        // The icon's own handlers describe hover from here on, and they will not run again until the
-        // pointer moves, so the state it is in now has to be the right one.
-        carried.ResumePointerMotion();
     }
 
     /// <summary>

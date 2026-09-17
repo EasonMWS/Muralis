@@ -79,7 +79,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('probe', 'dump', 'pins', 'restore', 'missing', 'clean', 'perf', 'full')] [string]$Stage = 'probe',
+    [ValidateSet('probe', 'dump', 'pins', 'restore', 'missing', 'clean', 'perf', 'dropbench', 'full')] [string]$Stage = 'probe',
     [string]$Exe = 'src/Muralis.App/bin/Debug/net10.0-windows10.0.26100.0/win-x64/Muralis.exe',
     [string]$OutDir = 'artifacts/p4c'
 )
@@ -1642,6 +1642,442 @@ function Invoke-PerfStage {
     Add-Check 'perf: the app exited when the window was closed' (-not (Get-AppProcesses)) $(if (Get-AppProcesses) { Describe-AppProcesses } else { 'no process left' })
 }
 
+# ---------------------------------------------------------------- the drop pipeline, measured in the app
+
+# The app's own record of what a drop cost, one JSON object per line. It is only written when the
+# process was started with MURALIS_DOCK_PROFILE=1, so a run that forgets the variable is a run with
+# nothing to read rather than a run with wrong numbers.
+$profilePath = Join-Path $appData 'logs\dock-drop-profile.jsonl'
+
+# The record is written as the drops happen, so a read taken now is a cut point: the lines after it are
+# the drops that were being measured, and the lines before it are the warm-up.
+function Read-DropProfile([int]$skip = 0) {
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        try {
+            if (-not (Test-Path $profilePath)) { return @() }
+            $stream = New-Object IO.FileStream($profilePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            try {
+                $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8)
+                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            } finally { $stream.Dispose() }
+
+            $lines = @($text -split "`r?`n" | Where-Object { $_.Trim().Length -gt 0 })
+            if ($lines.Count -le $skip) { return @() }
+            return @($lines[$skip..($lines.Count - 1)])
+        } catch {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+
+    return @()
+}
+
+# Everything the app recorded, folded by segment name. Wall and processor time are the whole-process
+# figures the app measured for itself, so they can be read against the outside measurement.
+function Group-DropRecords([string[]]$Lines) {
+    $segments = @{}
+    $marks = @{}
+    $ends = @()
+    $notes = @()
+    $broken = 0
+
+    foreach ($line in $Lines) {
+        $record = $null
+        try { $record = $line | ConvertFrom-Json } catch { $broken++; continue }
+        if ($null -eq $record) { $broken++; continue }
+
+        switch ([string]$record.ev) {
+            'end' { $ends += $record }
+            'seg' { $name = [string]$record.name; if (-not $segments.ContainsKey($name)) { $segments[$name] = @() }; $segments[$name] += $record }
+            'mark' { $name = [string]$record.name; if (-not $marks.ContainsKey($name)) { $marks[$name] = @() }; $marks[$name] += $record }
+            'note' { $notes += $record }
+        }
+    }
+
+    return [pscustomobject]@{
+        Segments = $segments
+        Marks    = $marks
+        Ends     = $ends
+        Notes    = $notes
+        Broken   = $broken
+    }
+}
+
+function Measure-Numbers([array]$Values) {
+    $sorted = @($Values | Sort-Object)
+    return [pscustomobject]@{
+        Count  = $sorted.Count
+        Total  = ($sorted | Measure-Object -Sum).Sum
+        Median = $(if ($sorted.Count -gt 0) { $sorted[[int][math]::Floor($sorted.Count / 2)] } else { 0 })
+        Min    = $(if ($sorted.Count -gt 0) { $sorted[0] } else { 0 })
+        Max    = $(if ($sorted.Count -gt 0) { $sorted[-1] } else { 0 })
+    }
+}
+
+# One row per segment: how many times it ran per drop, what it cost, and which threads it ran on. Every
+# figure is per drop, because that is the unit the user's hand works in. Two processor-time columns
+# because a stage that ran beside background work would otherwise be charged for it: cpu is the process,
+# thCpu is the thread the stage was on.
+function Show-SegmentTable($Grouped, [int]$Drops, [string[]]$Order) {
+    $rows = @()
+    foreach ($name in $Order) {
+        if (-not $Grouped.Segments.ContainsKey($name)) { continue }
+        $samples = @($Grouped.Segments[$name])
+        $numbers = Measure-Numbers @($samples | ForEach-Object { [double]$_.wall })
+        $cpu = Measure-Numbers @($samples | ForEach-Object { [double]$_.cpu })
+        $thCpu = Measure-Numbers @($samples | ForEach-Object { $_.thCpu } | Where-Object { $null -ne $_ } | ForEach-Object { [double]$_ })
+        $alloc = ($samples | Measure-Object -Property alloc -Sum).Sum
+        $threads = @($samples | ForEach-Object { [string]$_.th } | Sort-Object -Unique) -join ','
+        $late = @($samples | Where-Object { $_.late }).Count
+        $rows += [pscustomobject]@{
+            Name    = $name
+            PerDrop = [math]::Round($numbers.Count / [Math]::Max(1, $Drops), 2)
+            Calls   = $numbers.Count
+            WallTot = [math]::Round($numbers.Total, 2)
+            WallMed = [math]::Round($numbers.Median, 3)
+            WallMax = [math]::Round($numbers.Max, 3)
+            CpuTot  = [math]::Round($cpu.Total, 2)
+            ThCpuTot = [math]::Round($thCpu.Total, 2)
+            Alloc = $alloc
+            Threads = $threads
+            Late    = $late
+        }
+    }
+
+    foreach ($row in $rows) {
+        Write-Host ("  {0,-24} {1,6}/drop {2,5} call(s)  wall {3,8:N2} ms total {4,9:N3} med {5,9:N3} max  cpu {6,7:N1} thCpu {7,7:N1} ms  alloc {8,10:N0} B  th {9}{10}" -f `
+            $row.Name, $row.PerDrop, $row.Calls, $row.WallTot, $row.WallMed, $row.WallMax, $row.CpuTot, $row.ThCpuTot, $row.Alloc, $row.Threads, `
+            $(if ($row.Late -gt 0) { " (late {0})" -f $row.Late } else { '' }))
+    }
+
+    return $rows
+}
+
+function Invoke-DropBenchStage {
+    Write-Host '=== 4C.1 the drop pipeline, segment by segment ==='
+    Backup-Settings
+    Enable-CanvasInSettings
+    Park-LayoutFiles
+
+    # The design limit, so the numbers describe the dock at its worst rather than at its easiest.
+    $count = 12
+    $paths = @(New-PerfPinSet $count)
+    $script:fixturePrograms += $paths
+
+    $pins = @()
+    for ($i = 0; $i -lt $paths.Count; $i++) {
+        $pins += (New-PinSettings -Id ("bench-{0:D2}" -f ($i + 1)) -Name ("bench app {0:D2}" -f ($i + 1)) -Target $paths[$i])
+    }
+    Write-DockSettings -Pins $pins -DockVisible $true -Mode 'Native'
+
+    if (Test-Path $profilePath) { Remove-Item -Force $profilePath }
+
+    # The child inherits this, which is the only way the opt-in profiler is ever switched on.
+    $env:MURALIS_DOCK_PROFILE = '1'
+    try {
+        $launchAt = Get-Date
+        $app = Launch-App
+        $dockHandle = Wait-DockWindowTight $launchAt 45
+        Add-Check 'dropbench: the dock window came up' ($dockHandle -ne [IntPtr]::Zero) `
+            $(if ($dockHandle -ne [IntPtr]::Zero) { [P3Win]::Describe($dockHandle) } else { 'no window titled Muralis Dock' })
+        if ($dockHandle -eq [IntPtr]::Zero) { return }
+
+        $whole = $false
+        while (-not $whole -and ((Get-Date) - $launchAt).TotalSeconds -lt 45) {
+            $whole = ((Get-PinnedNames $dockHandle).Count -eq $count)
+            if (-not $whole) { Start-Sleep -Milliseconds 20 }
+        }
+        Add-Check 'dropbench: the whole zone came back' $whole ("{0} label(s)" -f (Get-PinnedNames $dockHandle).Count)
+
+        # The first seconds after the dock is up carry the icons of the pins, of the Shelf's own items and
+        # of the desktop's items. A measurement taken across them would be about startup, so the run waits
+        # for a quiet second first — the same rule the perf stage uses, and for the same reason.
+        $quiet = Wait-Until { (Measure-AppCpu 1).CpuMs -lt 50 } 60 'a quiet second before the benchmark'
+        Add-Check 'dropbench: the app went quiet before the benchmark' $quiet 'a second costing less than 50 ms of processor time'
+
+        $slots = Get-PinnedLabels $dockHandle
+        if ($slots.Count -lt 2) { throw ("The pinned zone holds {0} items; the drag needs two." -f $slots.Count) }
+
+        $names = Get-PinnedNames $dockHandle
+        $pitch = $slots[1].Left - $slots[0].Left
+        $targetX = [int]($slots[0].Left + ($pitch * 1.5))
+
+        # One complete drag: press on the first slot, walk past its neighbour, release. The walk is short
+        # and even, because the following path is not what is being measured here.
+        $drag = {
+            Move-Pointer $slots[0].X $slots[0].Y
+            Start-Sleep -Milliseconds 120
+            [P3Win]::LeftDown()
+            Start-Sleep -Milliseconds 120
+            for ($step = 1; $step -le 10; $step++) {
+                Move-Pointer ([int]($slots[0].X + (($targetX - $slots[0].X) * $step / 10))) $slots[1].Y
+                Start-Sleep -Milliseconds 20
+            }
+        }
+
+        Write-Host ''
+        Write-Host 'Two warm-up drops, not measured ...'
+        for ($round = 0; $round -lt 2; $round++) {
+            & $drag
+            [P3Win]::LeftUp()
+            Start-Sleep -Milliseconds 700
+        }
+
+        Write-Host ''
+        Write-Host 'Following the hand with nothing reordered ...'
+
+        # The move path on its own, so the two can be read against each other. Three rounds rather than
+        # one: the outside measurement is a processor-time delta the OS counts in ticks, so a single walk
+        # reads whatever else the app was doing beside the drag. No release, so nothing is committed and
+        # no drop is recorded: this number comes from the outside only.
+        $movements = 40
+        $walks = @()
+        for ($round = 0; $round -lt 3; $round++) {
+            Move-Pointer $slots[0].X $slots[0].Y
+            Start-Sleep -Milliseconds 150
+            [P3Win]::LeftDown()
+            Start-Sleep -Milliseconds 150
+            $script:process.Refresh()
+            $cpuBeforeWalk = $script:process.TotalProcessorTime.TotalMilliseconds
+            $walkAt = Get-Date
+            for ($i = 0; $i -lt $movements; $i++) {
+                Move-Pointer $(if ($i % 2 -eq 0) { $slots[0].X + 18 } else { $slots[0].X - 18 }) $slots[0].Y
+                Start-Sleep -Milliseconds 20
+            }
+            $walkMs = ((Get-Date) - $walkAt).TotalMilliseconds
+            $script:process.Refresh()
+            $walkCpu = $script:process.TotalProcessorTime.TotalMilliseconds - $cpuBeforeWalk
+            [P3Win]::LeftUp()
+            Start-Sleep -Milliseconds 700
+
+            $perMovement = $walkCpu / $movements
+            $walks += [pscustomobject]@{
+                Round       = $round + 1
+                CpuMs       = $walkCpu
+                WallMs      = $walkMs
+                PerMovement = $perMovement
+            }
+            Write-Host ("  walk {0}: {1} movement(s) over {2:N0} ms cost {3:N1} ms of processor time = {4} ms per movement" -f `
+                ($round + 1), $movements, $walkMs, $walkCpu, [math]::Round($perMovement, 3))
+        }
+
+        $moveNumbers = Measure-Numbers @($walks | ForEach-Object { [double]$_.PerMovement })
+        $moveWall = Measure-Numbers @($walks | ForEach-Object { [double]$_.WallMs })
+        Write-Host ("  per movement: median {0} ms, best {1} ms, worst {2} ms over {3} round(s)" -f `
+            [math]::Round($moveNumbers.Median, 3), [math]::Round($moveNumbers.Min, 3), [math]::Round($moveNumbers.Max, 3), $walks.Count)
+        Add-Sample 'benchMoveCpuMsPerMovementMedian' ([math]::Round($moveNumbers.Median, 3))
+        Add-Sample 'benchMoveCpuMsPerMovementMin' ([math]::Round($moveNumbers.Min, 3))
+        Add-Sample 'benchMoveCpuMsPerMovementMax' ([math]::Round($moveNumbers.Max, 3))
+        Add-Sample 'benchMoveWallMsMedian' ([math]::Round($moveWall.Median, 1))
+
+        Write-Host ''
+        Write-Host 'Eight measured drops ...'
+
+        # The cut point: everything the app recorded up to here belongs to the warm-up and the walk.
+        $skip = @(Read-DropProfile).Count
+        $movesBefore = Get-LogCountAll $logMoved
+
+        $rounds = @()
+        $orderOk = 0
+        for ($round = 0; $round -lt 8; $round++) {
+            $expected = if ($round % 2 -eq 0) { @($names[1], $names[0]) + @($names[2..($names.Count - 1)]) }
+                        else { @($names[0], $names[1]) + @($names[2..($names.Count - 1)]) }
+
+            & $drag
+            $script:process.Refresh()
+            $cpuBeforeDrop = $script:process.TotalProcessorTime.TotalMilliseconds
+            $dropAt = Get-Date
+            [P3Win]::LeftUp()
+            Start-Sleep -Milliseconds 500
+            $script:process.Refresh()
+            $dropCpu = $script:process.TotalProcessorTime.TotalMilliseconds - $cpuBeforeDrop
+            $dropWall = ((Get-Date) - $dropAt).TotalMilliseconds
+
+            # Read after the window rather than during it: a UI Automation walk is answered by the app's
+            # own UI thread, and reading the tree inside the measurement would charge the app for the
+            # harness looking at it.
+            $reordered = Wait-PinnedOrder $dockHandle $expected 10
+            if ($reordered) { $orderOk++ }
+
+            $rounds += [pscustomobject]@{
+                Round   = $round + 1
+                CpuMs   = $dropCpu
+                WallMs  = $dropWall
+                Order   = $reordered
+            }
+            Start-Sleep -Milliseconds 300
+        }
+
+        $numbers = Measure-Numbers @($rounds | ForEach-Object { [double]$_.CpuMs })
+        Write-Host ''
+        foreach ($entry in $rounds) {
+            Write-Host ("  drop {0}: {1:N1} ms of processor time over a {2:N0} ms window, order {3}" -f `
+                $entry.Round, $entry.CpuMs, $entry.WallMs, $(if ($entry.Order) { 'correct' } else { 'NOT APPLIED' }))
+        }
+        Write-Host ("  median {0:N1} ms, best {1:N1} ms, worst {2:N1} ms over {3} drop(s), {4:N1} ms in all" -f `
+            $numbers.Median, $numbers.Min, $numbers.Max, $rounds.Count, $numbers.Total)
+
+        Add-Sample 'benchDrops' $rounds.Count
+        Add-Sample 'benchDropCpuMsPerDropMedian' ([math]::Round($numbers.Median, 1))
+        Add-Sample 'benchDropCpuMsPerDropMin' ([math]::Round($numbers.Min, 1))
+        Add-Sample 'benchDropCpuMsPerDropMax' ([math]::Round($numbers.Max, 1))
+        Add-Sample 'benchDropCpuMsTotal' ([math]::Round($numbers.Total, 1))
+        Add-Check 'dropbench: every drop was applied to the dock order' ($orderOk -eq $rounds.Count) ("{0} of {1} drop(s)" -f $orderOk, $rounds.Count)
+
+        Add-Check 'dropbench: nothing was reordered by following the hand' `
+            ((Get-LogCountAll $logMoved) - $movesBefore -eq $rounds.Count) `
+            ("{0} move(s) logged for {1} drop(s) and about {2} movement(s)" -f ((Get-LogCountAll $logMoved) - $movesBefore), $rounds.Count, $movements)
+
+        Start-Sleep -Milliseconds 500
+        $lines = Read-DropProfile $skip
+        Add-Check 'dropbench: the app recorded the drops' ($lines.Count -gt 0) ("{0} record line(s)" -f $lines.Count)
+        if ($lines.Count -eq 0) {
+            Write-Host '  (the profile file is empty: was the process started with MURALIS_DOCK_PROFILE=1?)'
+            return
+        }
+
+        Copy-Item -Force $profilePath (Join-Path $outPath 'drop-profile.jsonl')
+
+        $grouped = Group-DropRecords $lines
+        $drops = @($grouped.Ends).Count
+        Add-Check 'dropbench: the record holds one entry per drop' ($drops -eq $rounds.Count) ("{0} drop(s) recorded, {1} dropped" -f $drops, $rounds.Count)
+        Add-Check 'dropbench: every recorded line could be read' ($grouped.Broken -eq 0) ("{0} unreadable line(s)" -f $grouped.Broken)
+
+        Write-Host ''
+        Write-Host 'What the app measured for itself, per drop ...'
+        foreach ($end in $grouped.Ends) {
+            Write-Host ("  drop {0}: {1:N1} ms wall, {2:N1} ms of processor time ({3} ms of it on th {4}), {5:N0} B allocated" -f `
+                $end.drop, [double]$end.wall, [double]$end.cpu, `
+                $(if ($null -eq $end.uiCpu) { 'n/a' } else { [math]::Round([double]$end.uiCpu, 1) }), `
+                $end.th, [double]$end.alloc)
+        }
+
+        $endNumbers = Measure-Numbers @($grouped.Ends | ForEach-Object { [double]$_.wall })
+        $endCpu = Measure-Numbers @($grouped.Ends | ForEach-Object { [double]$_.cpu })
+        $endUi = Measure-Numbers @($grouped.Ends | ForEach-Object { $_.uiCpu } | Where-Object { $null -ne $_ } | ForEach-Object { [double]$_ })
+        Add-Sample 'benchAppDropWallMsMedian' ([math]::Round($endNumbers.Median, 1))
+        Add-Sample 'benchAppDropWallMsMax' ([math]::Round($endNumbers.Max, 1))
+        Add-Sample 'benchAppDropCpuMsMedian' ([math]::Round($endCpu.Median, 1))
+        Add-Sample 'benchAppDropCpuMsMax' ([math]::Round($endCpu.Max, 1))
+        Add-Sample 'benchAppDropUiCpuMsMedian' ([math]::Round($endUi.Median, 1))
+        Add-Sample 'benchAppDropUiCpuMsMax' ([math]::Round($endUi.Max, 1))
+        Add-Sample 'benchAppDropAllocBytes' ([math]::Round((($grouped.Ends | Measure-Object -Property alloc -Sum).Sum) / [Math]::Max(1, $drops), 0))
+
+        # The gate is "no obvious 200 ms+ UI-thread blocking drop path", so the UI thread's own share of
+        # the drop is stated on its own rather than left inside the process figure the harness reads.
+        Write-Host ("  the drop took {0:N1} ms of wall time; the UI thread spent {1:N1} ms of that working (median)" -f `
+            $endNumbers.Median, $endUi.Median)
+
+        Write-Host ''
+        Write-Host 'Every stage of the drop, per drop ...'
+        $order = @(
+            'release.capture', 'release.settle', 'release.commit', 'release.finish', 'release'
+            'motion.animate.setup', 'motion.animate.begin'
+            'commit.mutex', 'commit.model', 'commit.log', 'publish', 'publish.marshal'
+            'persist.snapshot', 'persist.update', 'persist.awaited'
+            'settings.lock', 'settings.open', 'settings.serialize', 'settings.commit'
+            'settings.mutate', 'settings.notify'
+            'host.projected', 'ui.project', 'ui.project.items', 'ui.project.move', 'ui.project.insert'
+            'ui.project.apply', 'ui.project.trim', 'ui.project.icons', 'ui.project.notify'
+            'dock.available', 'motion.pref', 'profile.write'
+        )
+        $rows = @(Show-SegmentTable -Grouped $grouped -Drops ([Math]::Max(1, $drops)) -Order $order)
+
+        foreach ($row in $rows) {
+            # release.settle -> benchSegReleaseSettleWallMs, so the JSON holds a named figure per stage
+            # rather than one total nobody can take apart afterwards.
+            $parts = @($row.Name -split '\.' | ForEach-Object { $_.Substring(0, 1).ToUpperInvariant() + $_.Substring(1) })
+            $key = 'benchSeg' + ($parts -join '')
+            Add-Sample ($key + 'WallMs') $row.WallTot
+            Add-Sample ($key + 'Calls') $row.Calls
+        }
+
+        # The landing animation is the drop — 205 of its 212 ms — so the wait is read three ways: what it
+        # was asked to run, what it actually ran before reporting itself finished, and how long that report
+        # then took to reach the release handler that was waiting for it. Only the last two could be the
+        # app's own doing.
+        $completions = @($grouped.Notes | Where-Object { $_.label -eq 'motion.animate.completed' })
+        if ($completions.Count -gt 0) {
+            $settleByDrop = @{}
+            if ($grouped.Segments.ContainsKey('release.settle')) {
+                foreach ($sample in $grouped.Segments['release.settle']) {
+                    $settleByDrop[[string]$sample.drop] = [double]$sample.wall
+                }
+            }
+
+            $ranFor = @()
+            $back = @()
+            $askedFor = 0.0
+            foreach ($completion in $completions) {
+                $ranFor += [double]$completion.ranFor
+                $askedFor = [double]$completion.askedFor
+                $key = [string]$completion.drop
+                if ($settleByDrop.ContainsKey($key)) {
+                    $back += $settleByDrop[$key] - [double]$completion.ranFor
+                }
+            }
+
+            $ran = Measure-Numbers $ranFor
+            $resume = Measure-Numbers $back
+            Write-Host ''
+            Write-Host ("  {0,-24} asked for {1:N1} ms, ran for {2:N1} ms (median, max {3:N1}), the completion then took {4:N1} ms to reach the release" -f `
+                'landing animation', $askedFor, $ran.Median, $ran.Max, $resume.Median)
+            Add-Sample 'benchLandingAskedForMs' ([math]::Round($askedFor, 1))
+            Add-Sample 'benchLandingRanForMsMedian' ([math]::Round($ran.Median, 1))
+            Add-Sample 'benchLandingOvershootMsMedian' ([math]::Round($ran.Median - $askedFor, 1))
+            Add-Sample 'benchLandingCompletionReturnMsMedian' ([math]::Round($resume.Median, 2))
+        }
+
+        # The layout pass the new order forces happens after the callback that asked for it, so it is
+        # timed from the outside. It is where the items control moves its containers and each icon reads
+        # its own state again, which no scope can see. A pass that arrives long after the drop is not
+        # recorded at all, so the call count is part of the reading: it says how many drops the pass
+        # actually belonged to.
+        $markOrder = @('layout.pass1', 'layout.pass2')
+        foreach ($name in $markOrder) {
+            if (-not $grouped.Marks.ContainsKey($name)) {
+                Write-Host ("  {0,-24} not seen" -f $name)
+                continue
+            }
+
+            $samples = @($grouped.Marks[$name])
+            $numbers = Measure-Numbers @($samples | ForEach-Object { [double]$_.wall })
+            $thCpu = Measure-Numbers @($samples | ForEach-Object { $_.thCpu } | Where-Object { $null -ne $_ } | ForEach-Object { [double]$_ })
+            Write-Host ("  {0,-24} {1,6}/drop {2,5} call(s)  wall {3,8:N2} ms total {4,9:N3} med {5,9:N3} max  thCpu {6,7:N1} ms" -f `
+                $name, [math]::Round($numbers.Count / [Math]::Max(1, $drops), 2), $numbers.Count, $numbers.Total, $numbers.Median, $numbers.Max, $thCpu.Total)
+            Add-Sample ('bench' + $name.Replace('.', '') + 'WallMs') ([math]::Round($numbers.Total, 2))
+            Add-Sample ('bench' + $name.Replace('.', '') + 'Count') $numbers.Count
+        }
+
+        # Two things the record answers directly rather than by timing: whether the change was written
+        # twice, and whether an icon was read again during a reorder.
+        $scheduled = @($grouped.Notes | Where-Object { $_.label -eq 'settings.save.scheduled' }).Count
+        $iconReads = @($grouped.Notes | Where-Object { $_.label -eq 'ui.project.icons.read' }).Count
+        $serializations = $(if ($grouped.Segments.ContainsKey('settings.serialize')) { @($grouped.Segments['settings.serialize']).Count } else { 0 })
+        $writes = $(if ($grouped.Segments.ContainsKey('settings.commit')) { @($grouped.Segments['settings.commit']).Count } else { 0 })
+
+        Write-Host ''
+        Write-Host ("  settings saves scheduled per drop: {0:N2}, serializations per drop: {1:N2}, file replacements per drop: {2:N2}" -f `
+            ($scheduled / [Math]::Max(1, $drops)), ($serializations / [Math]::Max(1, $drops)), ($writes / [Math]::Max(1, $drops)))
+        Write-Host ("  icons read again during a reorder: {0}" -f $iconReads)
+
+        Add-Sample 'benchSettingsSavesScheduled' $scheduled
+        Add-Sample 'benchSettingsSerializations' $serializations
+        Add-Sample 'benchSettingsFileWrites' $writes
+        Add-Sample 'benchIconsReadOnDrop' $iconReads
+        Add-Check 'dropbench: a reorder reads no icon again' ($iconReads -eq 0) ("{0} icon read(s) during {1} drop(s)" -f $iconReads, $drops)
+        Add-Check 'dropbench: the zone is still whole after the benchmark' ((Get-PinnedNames $dockHandle).Count -eq $count) ("{0} label(s)" -f (Get-PinnedNames $dockHandle).Count)
+
+        # What a restart makes of the order the drops left: the last round put the first two pins back
+        # where they started, so the saved order is the planted one.
+        Close-App
+        Add-Check 'dropbench: the app exited when the window was closed' (-not (Get-AppProcesses)) `
+            $(if (Get-AppProcesses) { Describe-AppProcesses } else { 'no process left' })
+    } finally {
+        Remove-Item Env:MURALIS_DOCK_PROFILE -ErrorAction SilentlyContinue
+    }
+}
+
 # ---------------------------------------------------------------- run
 
 # One step of putting the machine back. A step that fails is reported and the rest still run: an error
@@ -1682,6 +2118,7 @@ try {
             'missing' { Invoke-MissingStage }
             'clean'   { Invoke-CleanStage }
             'perf'    { Invoke-PerfStage }
+            'dropbench' { Invoke-DropBenchStage }
             'full'    { Invoke-PinsStage; Invoke-RestoreStage; Invoke-MissingStage; Invoke-CleanStage }
         }
         $stageFinished = $true
