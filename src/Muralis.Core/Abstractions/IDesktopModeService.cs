@@ -21,6 +21,13 @@ namespace Muralis.Core.Abstractions;
 /// Entering a showing mode is also where the user's own desktop is brought across: the first scan is
 /// taken at that moment, by reference only, and an entry the user turned down is never brought back.
 /// </para>
+/// <para>
+/// Retired as a product path. The product offers the native desktop and Muralis Mode, and Muralis Mode
+/// is the clean-desktop presentation rather than this: hiding Explorer's icons is the only part of this
+/// layer still in use, and preview and takeover are not choices the product offers. What is left here
+/// is the one job the retired takeover still has — handing a desktop that owes Explorer its icons back
+/// to Windows at startup — so nothing new should depend on it.
+/// </para>
 /// </remarks>
 public interface IDesktopModeService
 {

@@ -24,6 +24,12 @@ namespace Muralis.Desktop.Modes;
 /// hide the icons is saved as a preview, and a canvas that could not be mounted is not saved at all,
 /// so a failure is reported once instead of failing again on every launch.
 /// </para>
+/// <para>
+/// Retired as a product path. The product offers the native desktop and Muralis Mode, and what the
+/// product uses from here is the give-back alone; preview and takeover are no longer reachable choices.
+/// It is kept for startup recovery and internal diagnostics, and no new product code should reference
+/// it.
+/// </para>
 /// </remarks>
 public sealed class DesktopModeService : IDesktopModeService, IDisposable
 {

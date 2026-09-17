@@ -26,6 +26,12 @@ namespace Muralis.Desktop.Takeover;
 /// whole class of failure. It is also what lets a shell restart be handled by simply doing the last
 /// step again.
 /// </para>
+/// <para>
+/// Retired as a product path. Muralis Mode hides Explorer's icons through the clean-desktop
+/// presentation instead of a takeover, and the mode that used to reach this is no longer a choice. It
+/// stays for the give-back a desktop may still owe at startup, and for internal diagnostics; nothing
+/// new should reference it.
+/// </para>
 /// </remarks>
 public sealed class DesktopTakeoverService : IDesktopTakeoverService, IDisposable
 {

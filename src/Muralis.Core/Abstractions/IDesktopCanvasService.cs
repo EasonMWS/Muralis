@@ -16,6 +16,12 @@ namespace Muralis.Core.Abstractions;
 /// The items on the canvas are the user's own: each one is an explicit import of a program,
 /// shortcut, folder or address, and the service only ever stores the reference. Nothing is copied,
 /// moved or scanned, and removing an item never touches what it points at.
+/// <para>
+/// No product path mounts this canvas any more: with the desktop modes retired, what is on the desktop
+/// is presented by the dock's Shelf, and the desktop-items card that survives on the wallpaper page
+/// edits the document this service owns without anything drawing it. The service stays for that
+/// document and its tests; new product code should not depend on it.
+/// </para>
 /// </remarks>
 public interface IDesktopCanvasService
 {

@@ -1750,6 +1750,7 @@ Phase 4C 之后，产品里同时有四处在说"用户与桌面的关系"：壁
 - `DesktopExperienceStatus`：`IsCleanDesktopAvailable` → `IsMuralisAvailable`，`IsExperimentalTakeover` → `IsMuralis`。
 - `DesktopExperienceService`：`RestoreAsync` 保留"启动时还欠 Explorer 就还给 Explorer"的那一次读，其余不变；进入 / 退出 / 失败路径的语义一行未动（失败一律落回 Native）。**改的是模式名与注释**。
 - `AppSettings.CurrentSchemaVersion` 2 → 3；`SettingsService` 的转换器顺序修正。
+- **冻结层的入口加了退役说明**（spec §24）：`IDesktopModeService`、`DesktopModeService`、`DesktopTakeoverService` 与 `IDesktopCanvasService` 的 XML 注释里写明"这是撤下的产品路径，保留给启动 recovery 与内部诊断，新代码不要引用它"。用注释而不是 `[Obsolete]` 属性——spec 明确要求不要制造 build noise，而 Release 复跑仍是 **0 警告**。
 
 **App（用户可见的收敛）**
 
@@ -1786,7 +1787,8 @@ Phase 4C 之后，产品里同时有四处在说"用户与桌面的关系"：壁
 | `a316883` `refactor: finish the two-mode desktop experience model` | Core：枚举与转换器、状态改名、schema 3、转换器顺序修正；退役的 `tools/p3d-takeover-verify.ps1` 随之删除（它的删除在上一轮就已 staged，一并落在这里） |
 | `99b093d` `refactor: consolidate the desktop surfaces onto Muralis Mode` | App：设置页分组、壁纸页删两段、托盘并命令、删两个 Row VM、两个 resx |
 | `579d08e` `test: lock the two-mode product model and fix the perf harness` | 两个新测试文件、服务测试重写、架构守卫改名、`p4c` 的 `clean` 阶段改种 `Muralis` 与 schema 3 |
-| `docs: record the desktop experience consolidation` | 本节 + CHANGELOG（就是包含本表的那次提交，哈希见 `git log -1`） |
+| `8f7a045` `docs: record the desktop experience consolidation` | 本节 + CHANGELOG |
+| `docs: mark the frozen phase 3 layer as retired` | 四个冻结层入口的退役说明注释（就是包含本表的那次提交，哈希见 `git log -1`） |
 
 ### 23.5 验收（运行时：两种模式走一圈）
 
