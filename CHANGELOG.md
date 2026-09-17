@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The dock is now a product surface of its own rather than a corner of the canvas, and its left
+zone is a real launcher: pin a program or a shortcut, click it to start it, drag it along the
+zone to put it in order, unpin it from its own menu — and it all comes back on the next launch.
+The Dock is a small strip of glass that carries the applications you keep closest, the Shelf
+of what is on your desktop, and the utilities; it is shown on a fully native desktop and it is
+also what Clean Desktop puts in place of Explorer's icons, so it no longer belongs to any one
+desktop mode. Everything it draws comes from one set of design tokens, and a pin whose target
+has been deleted stays in the dock and says so rather than disappearing.
+
 The desktop canvas gains its edge dock: a rail on any of the four display edges that holds
 the items you keep closest, magnifies whatever the pointer passes over, slides out of its
 edge when you come to it, and takes items from the canvas and gives them back — while the
@@ -27,6 +36,53 @@ everywhere in it: **Muralis does not own the user's desktop files.** It reads th
 them, and never copies, moves, renames or deletes one.
 
 ### Added
+
+**The dock's pinned applications**
+
+- Applications pinned to the dock: choose a program or a shortcut with the file picker, or drop
+  one onto the zone, and it is named the way the shell names it and drawn with the icon the shell
+  gives it. A single click starts it — through the shell, so per-user associations, elevation
+  prompts and a shortcut's own arguments and start-in folder behave exactly as they do from
+  Explorer
+- A pinned application is the program rather than the file that names it: a shortcut and the
+  program it points at are recognised as the same application, so the same thing is never pinned
+  twice. A repeat is refused and the pin you already have is highlighted. A pin whose `Arguments`
+  or start-in folder went missing still starts, the way it would start on its own
+- The zone holds at most twelve applications and says so: the add slot dims once it is full, and
+  the picker is never opened for a pin that cannot be taken. What a pin is can be edited by hand
+  in `settings.json`; an entry that cannot describe an application is left out with a warning
+  instead of failing the whole settings load, and one that is merely incomplete is completed from
+  what it does say
+- Reordering by hand: hold a pin and carry it, and it follows the pointer one to one — nothing
+  eases while it is being carried, and the order is written once, on release. A line is drawn
+  where it would land rather than moving the neighbours out of the way, and the release settles
+  the icon into the place it was shown going to with a single ease-out
+- A pin's own context menu: Open, Open file location, and Unpin. Unpinning removes the pin and
+  nothing else — the program or shortcut it pointed at is never touched, renamed or deleted
+- A pin whose target was deleted stays in the zone, dimmed, with a tooltip that says what is
+  missing and a menu that still offers Unpin; clicking it says so in the log rather than starting
+  anything or crashing
+
+**The Muralis design foundation**
+
+- One set of design tokens for the whole application — colour in light and dark, type, spacing,
+  radius, elevation and motion durations — with a glass surface and a small set of reference
+  controls built on them, and a hidden playground (`Ctrl+Shift+D`) for looking at them. No view
+  invents a colour, a radius or a duration of its own
+
+**The desktop experience and the real Shelf**
+
+- The dock as a layer of its own: a borderless, always-on-top strip that is shown on a fully
+  native desktop, hidden when you turn it off, and forced back up when Clean Desktop needs it —
+  with exactly one thing allowed to show or hide that window, so a mode change can never hide the
+  only thing left on the screen
+- A real Shelf: the dock's middle zone is the contents of your desktop and the public desktop,
+  read once and kept current by a debounced watcher, drawn with the icons the shell shows.
+  Double-clicking an item opens it, and nothing is ever copied, moved or renamed
+- Clean Desktop as its own presentation rather than a takeover: Explorer's own reversible
+  no-icons flag is asked for through the desktop's shell view (with the icon-list window as a
+  fallback), what the desktop looked like before is recorded and put back rather than "turned
+  on", and a marker on disk lets the next launch give the icons back after a crash
 
 **The desktop takeover**
 
@@ -130,6 +186,12 @@ them, and never copies, moves, renames or deletes one.
 
 ### Changed
 
+- `settings.json` is schema version 2: it carries the desktop experience and the dock with its
+  pinned applications as sections of their own. Both are optional, so a version 1 file loads with
+  the defaults in their place rather than failing
+- The dock's window belongs to the dock's own service: Clean Desktop asks for the dock to be up
+  instead of showing it, because the dock is a product surface that is also useful on a fully
+  native desktop and is not a part of Clean Desktop
 - The desktop layout document is version 4: it carries the takeover — mode, whether the
   desktop's own items may be adopted, which ones were turned down — and every item remembers
   the path it came from. A version 3 file is read once and brought forward

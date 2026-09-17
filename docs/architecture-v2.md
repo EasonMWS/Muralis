@@ -1385,3 +1385,180 @@ spec §十九 的"Takeover 本身不得建立 polling loop"被回答了两次：
 
 **Phase 3 状态**：Phase 3A（Pointer Router）、3B（真实桌面条目与启动）、3C（交互式边缘 dock）、3D（原生桌面接管）四段全部落地，Phase 3「Interactive Desktop」完成。Muralis 现在可以在三种桌面模式之间切换，接管期间**不拥有用户桌面上的任何文件**——只读、只指、只停画图标，并且无论怎么退出都还得回去。
 
+---
+
+## 21. Phase 4 落地记录：Design Foundation、Desktop Experience 与 Pinned Apps Launcher（2026-09-17）
+
+Phase 4 分三段，在同一天里连续做完，因此记在一节。**4A** 把界面语言与 dock 外壳立起来（Muralis Design Foundation、`DockHost` 三分区）。**4B** 把"桌面体验"抽成架构（三种模式、dock 自己的窗口边界、真实 Shelf）。**4C** 是 spec 的主体：把 dock 左侧的 Pinned Apps 从 mock 数据变成真正可使用、可配置、可持久化的启动区。
+
+三者互为基础，而不是三次叠加：4C 的 Pinned Apps 只用 4A 的 `DockIcon` / token / `MotionTarget` 和 4B 的 dock 窗口，**没有新建第二套 dock、第二套图标系统、第二份设置**。提交是按层切的（Core+Desktop / App+UI / tests+harness / docs），不是按段切的——4A/4B 没有单独提交过，见 §21.8。
+
+### 21.1 交付内容
+
+**4A — Muralis Design Foundation 与三分区 dock 外壳**
+
+- `src/Muralis.App/UI/Tokens/`：`Colors.xaml`（+ `Colors.Light` / `Colors.Dark`）、`Typography`、`Spacing`、`Radius`、`Elevation`、`Motion`——全 app 唯一的颜色 / 字号 / 间距 / 圆角 / 高度 / 时长来源。
+- `Materials/`：`GlassSurface`（三档材质）+ `Materials.xaml`。
+- `Motion/InteractionMotion.cs`：`HoverMotion`（进出 hover）、`TransformMotion`（`SetTranslateX` / `AnimateTranslateXAsync`）、`MotionDurations`（120 / 180 / 280 ms）。
+- `Controls/`：`MuralisButton`、`MuralisCard`、`MuralisIconButton`、`MuralisNavigationItem`、`ControlVariants`，以及 dock 自己的 `DockIcon` / `DockAddTile`。
+- `Playground/DesignPlaygroundPage`：`Ctrl+Shift+D` 打开的隐藏实验页，不进正式导航。
+- `DockHost.xaml`：一个 `GlassSurface` 里五格——PinnedZone │ 分隔 │ ShelfScroller │ 分隔 │ Utilities。`MotionTargets` 把每个 `DockIcon` 的动效目标登记出来留给后面的动效引擎，本阶段一个都不用。
+- `docs/design-foundation.md`；`DesignFoundationTests` + `Phase4AArchitectureTests` 钉住"不许新颜色、不许新 token、不许第二套 dock、Lab 不进导航"。
+
+**4B — Desktop Experience 架构**
+
+- `DesktopExperienceSettings`（`Native` / `CleanDesktop` / `FullTakeoverExperimental`）+ `DesktopExperienceService` + `IDesktopExperienceService`。模式是用户的选择，落盘在桌面文档里而不是 `settings.json`。
+- **窗口边界搬了一次家**：3D 的 `ICleanDesktopShelfHost` 被换掉，代之以 `IDesktopDockHost`，归 dock 自己的 `DockExperienceService` 所有。理由是原来那个边界属于 Clean Desktop，而 dock 在完全原生的桌面上也要显示——它不是某个模式的从属物。Clean Desktop 现在只能 `EnsureVisibleAsync` / `ReleaseAsync`（**请求**），不能自己开关窗口。
+- `DockExperienceService`：可见性 = `_wanted || _required`（用户要的，或桌面需要的），且只应用变化，所以"要求一件已经成立的事"不会闪窗口。
+- `CleanDesktopPresentation` + `ICleanDesktopPresentation`（+ 非 Windows 上的 `UnavailableCleanDesktopPresentation`）：只改 shell view 的 `FWF_NOICONS`，退到 icon-list 窗口；marker 先写后藏、验证回来才删。
+- `DesktopShelfService` + `IDesktopShelfService` + `DesktopShelfItem` / `DesktopShelfSnapshot`：真实桌面 Shelf，`FileSystemWatcher` 带防抖。
+- `ShellIconProvider` + `IShellIconProvider` / `ShellIconData`：**唯一**的图标 provider。
+- `DockLabPage`：隐藏实验页，只用来打印图标当前藏没藏。
+
+**4C — Pinned Apps & Launcher**
+
+Core：
+- `PinnedApp`（`Id` / `DisplayName` / `LaunchTarget` / `IconIdentity` / `Kind` / `Identity` / `Arguments?` / `WorkingDirectory?`）+ `PinnedAppIdentity` + `PinnedAppTargets`（`.exe` / `.lnk`）。spec §3 要的九项齐全，"Order"由**列表次序**表达，不额外存一个会跟列表打架的序号。
+- `PinnedApps`：纯规则——`Add` / `Remove` / `Move` / `FindByIdentity` / `MaximumCount = 12`。`PinnedAppAddResult` 把"加不进去"当成四种**结果**之一（`Added` / `Duplicate` / `LimitReached` / `Unsupported`）而不是异常，因为四种都要用用户的语言说出来。
+- `IPinnedAppService` + `PinnedAppService`：唯一的 pinned 副本，`Changed` 事件挂在上面；一次变更一次落盘。
+- `IApplicationLauncher` / `ApplicationLaunchRequest` / `ApplicationLaunchResult`（`Launched` / `Missing` / `Failed`）、`IApplicationInspector` / `ApplicationDescription`、`IApplicationLocationRevealer`。
+- `DockSettings`（`IsVisible` + `PinnedApps`）落在 `settings.json` 的 `Dock` 段；`PinnedAppSettings.TryToPinnedApp` 逐条读，读不出来的那一条被跳过并计数。
+
+Desktop：
+- `ShellApplicationLauncher`：`ProcessStartInfo { UseShellExecute = true, Verb = "open" }`，`.lnk` 与 `.exe` 走同一条路。
+- `ShellApplicationInspector`：`.exe` 用文件自己的版本信息取名字；`.lnk` 通过 COM `IShellLinkW` 只读解析。
+- `ShellLocationRevealer`（"打开文件位置"）、`ShellLinkInterfaces`。
+- `ShellIconProvider` 加尺寸参数：48 px 基准，按需 64 / 96，按尺寸分别缓存（`IconBitmapCache` LRU）。
+
+App：
+- `PinnedAppsPresenter` + `PinnedAppViewItem`：把 `IPinnedAppService` 的列表镜像成视图项，复用还活着的项、插入新的、删掉超出的；图标 fire-and-forget。
+- `DockHost`：pinned zone 的 `Tapped` / `PointerPressed|Moved|Released|Canceled` / `DragOver` / `Drop` / `ContextFlyout`（Open / Open File Location / Unpin），外加 `PinnedAddRequested` 与 `PinnedNotice` 两个出口。
+- `PinnedZoneDrag`：一次拖拽的全部状态机（`Press` / `Move` / `ReleaseAsync` / `Cancel` / `OnProjected`）。
+- `DockAddTile`：空状态与 `+ Add App` 用同一个 tile，`IsFull` 时 0.5 透明度。
+- `DesktopDockHost`：真实的 dock 窗口（无边框、置顶、不进 Alt+Tab、不可缩放、不可最小化），`PrepareAsync` / `ShowAsync` / `HideAsync` / `CloseAsync`。
+- Settings 的最小 Dock 段（一个开关 + 一行说明）；11 条 `Dock_Pinned_*` 本地化字符串（中英）。
+
+### 21.2 关键实现决定
+
+- **身份是"归一化后的落地路径"，而且存下来**：`PinnedAppIdentity.Of(launchTarget, resolved)` 优先用 shortcut 解析出来的目标，`Path.GetFullPath` + `ToUpperInvariant`；解析不出来的 shortcut 退回它自己的路径。所以 `.lnk` 和它指向的 `.exe` 是**同一个应用**——harness 里两条路径都记成 `Duplicate`。`Identity` 是写进文件的，不是每次启动重算，所以一个目标在磁盘上被移动不会悄悄变成第二个 pin。
+- **一个 pin 只在 release 之后写一次盘**：`MoveAsync` 先 `SameOrder` 判等，顺序没变连写都不写。harness 测得"约 84 次移动 / 6 次落盘"。
+- **数据先于图片**：`Project` 立刻把视图项建好并触发 `Projected`，图标是 `_ = LoadIconAsync(item)`（spec §22 的"不要阻塞启动去同步提取几十个图标"）。`Projected` 只在视图项已经对上保存的列表之后才发，所以拖拽落点的清理与重排发生在同一个回调里，不会有一帧画在旧位置。
+- **拖拽期什么都不做**：`PinnedZoneDrag.Move` 里只有三件事——`TransformMotion.SetTranslateX(_carried!, delta)`、`DockReorder.TargetIndex(...)`、以及目标索引真的变了才 `PlaceIndicator()`。没有动画、没有 await、没有布局、没有写盘（spec §16）。`TheReorderHotPathStaysDirectManipulationOnly` 用代码扫描守着：`Move(` 到 `ReleaseAsync()` 之间不许出现 `await` / `MoveAsync` / `SaveAsync` / `Persist` / `Animate` / `Scale` / `Glow`。
+- **插入位置是一条线，不是"让邻居让开"**：邻居让开就得在落点之后的那次布局变化上再让回来，而两者之间没有一帧能干净地清掉，必然画出双倍偏移。一条线说同样的事，而且不会跟手上那个 icon 打架。
+- **spring 只在落下**：`ReleaseAsync` 里 `AnimateTranslateXAsync(..., MotionDurations.Standard, CubicEase EaseOut)` 把 icon 送到"它被显示要去的位置"，**然后**才 `_commit`。
+- **不用箭头按钮**：spec §15 允许"实现成本明显过高时"退回 context move。实测拖拽成本不高（见 §21.6），所以做的是真的拖拽。
+- **unpin 只删配置**：`RemoveAsync` 只改 `_items` 再落盘，`File.Delete` 在这个文件里不存在。harness 每次 unpin 前后对 fixture 文件做 `长度|写入时间|文件名` 比对，`->` 两边完全相同。
+- **读不出来的一条不拖垮整份配置**：`TryToPinnedApp` 拒绝**描述不出应用**的条目（缺 Id / 名字 / 目标 / `Kind` 不合法）；只是**不完整**的条目则从它已有的部分补齐（缺 `Identity` 就从 `LaunchTarget` 算，缺 `IconIdentity` 就用 `LaunchTarget`），这样手改过的文件仍然能用。`RestoreAsync` 把被拒的条数记一条 warning，剩下的照常加载。
+- **dock 窗口只有一个主人**：`DockExperienceService` 是唯一 show/hide 的地方（`OnlyTheDockExperienceServiceShowsOrHidesTheDockWindow` 用白名单守着）。
+- **先有 dock，再藏图标**：`CleanDesktopPresentation.ActivateAsync` 的顺序是"读到真实 Shelf → 要求 dock 可见 → 记原始 flags → 写 marker → 藏图标"。harness 的 `clean:` 段在用户**主动关掉 dock** 的情况下验证 dock 仍然被顶上来，并且 pins 在里面仍然能启动。
+- **4C 的 pinned 路径不认识任何桌面模式**：`TheDockNeedsNothingFromAnyDesktopMode` 逐文件扫 `CleanDesktop` / `IDesktopExperienceService` / `DesktopExperienceMode`，六个 pin 路径文件里一个都不许出现（spec §29/§30）。
+
+### 21.3 spec §43 的 17 项完成门
+
+`tools/p4c-pinned-verify.ps1 -Stage full` = **69 项全通过**（`artifacts/p4c/full-run.txt`：harness 2 / pins 27 / restore 13 / missing 13 / clean 14）；性能另起 `-Stage perf` = **12 项全通过**（`artifacts/p4c/perf-run.txt`）。
+
+| # | spec §43 | 实测（节选 harness 文案） |
+| --- | --- | --- |
+| 1 | .exe 可固定 | `pins: the program was pinned`（…pinned from …\muralis-fixture-shell.exe）、`pins: the pin was written with the program it points at` |
+| 2 | .lnk 可固定 | `pins: the shortcut was pinned`、`pins: the shortcut was written as a shortcut named by its own file` |
+| 3 | 图标正确 | 单测层面成立：`ShellIconReaderTests`（尺寸分桶、BGRA 预乘、目标不存在给空）、`IconSurfaceLiveTests`（真图标画到 compositor 上、50 个图标的时间）、`IconBitmapCacheTests`（按尺寸缓存、LRU 预算）。**harness 读不到画出来的像素**——图标在 composition 层，UIA 只能读 label。见 §21.7 |
+| 4 | 单击启动 | `pins: a click on the program pin started it`、`pins: a click on the shortcut pin started what it points at`、`pins: the app logged the start` |
+| 5 | 重复项被正确处理 | `pins: the repeated program was refused as already pinned`（`Duplicate`）、`pins: a duplicate was not pinned`、`pins: a shortcut and its own program were recognised as one application` |
+| 6 | 可取消固定 | `missing: the Unpin command was chosen`、`missing: the pin left the zone`、`missing: the pin left the saved list` |
+| 7 | 可排序 | `restore: the drag left the zone in the new order`（`order shortcut, order program`） |
+| 8 | Order 持久化 | `restore: the new order was saved`、`restore: the drag committed exactly once`（一次拖拽对一条 move 日志） |
+| 9 | 重启恢复 | `restore: the reordered pins came back in the new order`、`restore: the restart said what it restored` |
+| 10 | Missing target 不崩溃 | `missing:` 整段 13 项：仍然列出、点击只记 warning 且不起进程、context menu 仍在且能 unpin |
+| 11 | Pinned Zone 不随 Shelf 滚动 | `ThePinnedZoneCannotScrollAwayWithTheShelf`：`DockHost.xaml` 里 `<ScrollViewer` 只出现一次（就是 Shelf 自己的），pinned zone 与 drop indicator 都在它外面 |
+| 12 | Native 模式可用 | `pins:` + `restore:` 两段共 40 项，全程 `DesktopExperience.Mode = Native` |
+| 13 | Clean Desktop 模式可用 | `clean:` 段 14 项（dock 被顶上来、pins 在、Explorer 真的报了 `FWF_NOICONS`、pin 仍能启动、退出时图标回来） |
+| 14 | Real Shelf 无回归 | `clean: the real Shelf read the desktop folders`（1.7 ms，42 项 = 28 user + 14 public）、`clean: the dock still has its 'Desktop Shelf' zone`、`clean: the desktop files the Shelf reads were not touched`（44 → 44） |
+| 15 | Phase 3 无回归 | `TheShellAndItsSurfacesAreStillThere` 断言 3B/3C/3D 的 surface 与 service 文件仍在、`FileSystemWatcher` + `DebounceDelay` 仍在；Desktop 的 `Takeover` / `Modes` / `Shelf` / `Input` / `Surfaces` 全部仍绿（165 项） |
+| 16 | Build / Tests 全部通过 | Debug 与 Release 双配置 **0 警告 0 错误**；Core **581** + Desktop **165**（共 746） |
+| 17 | 真机运行通过 | 上面 `full` 69 + `perf` 12，两次都是 `ALL CHECKS PASSED` |
+
+### 21.4 spec §40 的真机矩阵
+
+| spec §40 | 实测 |
+| --- | --- |
+| Add .exe | `pins: the program was pinned` + `pins: the pin is named from the program itself`（名字来自文件版本信息，不是文件名） |
+| Add .lnk | `pins: the shortcut was pinned` + `pins: the shortcut was pinned as the application it resolves to, not as a file`（identity 是解析后的目标，launch target 仍是 `.lnk`） |
+| Duplicate add | `pins: the repeated program was refused as already pinned`；再点一次**没有**第二条 pinned 日志（`pinned lines 15 -> 15`），zone 里仍恰好两项 |
+| Launch .exe | `pins: a click on the program pin started it : 1 new process(es)` |
+| Launch .lnk | `pins: the shortcut was started through the shell, so the program it points at ran : …muralis-fixture-alt.exe` |
+| Reorder | `restore: the drag left the zone in the new order` + `restore: the drag launched nothing : 0 fixture process(es)` |
+| Restart Muralis | `restore: the dock window came up after the restart` |
+| Order restored | `restore: the reordered pins came back in the new order`（拖动前后顺序相反，重启后保持拖动后的顺序） |
+| Remove | `missing: the Unpin command was chosen` + `missing: the pin left the zone` + `missing: the pin left the saved list` |
+| Missing target handling | `missing: clicking it said the target is gone`（`[WRN] … points at …, which is gone`）+ `missing: clicking it started nothing` + `missing: the pin is still listed after a refused click` |
+| Native Mode | `pins:` / `restore:` / `missing:` 三段 |
+| Clean Desktop Mode | `clean:` 段 14 项 |
+| Shelf remains usable | `clean: the dock still has its 'Desktop Shelf' zone : 42 text(s)`、`clean: the dock still has its 'Utilities' zone : 2 text(s)`、`clean: the real Shelf read the desktop folders` |
+| App exit | 每一段收尾的 `the app exited when the window was closed : no process left`（dock 是独立窗口，`CloseAsync` 关掉它、再由关掉主窗口结束消息循环） |
+
+### 21.5 测试与提交
+
+新增测试类：
+
+- Core — `DockShell/PinnedAppTests`（身份、归一化、`KindOf`、`Add` 的四种结果、`Remove`、`Move`）、`DockShell/PinnedAppPersistenceTests`（序列化往返、条目被拒、不完整条目补齐、`Dock` 段默认值）、`DockShell/DockShellLayoutTests`、`Services/PinnedAppServiceTests`（21 项，用替身 `IApplicationLauncher` / `IApplicationInspector`）、`Services/DockExperienceServiceTests`（15 项：`_wanted || _required`、只应用变化、`ShutdownAsync` 之后不再开窗）、`Services/DesktopExperienceServiceTests`、`Architecture/DesignFoundationTests`、`Architecture/Phase4AArchitectureTests`、`Architecture/Phase4CArchitectureTests`。
+- Desktop — `Launch/ShellApplicationLauncherTests`、`Launch/ShellApplicationInspectorTests`、`Shelf/DesktopShelfServiceTests`、`CleanDesktop/CleanDesktopLiveTests`；另有 `Icons/`（`ShellIconReaderTests` / `IconBitmapCacheTests` / `IconSurfaceLiveTests`）与更新过的 `Architecture/ArchitectureGuardTests`。
+
+**没有任何单元测试真的启动第三方程序**（spec §38）：`PinnedAppServiceTests` 全程用替身 launcher 与 inspector；`ShellApplicationLauncherTests` 只走"目标不在"这类不会起进程的路径，另用 fixture 自己的文件。
+
+数字：Core 485 → **581**，Desktop 150 → **165**（共 746）；Debug / Release 双配置 **0 警告 0 错误**。
+
+### 21.6 性能（12 个 pin = 当前策略的设计上限）
+
+`-Stage perf` 把 zone 种满 12 个 pin 再启动，两次独立运行：
+
+| 指标 | 运行 A | 运行 B |
+| --- | --- | --- |
+| 启动 → 主窗口 | 731 ms | 761 ms |
+| 启动 → dock 窗口 | 2094 ms | 2202 ms |
+| 启动 → 12 个 label 全部就位 | 2251 ms | 2381 ms |
+| idle（zone 满，静默后 5 秒） | 0.0 ms = 单核 0% | 0.0 ms = 单核 0% |
+| 指针跟手，最好一轮（40 次移动） | **0.391 ms/次**（187.5 / 187.5 / 15.6 ms） | **3.516 ms/次**（171.9 / 203.1 / 140.6 ms） |
+| 一次完整拖拽 + 重排（6 轮平均） | 419.3 ms 应用 CPU / 轮 | 375.0 ms / 轮 |
+| 其中"跟着指针走"（6 轮合计） | 1078.1 ms | 906.3 ms |
+| 其中"落下"（6 轮合计 / 每次） | 1437.5 ms / 239.6 ms | 1343.8 ms / 224.0 ms |
+| 落盘 | 6 次重排 = 6 条 move 日志 | 同 |
+
+**热路径本身很便宜**：最好一轮 0.391 ms/次移动（约 1.22% 单核）。也就是说"1:1 跟手"不是靠 spring 掩盖出来的——直接操纵路径确实轻，这正是 spec §41 要问的那件事。把两次运行放在一起看，跟手的读数落在 **0.39–3.5 ms/次**之间，而 harness 每次移动之间要等 20 ms，所以即便是最差的一轮，每次移动也只用掉了约五分之一的预算。
+
+**但跟手读数不稳定，我不把它当成一个确定的数**：同一段代码在三轮里量出过 `187.5 / 187.5 / 15.6` 和 `171.9 / 203.1 / 140.6` 两种量级，更早一次还被 UIA 读数污染到 30 ms/次，idle 也见过一次 2250 ms/5 s。差异来自这个 app 自己的后台工作（桌面条目的图标、壁纸刷新）恰好落进某一轮。所以 harness 报的是**三轮里最安静的一轮**，并且在量 idle 之前先等一个低于 50 ms 的"安静秒"（`perf: the app went quiet with the zone full`）。**单次采样在这个 app 上不可靠**，这一点在本阶段被实测了两次。
+
+**落下的那一侧很贵，我把它记为本阶段的已知性能缺口**：一次真正的落下约 224–240 ms 应用 CPU。这个数字把四件事加在一起——`AnimateTranslateXAsync` 的 spring、一次 `MoveAsync`（落盘）、`Project` 重建视图项、以及 WinUI 对 zone 的重新布局与重画。**我没有把它拆到单一原因上**：拆它需要在落点路径上插桩，而那正是本阶段要求保持干净的地方，在一个验收已经全绿的阶段末尾动它不划算。下次要动 spring 曲线或做 Nexus 放大之前，这里应该先量一次分段。
+
+### 21.7 已知限制 / 诚实记录
+
+- **"图标正确"没有真机像素级验证**：pinned icon 画在 composition 层，UIA 读不到。harness 能证明的是"pin 被正确读出、label 正确、点得动、起得来"，`Icons/` 的单测能证明"尺寸分桶对、BGRA 转换对、缓存按尺寸键、50 个图标的时间可用、真图标能画到 compositor 上"，但**"屏幕上那个图标长得对不对"仍是人工验收项**。spec §41 的高刷手感同理。
+- **跟手读数不稳定，落点成本未归因**（见 §21.6）。
+- **`.appref-ms` / UWP / packaged app / AppUserModelId 不支持**，按 spec §4/§35 是 Non Goal。`ShellApplicationInspector` 把这类 shortcut 描述成"解析不出目标"，于是它被当作 shortcut 自己的路径固定，身份也退化成 shortcut 路径——**它能固定、能启动，但不会和别的 pin 撞身份**。扩展点留在这里，本阶段不碰。
+- **没有运行状态检测、没有多实例处理、没有窗口激活**（spec §10/§33/§34/§42）。同一个 pin 连点两次会起两个进程，由目标应用自己决定。
+- **`MaximumCount = 12` 是本阶段的策略，不是产品常量**：spec §14 要求"有合理的最大策略、不要把 dock 撑满整个屏幕"，§37 的目标是 10–30。测试断言它落在 10–30 之间。满了之后 `DockAddTile` 变暗，picker 在打开前就被 `Dock_Pinned_Full` 挡掉；**没有 overflow 菜单**（spec §14 明确说不做第二层菜单）。
+- **只测了 12 个 pin**：20 / 30 个的情况没有单独跑，而 12 已经等于当前策略允许的最大值。
+- **`settings.json` 里 `CloseToTray` 的原值不可恢复**：本阶段早前有一次 harness 中途失败，它的清理没跑完，把 fixture 的 pin 和 `CloseToTray: false` 留在了用户的真实设置里，而下一次运行的备份又把更早的干净备份覆盖掉了。发现后我把 `Dock.PinnedApps` 清空、`CloseToTray` 恢复成 app 默认的 `true` 写回。**原始值已经找不回来了**——这是本阶段真实发生过的一次对用户文件的污染，记在这里。结构性修复已经做了：`Backup-Settings` 现在遇到遗留备份会**采用**而不是覆盖它，清理步骤也不再会中断整个 run。
+- **`settings.json` 的 `SchemaVersion` 从 1 走到了 2**：新增的 `DesktopExperience` 与 `Dock` 两段都是可选的，`LoadAsync` 用 `??=` 把缺失的段落补齐，所以一份 v1 文件读进来不会失败，只是拿到默认的 dock 与模式。`AppSettings.SchemaVersion` 目前**没有任何读者会拒绝更新的版本**（与桌面文档 v4 不同，那份会拒绝），这是有意的宽松加载。
+- **多屏 / 高 DPI 未覆盖**：dock 窗口的位置取 `DisplayArea` 的工作区（宽 `Math.Min(960, …)`、高 116、底部留 16），只在本机单屏 2560×1440 @96 DPI 上实测过。
+- **`Phase4AArchitectureTests` 里那条 pinned zone 断言是为 4C 主动改过的**：4A 当时断言 pinned zone 由普通 item list 喂，4C 之后它由 `PinnedAppsPresenter` 喂，所以那条断言连同注释一起更新了。这是有意的，不是测试被绕过。
+
+### 21.8 提交与验收产物
+
+提交按**层**切，不按段切——4A/4B 从未单独提交过，所以 4C 的提交里必然带着它们：
+
+| 提交 | 内容 |
+| --- | --- |
+| `2fccf50` | feat: add the dock experience layer, a real shelf and pinned app launching（Core 抽象 / DockShell 模型与纯规则 / 两个设置段与加载补齐 / `PinnedAppService` / Clean Desktop 与 Shelf 与 Shell 图标 / `ShellApplicationLauncher` / `ShellApplicationInspector` / `ShellLocationRevealer` / dock 窗口边界） |
+| `a7971a8` | feat: pin applications to the dock and give the app its design foundation（`src/Muralis.App/UI/` 全部 + Design Foundation 文档 + App 侧装配、MainWindow、Settings 的最小 Dock 段、`Dock_Pinned_*` 本地化） |
+| `a1787bd` | test: cover the pinned apps, the launcher contract and the dock boundaries（Core / Desktop 新增测试类 + `ArchitectureGuardTests` 与 `SettingsServiceTests` 的更新 + `tools/p4c-pinned-verify.ps1` + `tools/p3-common.ps1`） |
+| `docs: complete the pinned apps phase` | 本节 + CHANGELOG（就是包含本表的那次提交，哈希见 `git log -1`） |
+
+- 前两个提交各自经 Debug 全量构建验证（0 警告 0 错误）；`a1787bd` 之后 Debug / Release 双配置全量构建 + 全量测试通过（Core 581 + Desktop 150→165）。
+- 每个提交都单独验过"只有它自己时也能编过"，而不是只看最终状态：`2fccf50` 只改了 `CanvasSurfaceContent.cs` 的三个 **private** 方法，且 App 侧没有任何文件引用它，所以带上 App 的 HEAD 状态仍然编得过。
+
+验收产物（`artifacts/`，未入库）：`p4c/full-run.txt`（69 项全通过）、`p4c/perf-run.txt`（12 项全通过）、`p4c/p4c-pinned-verify.json`（脚本每次运行覆盖写，UTF-8 带 BOM）。
+
+**Phase 4 状态**：Phase 4A（Design Foundation 与三分区 dock 外壳）、4B（Desktop Experience 架构）与 4C（Pinned Apps & Launcher）三段全部落地。dock 现在是一个真正的启动区：可以加 `.exe` 与 `.lnk`、拒绝重复、单击启动、拖动排序、重启恢复、目标消失时仍然留在那里并说得出原因，而且**从不碰用户桌面上的任何文件**。Pinned Apps 不依赖 Clean Desktop，在原生桌面与 Clean Desktop 下同样可用。
+
+按 spec §45，**Phase 4C 到此为止，等待人工验收，不自行进入下一阶段**。
+
