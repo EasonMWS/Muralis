@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Muralis Mode is now the first thing the home page offers rather than an option buried in Settings.
+The top of the page is one card that says what the experience is and offers the three things a
+person can do with it — enter the mode, leave it, or go and configure it — with a small drawing of
+the desktop beside the words that changes with the mode, so what is being offered is visible before
+it is accepted. The card holds no mode of its own: it reads the desktop's own reported state, asks
+the one service that owns the mode's lifecycle for a change, and reports what that service really
+answered. That is why a mode switched in Settings shows on the home page without a restart, and why
+an entry that fails shows the native desktop with the reason it failed instead of a running mode it
+never got. Motion and widgets are named as coming soon rather than counted as shipped. It is an
+entrance, not a settings page: nothing about the desktop is configured there, and nothing underneath
+the desktop experience was rebuilt to add it.
+
 Muralis now offers two ways to relate to the desktop and no more. The native Windows desktop is
 the one where Explorer keeps drawing its own icons; Muralis Mode is the one where those icons are
 hidden and the dock and the Shelf present what is on the desktop instead. They are one choice in
@@ -48,7 +60,33 @@ them, and never copies, moves, renames or deletes one.
 
 ### Added
 
-**The dock's pinned applications**
+**The Muralis Mode hero on the home page**
+
+- The home page opens on a Muralis Mode card: what the experience is — Dock, Desktop Shelf, Motion
+  and Widgets, with the two that are not shipped yet marked as coming soon — and the actions each
+  state earns. Native offers one way in; running offers Customize and, less prominently, the way
+  out; a failed attempt offers Try Again. Three verbs rather than a switch, because a switch would
+  say the mode is a setting and hide which way the change is going
+- The card says what is true rather than what was asked for: it reads the mode from the desktop
+  instead of remembering one, shows a preparing line while the desktop is being rearranged and a
+  restoring line while it is being handed back with both actions held for the whole of it, and after
+  an attempt that could not take shows the native desktop, the reason the desktop itself gave, and a
+  retry — never a running mode it never got, and never a configure or a leave for a mode that is not
+  on
+- A small desktop drawn in XAML beside the words, native or Muralis, cross-fading on the design
+  foundation's own motion tokens: a drawing of a desktop and never a picture of one, with no
+  screenshots, no user files and no compositor in it. A window without the room for it puts it away
+  rather than squeezing the words, and nothing in the card is ever cut off sideways
+- Every word the card shows is a resource in both languages, and a guard fails the build if a key is
+  missing from either catalog or a literal reaches the card. A second guard holds the card to the one
+  desktop experience service — the hero never hides an icon, never brings the dock up, never starts
+  the Shelf and never touches the retired takeover
+- `tools/p5-hero-verify.ps1`: an acceptance harness for the entry point. It reads Explorer's own
+  desktop-icon flags before and after, drives the card from the native desktop into the mode and back
+  out, takes the customize route into Settings and follows the mode home again, forces the fail-open
+  path by making the recovery marker unwritable, and shoots the state matrix across both themes and
+  both languages — then puts back everything it touched
+- The dock's pinned applications
 
 - Applications pinned to the dock: choose a program or a shortcut with the file picker, or drop
   one onto the zone, and it is named the way the shell names it and drawn with the icon the shell
@@ -244,6 +282,15 @@ them, and never copies, moves, renames or deletes one.
 
 ### Fixed
 
+- The Muralis Mode card keeps its own line while its request is in flight. A desktop change
+  publishes on every step of its way through, and those intermediate reports describe the desktop
+  the request is moving away from, so the card could drop back to "ready to enter" between
+  "preparing" and "running". It now trusts only what its own request publishes when it lands
+- The card's mini desktop drawing no longer paints pale on a dark card: the glass style's brush
+  resolves against the wrong theme once the mode is up, so the panel pins its own surface token
+  instead. What is underneath is untouched — the token brushes are declared outside the theme
+  dictionaries and are therefore shared across windows, and the dock window resolves in the light
+  context — so other glass surfaces can still be painted by it
 - The choice not to adopt the desktop's own items is honoured while the canvas is mounted
   too: it was only read on the path where no canvas was up, so a preview or a takeover
   brought the desktop in anyway

@@ -1819,3 +1819,131 @@ Phase 4C 之后，产品里同时有四处在说"用户与桌面的关系"：壁
 
 **Phase 4 状态**：4A / 4B / 4C / 4C.1 与本节（模式收敛）全部落地。产品对用户只承认两种桌面关系，第三、第四种只剩"旧文件读得进来"这一件事。Phase 4D 的前置条件——一个稳定的模式概念——已经满足；按惯例**等待人工验收，不自行进入下一阶段**。
 
+---
+
+## 24. Muralis Mode Hero 落地记录：首页的旗舰入口（2026-09-17）
+
+§23 之后产品只剩两种模式，但 Muralis Mode 仍然是设置页里的一个下拉项：用户得先知道"设置 → 桌面体验"这条路，才可能遇到这个产品最想让人用的东西。本节把入口提到首页——**体验的入口在首页，配置仍然在设置页**。这一段同样排在 Phase 4D 之前：动效要挂在一个用户真的会走进去的入口上，否则它挂在一个没人到的地方。
+
+**先说结论：本轮只做了一件事——首页顶部多了一张 Muralis Mode 卡片。** 底层一行未改（除了验收逼出来的一处状态机修正，见 §24.3），设置页的模式与 dock 分组未动，没有新增侧栏页面，托盘未动，壁纸页未动。
+
+### 24.1 一条边界：入口前置，配置后置
+
+| | 做什么 | 不做什么 |
+| --- | --- | --- |
+| 首页 Hero | 说清 Muralis Mode 是什么；进入 / 退出 / 去自定义 | 不含任何配置项；不写 `settings.json`；不藏 Explorer 图标、不 Ensure dock、不启 Shelf、不还图标；不引用冻结层 |
+| 设置 → 桌面体验 | 模式与 dock 的配置（§23 的分组不变） | 不再负责"让人发现 Muralis Mode" |
+
+两边**共用同一个 `IDesktopExperienceService`**，也没有第二份模式状态：Hero 不持有 `bool IsMuralisEnabled`，它读 `Status`，改变时也是请那个服务去改。所以"在设置页里切了模式，首页跟着变"是免费的，不需要重启——验收里有一条断言专门盯这件事（`home: the page followed the settings page back to the native desktop`）。
+
+主交互是**三个动词**而不是开关（spec §6）：原生时主按钮 `Enter Muralis Mode` / 中文 `进入 Muralis 模式`（是**进入**，不是"启用"）；运行中主按钮变成 `Customize`，退出降为次要按钮 `Exit Muralis Mode`；失败时主按钮是 `Try Again`。XAML 里没有 `ToggleSwitch`，也没有任何 `IsOn=`，这条由架构守卫逐字守住（§24.8）。
+
+### 24.2 五个状态与它们说的话
+
+| 状态 | 何时 | 卡片说什么 | 提供的动作 | 右列画什么 |
+| --- | --- | --- | --- | --- |
+| Ready | 原生桌面，无错误 | `Ready to upgrade your desktop.` + Dock / Desktop Shelf / Motion / Widgets 四张能力芯片 | 主：进入 | 原生桌面 |
+| Entering | 进入请求在途 | `Preparing your desktop…` | 两个按钮都禁用 | 原生桌面 |
+| Active | `Status.IsMuralis` | `Your desktop is running with Muralis.` + Dock=Active、Shelf=Ready、Widgets=即将推出 | 主：自定义；次：退出 | Muralis 桌面 |
+| Exiting | 退出请求在途 | `Restoring Windows desktop…` | 两个按钮都禁用 | Muralis 桌面 |
+| Error | 请求失败（fail open 到原生） | `Muralis Mode could not start. Windows desktop has been restored.` + 服务给的那一句原因 | 主：重试 | 原生桌面 |
+
+三件事值得单独说：
+
+1. **失败不是第五种模式，是原生桌面加一句话。** 卡片只读 `Status`：`IsMuralis` 才是 Active；失败时画的是原生桌面、写的是原因、给的是重试，绝不会出现"看起来像运行中"的样子（spec §13/§33）。验收里三条断言专门盯它：失败后不得出现退出、不得出现自定义、不得声称 dock 在运行。
+2. **Motion 与 Widgets 写 "Coming soon"。** spec §8/§23 要求这两项不能假装已经交付；它们以"即将推出"的芯片出现，不参与任何状态（这是 §40 的非目标里唯一需要在界面上说出口的部分）。
+3. **文案全部来自资源文件。** 19 条 `Home_MuralisMode_*` 键，中英各一份，EN 逐字对齐 spec §5；XAML 里不允许出现字面量——守卫用 `Text="[^{]` 的正则拒掉任何英文硬编码。
+
+### 24.3 状态机在 Core，而"界面状态"不是"模式"
+
+| | 是什么 | 在哪 |
+| --- | --- | --- |
+| `DesktopExperienceMode` | 产品只有两个：`Native` / `Muralis` | Core（§23） |
+| `MuralisModeHero` 的 `Ready / Entering / Active / Exiting / Error` | 只是这张卡片怎么呈现 | Core（headless） |
+
+放 Core 的理由和 §23 一样：**App 层没有测试工程**，状态机要能被单测，所以它不能在 ViewModel 里。`HomeViewModel` 只往外给 `IsHeroActive`、`ShowsWindowsDesktop`、`IsHeroBusy` 和三个命令；`EnterAsync` → `ApplyAsync(DesktopExperienceMode.Muralis)`，`ExitAsync` → `ApplyAsync(DesktopExperienceMode.Native)`——它自己不做隐藏图标、不 Ensure dock、不启 Shelf，那些是那个服务的生命周期。
+
+**运行时验收逼出来的一处状态机修正**（本轮唯一一处底层改动）：`OnDesktopChanged` 现在在"自己的请求在途"时早退。理由：一次 desktop change 沿途会发布多次（藏图标 → dock → shelf…），中间那几次描述的是**正在被离开的那个桌面**；如果照单全收，卡片会在 `Entering` 与 `Ready` 之间来回跳，最后才落到 Active——用户看到的是"按了没反应"。修法是：`_busy` 期间只信请求自己落地时发布的那一次。两个新单测用 `TaskCompletionSource` 卡住假服务，断言"正在准备…"在矛盾的中途发布下活了下来（进入、退出各一条）。
+
+### 24.4 迷你桌面预览：画出来的，不是拍出来的
+
+- 右列 360×240，**纯 XAML**：原生变体是六个图标方块加一条底部任务栏，Muralis 变体在同样的图标之外多一层 dock 与 Shelf 的示意。没有截图、没有用户文件、没有 D3D、没有 compositor（spec §9/§10）。
+- 两个变体交叉淡入淡出，时长与缓动取自 Design Foundation 的 motion token；`HeroAccentEdge` 只在运行态亮起一条边。验收里"卡片确实画了另一个桌面"这条是**量出来的**：把同一区域的两张图逐像素比，18.82% 的像素随模式变化。
+- 预览面板的表面是**钉住的**（`{ThemeResource MuralisSurfaceLowBrush}`），没有交给 glass style 的 setter——原因见 §24.7 第 3 条。
+
+### 24.5 响应式：宁可少一张画，也不要挤成单字一列
+
+- 是否显示预览按**卡片宽度**判定（`>= 780`），不是按窗口宽度：导航栏与页面外边距在卡片布局时已经不见了，按窗口判会在中等窗口下提前收起。780 大致对应窗口 1100。
+- 实测：验收窗口客户端 1344×892 时，卡片是 x 284..1308（宽 1024）、y 141..441（高 300），预览 360×240 正好落在卡片内边距里；窄窗 820 客户端 → 预览收起，由 UIA 断言"卡片的任何内容都没有越出窗口边缘"（横向不裁切，spec §25）。
+
+### 24.6 Hero 的位置与分量
+
+顺序是 Hero → 精选 → 最近 → 库 → 固定项：原有内容一个没删，只是排到了 Hero 后面（spec §7/§24）。
+
+同一窗口（客户端 892 高）里，Hero 卡片高 300 px = **33.6%**；去掉页面头部（141 px）之后的可见内容区里是 **40%**。但同一张固定高度的卡片放到最大化的 2560×1440 窗口里只有约 **22%**，低于 spec §7 给的 35–50%。取舍写在 §24.10 第 3 条。
+
+### 24.7 主题与视觉：两个坑与一个被查清的既有缺陷
+
+**坑一：这个 WinUI 里没有 `VisualStateManager.GoToElementState`**（`Microsoft.WinUI.dll` 里查过，没有这个成员），而 `<VisualState.StateTriggers>` 里的 `StateTrigger` 挂在非 Control 的根 `Grid` 上**不会**在 x:Bind 变化时重新求值——生成的 `HomePage.g.cs` 确实在更新那两个属性（`Set_..._IsActive` 都在），绑定是对的，组就是不动。最后一句话概括：状态由代码显式驱动，`VisualStateManager.GoToState(this, state, useTransitions)`；`OnLoaded` 用 `useTransitions: false` 取当前状态（首帧不该"动"到它已经在的地方，页面也可以在模式已经运行时被打开），之后由 `PropertyChanged` 驱动。
+
+**坑二：`VisualState.Setter` 里的 `{ThemeResource}` 在*离开*该状态时按系统主题重新解析**，而不是回到原来的值。所以这个组里没有任何 Setter 里的画刷，只有 storyboard（透明度动画）；青色的状态点用**两个点交叉淡入**实现（`HeroStatusDotIdle` / `HeroStatusDotActive`），而不是改一个点的 `Fill`。
+
+**一个既有缺陷，本轮查清并做了最小修法：深色下预览面板会画成浅色。**
+
+- 现象：只在 Muralis Mode 起来之后出现（也就是必备 dock 起来之后）；卡片本身 `#101822`、芯片 `#121A26` 都是对的，唯独预览面板变成 `#A5ABB1`（浅色玻璃）；浅色主题下一切自洽；未进入模式、失败、窄窗三种情形都正常。
+- 根因：`UI/Tokens/Colors.xaml` 把画刷对象声明在 `ThemeDictionaries` **之外**（两个主题字典只 `Source` 深浅两个颜色文件），而 `Materials.xaml` 的三个 glass style 在 **Setter 里**用 `{ThemeResource}`，`GlassSurface.ApplyLevel()` 又是从 `Application.Current.Resources` 取这个 Style。于是那些画刷是 Application 作用域的**共享对象**。`UI/Dock/DesktopDockHost.cs` 没有设 `RequestedTheme`，dock 窗口在 WinUI 默认的 Light 上下文里解析，把这些共享画刷改成浅色，主窗口上凡是走 glass style 的表面就跟着变浅。应用内诊断读到的正是"共享画刷在 Dark↔Light 之间来回摆，而 `ActualTheme` 一直是 Dark"。
+- 本轮的处理：只把 Hero 预览面板的表面钉成 `MuralisSurfaceLowBrush`。实测修前 `#A5ABB1` → 修后 `#121B26`（深色），浅色下 `#F0F4F5`，与卡片、芯片一致。
+- **没有做的**：token 层的整体修（把画刷移进主题字典，或给 dock 窗口设 `RequestedTheme`）。spec §40 把 Theme Engine 列为非目标，dock 不在本阶段范围内，而这个改动动的是全局共享面——按"记录在案、不越界"处理。
+
+视觉上另外守住了 spec §12 的禁止项：没有大块纯青、没有 RGB 辉光、没有巨型渐变按钮、卡片不整块发蓝。强调色只出现在两处：运行态的状态点，和卡片边缘那条 accent edge。
+
+### 24.8 测试与提交
+
+| 测试文件 | 内容 |
+| --- | --- |
+| `Architecture/MuralisModeHeroGuardTests.cs`（新，5 项） | Hero 只能依赖 `IDesktopExperienceService`（11 个冻结层 token 在四个 Hero 源文件里都不得出现）；自定义必须走 `Routes.Settings`；状态必须读 `Status` 而不是记字段；三个动作 id 都在且不得有 `ToggleSwitch` / `IsOn=` / 字面量文本；19 个 `Home_MuralisMode_*` 键在中英两份 resx 里都存在且集合相等 |
+| `Desktop/MuralisModeHeroTests.cs`（+2，共 13 项） | 原生读成 Ready、Muralis 读成 Active、失败读成原因、进入请求 Muralis、退出请求 Native、失败回到真实模式、抛异常回到真实模式、重试清掉原因、在途不允许重入、别处改了模式首页跟着变 —— 加上两条新增：在途时的"正在准备"与"正在归还"不被矛盾的中间发布打断 |
+
+同一份 HEAD 上复跑：**Core 620 + Desktop 165 = 785 通过，0 失败**；App Debug **0 警告 0 错误**。
+
+提交按 spec §41 切成两个（A 只含状态机与 ViewModel，B 含界面、预览、本地化与验收脚本）：
+
+| 提交 | 内容 |
+| --- | --- |
+| `a800b5f` `feat: give the home page a Muralis Mode hero state machine` | Core：`MuralisModeHero` 五态状态机与命令、`HomeViewModel` 接线、DI、11 项单测、架构守卫 |
+| `02e595a` `feat: make the Muralis Mode hero the home page's flagship entry` | App：Hero 卡片、迷你桌面预览、19 条中英字符串、代码后置的状态驱动与窄窗收起、`SettingsPage` 的自动化 id；`tools/p5-hero-verify.ps1`（新验收脚本）；以及**验收逼出来的那处状态机修正**（§24.3）与它的两个单测 |
+| 本节 `docs:` 提交 | 本节 + CHANGELOG |
+
+B 里带了一处 spec 归给 A 的状态机改动，这是有意的：那处修正不可能在写界面之前被发现，而 A 已经在 HEAD 上。与其把它塞回一个历史提交，不如让它留在真正需要它的提交里，并在提交正文与这里写明。
+
+### 24.9 验收（运行时：真的把模式走一圈）
+
+`tools/p5-hero-verify.ps1`（新，五个阶段 `probe|hero|failure|matrix|full`）在真机上跑：
+
+`-Stage full` 一次跑完，**66 项 0 失败**，按断言分组：
+
+| 分组 | 项数 | 断言要点 |
+| --- | --- | --- |
+| hero | 30 | 原生时读成 Ready、按钮是"进入"、没有退出、没有 dock/shelf 状态；按下 → 屏幕上真的出现"正在准备"且按钮全程禁用 → 读成运行中、dock=运行中、shelf=就绪、出现自定义与退出、**Explorer 自己的 `FWF_NOICONS` 真的为真**、dock 窗口真的在；退出 → "正在归还"、按钮禁用、回到 Ready、`FWF_NOICONS` 回到假、再进一次只向桌面要了一次（日志计数 1）；卡片确实画了另一个桌面（逐像素比对） |
+| customize / settings / home | 6 | 自定义 → 设置页，且设置页显示的就是首页进入的那个模式；在设置页切回原生 → 首页跟着回到 Ready 且"进入"按钮回来 |
+| narrow / wide | 5 | 820 客户端下预览收起且无内容越界，放大回去预览回来 |
+| failure | 16 | 用"marker 写不进去"这根杠杆（在 `clean-desktop-state.json.tmp` 位置放一个目录）逼出失败：卡片说没起来、给的是重试、没有退出、没有自定义、不声称 dock 在跑、shelf 不声称就绪、服务给的原因在屏幕上、**Explorer 图标一位没动**、没有留下 dock 窗口、桌面文档一个字节没改、日志里记了原因；然后重试真的起来了，最后退出把桌面还回去 |
+| 截图 | 6 | 每一步都留一张给人工看的图 |
+| 清理 | 3 | 失败杠杆没留下、没有 Muralis 残留、阶段跑到底 |
+
+另外单独跑的两个阶段：`-Stage hero` **47 项 0 失败**（同一个流程，断言更密），`-Stage matrix` **27 项 0 失败**（深/浅 × 中/英 × 原生/运行，逐张换主题与语言再截图）。回归闸门 `tools/p4c-pinned-verify.ps1 -Stage full` **69 项 0 失败**（dock、pins、Shelf 一条都没被这次改动碰到）。桌面上所有临时状态都还原了：0 个 Muralis 进程、无 marker 残留、`settings.json` 回到用户自己的值（`Theme: System`、`CloseToTray: true`、`Mode: Native`、`Dock.IsVisible: false`、`PinnedApps: []`）。
+
+**光有构建和单测不算视觉完成**（spec §38 明确要求）：深色/浅色、中文/英文、Ready/Active/Failed/窄窗都截了图人工看过，文件在 `artifacts/p5-hero/shots/`（`run-*.png` 与 `{theme}-{language}-{state}.png`）。这一步真的改过东西：第一版的状态切换根本没生效（§24.7 坑一），就是靠对比截图里的预览与状态点发现的；深色下预览面板变浅（§24.7 第 3 条）也是靠像素测量定位的，不是靠看。
+
+### 24.10 已知偏差 / 诚实记录
+
+1. **Design Foundation 实际是 v1.0，不是 spec 写的 v1.1。** 本轮严格复用现有 token（颜色、间距、圆角、动效时长），**没有新造视觉系统**；规格里那个更高的版本号在这份仓库里不存在，按现状记录。
+2. **Shelf 芯片只写 `Ready`，没有数量。** spec §21/§22 允许"取不到便宜的数量就写 Ready"；从 Hero 去问 Shelf 有几个项目要么走一条新的依赖、要么触发一次枚举，两条都不便宜，所以没有做。
+3. **Hero 在最大化 1440p 窗口里只占约 22%，低于 §7 的 35–50%。** 卡片高度由内容决定（预览 240 + 内边距 56 ≈ 300 px），在 892 高的客户端里是 33.6%、在头部以下的可见区里是 40%，都在范围内；但把同一张卡片放进 1440 高的窗口，占比自然掉到 22%。要满足 35% 就得把卡片做到 480–500 px 高，那会让它在小窗口里占掉半屏——而 §7 同时要求"不要占满整页"。两边的约束在具体窗口尺寸上互相拉扯，本轮选了"卡片按内容定高"，把数字如实记在这里。
+4. **主题缺陷只做了 Hero 范围内的最小修法。** 根因是 token 层与应用级共享画刷（§24.7），完整修法要动 Theme Engine 与 dock 窗口的主题声明，属 §40 的非目标。也就是说：**同样的浅色渗漏在别的玻璃表面上仍然可能复现**，本轮只是让 Hero 这张卡片不再受它影响。
+5. **失败路径是用"marker 写不进去"那根杠杆逼出来的**，不是真的磁盘故障或真的权限丢失；失败之后的行为（图标没动、dock 没留下、文档没改、回落到原生 + 原因）都是在这一次真实失败上读出来的。
+6. **没有测高刷 / 多屏 / 高 DPI 下的 Hero**，窄窗只覆盖 820 这一个尺寸；验收跑在 Debug 上，与 §21/§22/§23 的口径一致。
+7. **本轮没做**（§40）：Nexus Motion Engine（Phase 4D）、Liquid Glass v2、Auto Hide、Edge Reveal、Running Apps、任务栏替代、Widgets / Widget Engine、Wallpaper Runtime 重写、外部图库导入、Wallpaper Engine 扫描、Theme Engine、Phase 3 删除。
+
+**Phase 状态**：Muralis Mode Hero 落地，首页现在是这个体验的入口而不是设置页里的一个选项。底层未重构、设置页未动、冻结层未引用。按惯例**等待人工验收，不自行进入下一阶段（Phase 4D）**。
+
