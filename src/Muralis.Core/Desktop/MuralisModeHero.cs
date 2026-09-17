@@ -119,8 +119,20 @@ public sealed class MuralisModeHero : IDisposable
             ? MuralisModeHeroState.Error
             : MuralisModeHeroState.Ready;
 
-    private void OnDesktopChanged(object? sender, DesktopExperienceStatus status) =>
+    private void OnDesktopChanged(object? sender, DesktopExperienceStatus status)
+    {
+        // A change publishes on every step of its way through, and those intermediate reports describe the
+        // desktop the request is moving away from: reading one of them four milliseconds into an enter puts
+        // the hero back on the native desktop for the whole time the desktop is really being rearranged.
+        // While a request of the hero's own is in flight, the only answer that counts is the one the request
+        // itself publishes when it lands, and that one is read from the desktop rather than remembered.
+        if (_busy)
+        {
+            return;
+        }
+
         Publish(Resolve(status), _error ?? status.Error);
+    }
 
     private void Publish(MuralisModeHeroState state, string? error)
     {

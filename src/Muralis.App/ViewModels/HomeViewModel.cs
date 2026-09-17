@@ -86,6 +86,12 @@ public sealed partial class HomeViewModel : ViewModelBase
     /// <summary>Entering is offered while the desktop is native, a failed attempt included.</summary>
     public bool CanEnterMuralisMode => IsHeroReady || IsHeroFailed;
 
+    /// <summary>
+    /// True whenever the Windows desktop is the one in use — ready, entering, or failed. The preview
+    /// draws this rather than the mode it hopes for, so a failure shows the desktop that is really there.
+    /// </summary>
+    public bool ShowsWindowsDesktop => !IsHeroActive;
+
     /// <summary>Neither action may be pressed twice over: the desktop is asked for one mode at a time.</summary>
     public bool CanUseMuralisModeActions => !_hero.IsBusy;
 
@@ -291,6 +297,7 @@ public sealed partial class HomeViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsHeroBusy));
         OnPropertyChanged(nameof(CanEnterMuralisMode));
         OnPropertyChanged(nameof(CanUseMuralisModeActions));
+        OnPropertyChanged(nameof(ShowsWindowsDesktop));
         RaiseHeroTextChanged();
     }
 

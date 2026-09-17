@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Xunit;
 
 namespace Muralis.Core.Tests.Architecture;
@@ -81,6 +83,66 @@ public sealed class MuralisModeHeroGuardTests
         Assert.Contains("_desktop.Status", hero, StringComparison.Ordinal);
         Assert.Contains("status.IsMuralis", hero, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TheHeroOffersActionsRatherThanAModeSwitch()
+    {
+        var xaml = Source("src/Muralis.App/Views/HomePage.xaml");
+
+        Assert.Contains("HeroPrimaryAction", xaml, StringComparison.Ordinal);
+        Assert.Contains("HeroCustomizeAction", xaml, StringComparison.Ordinal);
+        Assert.Contains("HeroExitAction", xaml, StringComparison.Ordinal);
+        Assert.Contains("EnterMuralisModeCommand", xaml, StringComparison.Ordinal);
+        Assert.Contains("ExitMuralisModeCommand", xaml, StringComparison.Ordinal);
+        Assert.Contains("CustomizeMuralisModeCommand", xaml, StringComparison.Ordinal);
+
+        // A switch would say the mode is a setting and hide which way the change is going; the hero enters
+        // and leaves the mode with a verb instead.
+        Assert.DoesNotContain("ToggleSwitch", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsOn=", xaml, StringComparison.Ordinal);
+
+        // Every word comes from the catalogs: a literal here would be English whatever the language is.
+        Assert.DoesNotMatch(new Regex("Text=\"[^{]"), xaml);
+    }
+
+    [Fact]
+    public void EveryStringTheHeroShowsExistsInBothLanguages()
+    {
+        var referenced = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var surface in new[] { "src/Muralis.App/Views/HomePage.xaml", "src/Muralis.App/ViewModels/HomeViewModel.cs" })
+        {
+            foreach (Match match in Regex.Matches(Source(surface), @"Home_MuralisMode_[A-Za-z_]+"))
+            {
+                referenced.Add(match.Value);
+            }
+        }
+
+        Assert.NotEmpty(referenced);
+
+        var english = HeroKeys("src/Muralis.App/Strings/Resources.resx");
+        var chinese = HeroKeys("src/Muralis.App/Strings/Resources.zh-CN.resx");
+
+        // A key in one catalog and not the other is a string that goes missing in one language only.
+        Assert.Equal(english, chinese);
+
+        foreach (var key in referenced)
+        {
+            Assert.True(english.Contains(key), $"{key} is shown by the hero but missing from Resources.resx.");
+            Assert.True(chinese.Contains(key), $"{key} is shown by the hero but missing from Resources.zh-CN.resx.");
+        }
+    }
+
+    private static string[] HeroKeys(string relativePath) =>
+    [
+        .. XDocument
+            .Load(Absolute(relativePath))
+            .Root!
+            .Elements("data")
+            .Select(element => (string?)element.Attribute("name"))
+            .Where(name => name is not null && name.StartsWith("Home_MuralisMode_", StringComparison.Ordinal))
+            .Select(name => name!)
+            .OrderBy(name => name, StringComparer.Ordinal),
+    ];
 
     private static string Source(string relativePath) => File.ReadAllText(Absolute(relativePath));
 

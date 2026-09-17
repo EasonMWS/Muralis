@@ -9,7 +9,8 @@ namespace Muralis.Core.Tests.Desktop;
 /// The home page's Muralis Mode hero, as a state machine. These are the properties the product depends
 /// on: the hero shows the mode the desktop really is in rather than one of its own, entering and leaving
 /// are requests to the one desktop service, a request that does not take ends on the desktop that really
-/// is in place, and a second press while the first is still landing is not a second request.
+/// is in place, a second press while the first is still landing is not a second request, and the line the
+/// hero shows while a request is in flight is the line its own request put there.
 /// </summary>
 public sealed class MuralisModeHeroTests
 {
@@ -173,6 +174,50 @@ public sealed class MuralisModeHeroTests
         _desktop.Publish(Native());
         Assert.Equal(MuralisModeHeroState.Ready, hero.State);
         Assert.Empty(_desktop.Requests);
+    }
+
+    [Fact]
+    public async Task AnEnterInFlight_KeepsSayingTheDesktopIsBeingPrepared()
+    {
+        // A change reports every step of its way through, and one of those reports describes the desktop the
+        // request is moving away from: an enter reports the native desktop on its way to Muralis. Read as an
+        // answer, that report ends the preparing line milliseconds after it appeared, and the card spends the
+        // whole time the desktop is really being rearranged saying it is ready.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _desktop.Gate = gate;
+        using var hero = new MuralisModeHero(_desktop);
+
+        var entering = hero.EnterAsync();
+        Assert.Equal(MuralisModeHeroState.Entering, hero.State);
+
+        _desktop.Publish(Native());
+        Assert.Equal(MuralisModeHeroState.Entering, hero.State);
+
+        gate.SetResult();
+        await entering;
+
+        Assert.Equal(MuralisModeHeroState.Active, hero.State);
+    }
+
+    [Fact]
+    public async Task AnExitInFlight_KeepsSayingTheDesktopIsBeingHandedBack()
+    {
+        _desktop.Publish(Running());
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _desktop.Gate = gate;
+        using var hero = new MuralisModeHero(_desktop);
+
+        var leaving = hero.ExitAsync();
+        Assert.Equal(MuralisModeHeroState.Exiting, hero.State);
+
+        // The desktop reports the mode it is still finishing with while the icons are on their way back.
+        _desktop.Publish(Running());
+        Assert.Equal(MuralisModeHeroState.Exiting, hero.State);
+
+        gate.SetResult();
+        await leaving;
+
+        Assert.Equal(MuralisModeHeroState.Ready, hero.State);
     }
 
     [Fact]

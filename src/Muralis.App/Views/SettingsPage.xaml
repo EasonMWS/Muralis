@@ -140,6 +140,7 @@
                         x:Name="DesktopExperienceCombo"
                         Grid.Column="2"
                         MinWidth="310"
+                        AutomationProperties.AutomationId="DesktopExperienceCombo"
                         SelectionChanged="OnDesktopExperienceSelectionChanged">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:DesktopExperienceOption">
