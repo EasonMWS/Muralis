@@ -184,8 +184,17 @@ them, and never copies, moves, renames or deletes one.
   memory budget — magnifying an item never re-reads the file, and icons stay sharp at
   hover magnification
 
+**Diagnostics**
+
+- The dock's drop path can be measured stage by stage: with `MURALIS_DOCK_PROFILE=1` the app
+  writes what each stage of a drop cost — wall time, processor time on the thread it ran on,
+  bytes allocated, which thread it came back on — to `logs/dock-drop-profile.jsonl`. It is off
+  unless the variable is set, and switched off it costs a boolean read per instrumented point
+
 ### Changed
 
+- Reordering the pinned applications updates only the pins whose own name or warning changed,
+  instead of asking every pin in the zone to work out its tooltip again
 - `settings.json` is schema version 2: it carries the desktop experience and the dock with its
   pinned applications as sections of their own. Both are optional, so a version 1 file loads with
   the defaults in their place rather than failing

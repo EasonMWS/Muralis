@@ -1529,10 +1529,12 @@ App：
 
 **落下的那一侧很贵，我把它记为本阶段的已知性能缺口**：一次真正的落下约 224–240 ms 应用 CPU。这个数字把四件事加在一起——`AnimateTranslateXAsync` 的 spring、一次 `MoveAsync`（落盘）、`Project` 重建视图项、以及 WinUI 对 zone 的重新布局与重画。**我没有把它拆到单一原因上**：拆它需要在落点路径上插桩，而那正是本阶段要求保持干净的地方，在一个验收已经全绿的阶段末尾动它不划算。下次要动 spring 曲线或做 Nexus 放大之前，这里应该先量一次分段。
 
+> **这一段后来被 §22 复核过，结论要按 §22 读。** 4C.1 就是这里说的"先量一次分段"，量完的结果是：那 224–240 ms **不是落下的成本，是外部 500 ms 测量窗口的成本**（一条窗口里必然装着落位动画之后带起的 hover 动画、落下后的布局 pass、以及别的后台线程的工作）。真实的落下是 **209 ms 墙钟**，其中 203.9 ms 是那条 180 ms 落位动画在 compositor 上跑完的时间，应用自己要做的全部工作约 5.2 ms。这段文字保留原样，作为"当时为什么没量、以及量之前猜的是什么"的记录。
+
 ### 21.7 已知限制 / 诚实记录
 
 - **"图标正确"没有真机像素级验证**：pinned icon 画在 composition 层，UIA 读不到。harness 能证明的是"pin 被正确读出、label 正确、点得动、起得来"，`Icons/` 的单测能证明"尺寸分桶对、BGRA 转换对、缓存按尺寸键、50 个图标的时间可用、真图标能画到 compositor 上"，但**"屏幕上那个图标长得对不对"仍是人工验收项**。spec §41 的高刷手感同理。
-- **跟手读数不稳定，落点成本未归因**（见 §21.6）。
+- **跟手读数不稳定，落点成本未归因**（见 §21.6）。**落点那一半已在 §22 完成归因**：主要组成是那条 180 ms 的落位动画（203.9 ms），应用的落点工作约 5.2 ms，UI 线程最多 3 个计数节拍；跟手读数不稳定这一条在 §22.6 里仍然是限制（walk 报的是上界，不是路径自身成本）。
 - **`.appref-ms` / UWP / packaged app / AppUserModelId 不支持**，按 spec §4/§35 是 Non Goal。`ShellApplicationInspector` 把这类 shortcut 描述成"解析不出目标"，于是它被当作 shortcut 自己的路径固定，身份也退化成 shortcut 路径——**它能固定、能启动，但不会和别的 pin 撞身份**。扩展点留在这里，本阶段不碰。
 - **没有运行状态检测、没有多实例处理、没有窗口激活**（spec §10/§33/§34/§42）。同一个 pin 连点两次会起两个进程，由目标应用自己决定。
 - **`MaximumCount = 12` 是本阶段的策略，不是产品常量**：spec §14 要求"有合理的最大策略、不要把 dock 撑满整个屏幕"，§37 的目标是 10–30。测试断言它落在 10–30 之间。满了之后 `DockAddTile` 变暗，picker 在打开前就被 `Dock_Pinned_Full` 挡掉；**没有 overflow 菜单**（spec §14 明确说不做第二层菜单）。
@@ -1557,6 +1559,139 @@ App：
 - 每个提交都单独验过"只有它自己时也能编过"，而不是只看最终状态：`2fccf50` 只改了 `CanvasSurfaceContent.cs` 的三个 **private** 方法，且 App 侧没有任何文件引用它，所以带上 App 的 HEAD 状态仍然编得过。
 
 验收产物（`artifacts/`，未入库）：`p4c/full-run.txt`（69 项全通过）、`p4c/perf-run.txt`（12 项全通过）、`p4c/p4c-pinned-verify.json`（脚本每次运行覆盖写，UTF-8 带 BOM）。
+
+## 22. Phase 4C.1 落地记录：Pinned Dock Drop 的性能闸门（2026-09-17）
+
+§21.6 把"一次落下约 224–240 ms 应用 CPU"记成了本阶段的已知缺口，并写着"下次要动 spring 曲线或做 Nexus 放大之前，这里应该先量一次分段"。本节就是那次分段。
+
+**先说结论：那 224–240 ms 不是落下的成本，是测量窗口的成本。** 真实的落下是 **209–212 ms 墙钟**，其中 **203.9 ms 是那条 180 ms 的落位动画在 compositor 上跑完的时间**；落下期间应用自己要做的全部工作——提交、模型、落盘、投影、校验——合计 **约 5.2 ms**。UI 线程在整个落下里最多花掉 **46.9 ms**（24 次测量中最大的一次，即 3 个 15.625 ms 的计数节拍，中位 1 个节拍），所以**不存在 200 ms 级的 UI 线程阻塞路径**。跟手路径一行未改，仍是 raw delta 直接翻译。
+
+### 22.1 交付内容
+
+**剖面器 `src/Muralis.Core/Diagnostics/DropProfile.cs`（新，约 380 行）**
+
+一个只在 `MURALIS_DOCK_PROFILE=1` 时工作的 opt-in 剖面器，把一次落下按段写进 `logs/dock-drop-profile.jsonl`，一行一个 JSON 对象。每一段（`seg`）记录：墙钟、**进程 CPU**、**该线程 CPU**、该线程分配字节、线程 id（跨越 await 的段还会记下回来的线程）、所属落下编号、以及这一行是否在该落下关闭之后才到达（`late`）。每个落下自身还有一条 `end`：墙钟、进程 CPU、**开这个落下的那条线程的 CPU**、分配。另有 `mark`（由调用方给的数字：布局 pass）与 `note`（不是时长的事件：落下动画报完成、排了一次落盘、图标被再读）。
+
+关了它没有成本：`Measure()` 返回一个 default 的 `Scope` struct，`Dispose()` 立刻返回，调用点是"一次 bool 读 + 一次默认结构体构造"。
+
+**插桩点按"报告读者会问的阶段"命名，而不是按包含它的代码命名。** spec 里点名要量的每一件事都有对应的一段：
+
+| 要量的东西 | 段名 |
+| --- | --- |
+| pointer release handling | `release.capture` |
+| candidate / order commit | `release.commit`、`commit.mutex`、`commit.model` |
+| collection / model update | `ui.project.move`、`ui.project.insert` |
+| persistence serialization | `settings.serialize` |
+| settings write | `settings.open`、`settings.commit`、`settings.lock` |
+| icon / cache activity | `ui.project.icons`（+ note `ui.project.icons.read`） |
+| presenter refresh | `ui.project`（含 `items`/`trim`/`notify`）、`ui.project.apply` |
+| UI collection refresh | `ui.project.items`、`ui.project.move` |
+| Composition reset / spring setup | `motion.animate.setup`、`motion.animate.begin`（+ note `motion.animate.completed`） |
+| logging | `commit.log` |
+| synchronous dispatcher work | `publish.marshal`、`host.projected`、`layout.pass1` |
+| 其余 | `dock.available`、`motion.pref`、`profile.write`、`release.settle`、`release.finish` |
+
+**`src/Muralis.App/UI/Dock/DockLayoutMeter.cs`（新）**
+
+落下后的那次布局 pass 发生在"要求布局的那个回调"返回之后，任何 scope 都看不见它。它用同一个时钟从外面计时，只在该落下窗口内跟随（第一次 pass 之后超过 120 ms 才来的 pass 会被丢弃——那是基准自己的窗口探针，不是落下的布局），报表里同时给出调用次数，因为次数本身就是读数的一部分：它说出了这次 pass 到底属于多少次落下。
+
+**`tools/p4c-pinned-verify.ps1 -Stage dropbench`（新）**
+
+一次稳定基准：种满 12 个 pin（当前策略的设计上限）、等一个低于 50 ms 的"安静秒"、**2 次预热（不计）**、**3 轮"跟着手走不落下"**（报中位/最好/最差）、**8 次计入的落下**（每次报该轮的读数与顺序是否正确），并给出中位/最好/最差，而不是只报最好的一次。它不顺带跑进 `-Stage full`，因为它需要开着剖面器启动。
+
+**`PinnedAppViewItem.Update` 的一处修正**
+
+`Tooltip` 是"有警告就是警告、没有就是名字"，只有这两者变了它才可能变；原来 `Update` 无条件 `Raise(nameof(Tooltip))`，于是一次纯重排会让 zone 里 12 个 pin 全部重新求值一遍 `ToolTipService.ToolTip` 绑定。现在只在名字变了的那条分支里 raise。
+
+**跨线程的分配字节不再上报**
+
+分配是每线程的计数器，一个跨 await 的段在两条线程上相减得不到任何量（报告里出现过 −90 MB）。现在这种段写 `null`。
+
+### 22.2 关键实现决定
+
+- **默认关闭，用环境变量打开。** 落点路径是本阶段要求保持干净的地方，剖面器不能常驻。关掉时它的成本是每个调用点一次 bool 读，没有分配、没有锁、没有 syscall；打开时它的自身开销也在报告里（`profile.write` 中位 0.31 ms × 2 次/落下）。
+- **进程 CPU 和线程 CPU 都记。** 进程数回答"一共干了多少活"，也是 harness 从外面读到的那个量，所以两者可比；线程数回答"有多少落在了同时还要画帧、读输入的那条线程上"，那才是一帧卡住的量。一个在后台线程也在干活时跑的段，用进程数会被记到别人的账上。同一段跨 await 回来换了线程时，线程数写 `null` 而不是硬减。
+- **诚实的量化下限：`TotalProcessorTime`（进程和线程都是）以 15.625 ms 为一个计数节拍。** 所以任何小于一个节拍的分段 CPU 只会读成 0 或 15.6，报告里的 `thCpu` 列不是连续量。本阶段所有"UI 线程花了多少"的结论都建立在这个粒度上，并且按节拍说（"最多 3 个节拍"），不当成精确值。
+- **外面测的窗口数无法变成"只关于落下"。** 一条 500 ms 的窗口里必然装着落下以外的东西（落位动画之后 `ResumePointerMotion` 带起的 hover 动画、落下后的布局 pass、以及这个 app 自己别的线程的后台工作）。本阶段实测到外面读数的三个证据：24 次读数是 15.625 的整数倍；同一条 walk 在 1.25 s 里被读成过 **0.0 ms**（`187.5 / 0.0 / 265.6` 三轮）；`-Stage perf` 与 `-Stage dropbench` 在同一版本上也会差出一个量级。所以报告里"落下成本"一律用应用自己的记录，外面的数只用来做交叉参照。
+- **不动的东西（已量、已拒）**：落位动画的时长（`MotionDurations.Standard` = 180 ms，是设计令牌，为了数字好看去改它就是拿手感换读数）；`ItemsControl` → `ItemsRepeater`（重排后的那次布局 pass 中位 18–21 ms，占一次落下的不到 10%，换控件属于动 dock 架构）；`settings.json` 每次落下写两遍（1 次 `Update` 的 fire-and-forget + 1 次 `PersistAsync` 的 await，实测 2.00 次序列化 / 2.00 次文件替换，省下来是 1.5 ms 墙钟和约 4 ms 线程池 CPU，代价是改一个共享服务的写入语义——按"不要为了数字好看牺牲数据可靠性"不做，但数字记在这里）。
+
+### 22.3 分段数据（优化前 / 优化后）
+
+同一台机器、同一份基准、Debug 构建、开着剖面器，每轮 12 个 pin、8 次计入的落下。三列口径完全相同：
+
+| 指标（每次落下） | 优化前 | 优化后 A | 优化后 B |
+| --- | --- | --- | --- |
+| 落下墙钟（应用自量，中位） | 212.5 ms | 210.4 ms | **209.2 ms** |
+| 落下墙钟范围 | 209.9–214.9 | 208.0–213.3 | 207.4–210.8 |
+| 落位动画 `release.settle` | 205.18 ms | 204.52 ms | 204.06 ms |
+| 提交 `release.commit` | 6.90 ms | 5.15 ms | **4.97 ms** |
+| 投影 `ui.project` | 4.29 ms | 2.31 ms | **2.55 ms** |
+| ↳ 12 × `ui.project.apply` | 0.165 ms/次（合 2.08 ms） | 0.024 ms/次 | **0.023 ms/次（合 0.32 ms）** |
+| ↳ 12 × `Apply` 的分配 | 16.6 KB | 10.8 KB | 10.8 KB |
+| ↳ `ui.project.move` | 1.74 ms | 1.44 ms | 1.68 ms |
+| 落下期间 **UI 线程 CPU** | 0–31.2 ms | 0–46.9 ms | 0–15.6 ms |
+| 落下期间进程 CPU | 31.3–125.0 ms | 46.9–93.8 ms | 31.3–93.8 ms |
+| 落下后的布局 pass `layout.pass1` | 19.41 ms | 21.10 ms | 18.18 ms |
+| 外部 500 ms 窗口读数 | 中位 203.1（109.4–265.6） | 中位 187.5（62.5–390.6） | 中位 187.5（78.1–250.0） |
+
+把 24 次落下的 UI 线程 CPU 放在一起看：**0 / 15.6 / 31.2 / 46.9 ms 四个值，中位 1 个节拍（15.6 ms），最大 3 个节拍（46.9 ms）**。这就是"一次落下到底占住 UI 线程多久"的答案。
+
+**落位动画那 204 ms 的拆法**（优化后 B）：要它跑 **180.0 ms**，它实际跑了 **203.9 ms**（中位，最大 205.3），动画报完成之后回到 `await` 处只花了 **0.1 ms**。也就是说：多出来的约 24 ms 全在 storyboard 自己从开始到"我结束了"之间（compositor 的完成通知延迟，约一个半帧），**不是应用代码造成的**；`setup` 0.13 ms、`begin` 0.03 ms、回来 0.1 ms，加起来 0.26 ms。
+
+**剩下那 5 ms 的组成**（比 0.1 ms 大的每一项，优化后 B，中位）：`persist.awaited` 2.51、`ui.project.move` 1.68、`settings.commit` 0.79 × 2、`persist.update` 0.47、`ui.project.notify` 0.33、`release.finish` 0.29、`settings.serialize` 0.24 × 2、`settings.open` 0.23 × 2、`ui.project.apply` 0.023 × 12、`commit.log` 0.12。
+
+**这一次优化的量级要说清楚**：修正 tooltip 那处之后，投影快了约 42%（4.29 → 2.55 ms）、12 次 `Apply` 快了约 7 倍（2.08 → 0.32 ms）、提交少了约 28%（6.90 → 4.97 ms）。放到一次 209 ms 的落下里，这是 **约 2.5 ms，1.2%**——是实打实的浪费被去掉了，但**它不是瓶颈**，瓶颈是那条设计上就要跑的 180 ms 动画。跟手一侧一行未改。
+
+### 22.4 九项完成门
+
+| 门 | 结论 | 证据 |
+| --- | --- | --- |
+| 找到 drop cost 的主要组成 | ✅ | 203.9 of 209 ms 是落位动画；其余 5.2 ms 逐项列出（§22.3） |
+| 有数据证明，而非推测 | ✅ | 每个数字都来自应用自己的记录或进程计数；两条早先的猜测被推翻（见 §22.6） |
+| 不再存在明显 200 ms+ UI-thread blocking drop path | ✅ | 24 次落下，UI 线程最多 3 个节拍（46.9 ms），中位 1 个 |
+| 快速拖动仍然 1:1 跟手 | ✅ | 跟手路径未改（`SetTranslateX` 仍是 raw delta）；3 轮 walk 中位 2.34 ms/次移动 |
+| reorder 正确 | ✅ | 8/8 次落下 UIA 读回的顺序正确 |
+| persistence 正确 | ✅ | 8 次落下 = 8 条 move 日志，无多余写入；序列化 2.00 / 文件替换 2.00 与优化前一致 |
+| restart 后顺序正确 | ✅ | 最后一轮把前两个 pin 放回原位，重启后与种下的顺序一致（既有断言） |
+| 全部现有 tests / harness 通过 | ✅ | Core 581 + Desktop 165；`-Stage full` 69 项（本次复跑见 §22.5） |
+| Debug / Release clean | ✅ | 双配置 0 警告 0 错误 |
+
+### 22.5 测试与提交
+
+改动全部落地之后、在同一份 HEAD 上复跑：
+
+| 检查 | 结果 |
+| --- | --- |
+| `Muralis.Core.Tests`（Debug） | **581 通过，0 失败** |
+| `Muralis.Desktop.Tests`（Debug） | **165 通过，0 失败** |
+| 合计 | **746 通过，0 失败** |
+| `-Stage full`（`artifacts/p4c/full-run-4c1.txt`） | **69 项，0 失败** |
+| `-Stage dropbench` 优化前（`dropbench-before3.txt`） / 优化后（`dropbench-after2.txt`） | **各 13 项，0 失败** |
+| `-Stage perf`（未受本次改动影响，`perf-run.txt`） | 12 项，0 失败 |
+| Debug 全量构建 | **0 警告 0 错误** |
+| Release 全量构建 | **0 警告 0 错误** |
+
+`-Stage full` 里与本次改动关系最近的四条：`restore: they came back in the saved order`、`restore: the drag committed exactly once`、`restore: the new order was saved`、`restore: the reordered pins came back in the new order`——也就是说"拖动 → 落盘 → 重启后顺序正确"这条链在插桩之后仍然是同一份结果，优化没有拿走任何一条数据可靠性。
+
+提交按"代码 / 记录"切：
+
+| 提交 | 内容 |
+| --- | --- |
+| `perf: instrument the dock drop path and stop re-evaluating every pin's tooltip` | `Diagnostics/DropProfile.cs`（新）、`UI/Dock/DockLayoutMeter.cs`（新）、`PinnedAppViewItem.Update` 的 tooltip 修正、`PinnedAppsPresenter` / `PinnedZoneDrag` / `DockHost.xaml.cs` / `InteractionMotion` / `PinnedAppService` / `SettingsService` 的插桩、`tools/p4c-pinned-verify.ps1` 的 `dropbench` 阶段 |
+| `docs: record the pinned dock drop performance gate` | 本节 + CHANGELOG（就是包含本表的那次提交，哈希见 `git log -1`） |
+
+代码那一提交只做两件事：把量点插进去、把一处确认过的重复通知去掉。**去掉的那一处不改变任何外部行为**——`Tooltip` 的取值仍然由"名字或警告"决定，只是不再在两者都没变时重新 raise；`-Stage full` 里 `pins` 与 `restore` 两段的 31 条断言（含 tooltip 与 label 的 UIA 读数）全部照旧通过。除此之外，落点路径的逻辑一行未动。
+
+验收产物（`artifacts/`，未入库）：`p4c/full-run-4c1.txt`（69 项）、`p4c/dropbench-before3.txt` 与 `p4c/dropbench-after2.txt`（各 13 项）、`p4c/drop-profile.jsonl`（原始逐段记录）。
+
+### 22.6 已知限制 / 诚实记录
+
+- **跟手读数仍然不稳定**：3 轮 walk 的中位落在 **1.95 / 2.34 / 5.08 ms/次**之间，最好一轮 0.39 ms，最差一轮 10.16 ms。原因是这次 walk **不落下**，但仍把 40 次合成指针移动灌给了整台机器，而这个 app 的桌面指针路由器、hover spring、Shelf 都在处理它们——所以这个数**不是拖动路径自己的成本，是它的上界**。要把它变成拖动路径自己的数，得在 move 路径上也插桩，本阶段没有做（本阶段的任务是落下）。
+- **15.625 ms 的节拍是硬下限**：任何"某段花了多少 CPU"只要小于一个节拍就不可分辨。所以本阶段没有、也无法回答"提交里的哪一步最贵"到 1 ms 以下；能回答的是"没有哪一步超过一个节拍"。
+- **没有做 Release 构建的基准**：基准跑在 Debug 上（与 §21.6 的 perf 阶段口径一致），因为要在同一份代码上做前后对比。绝对数字在 Release 下会更低，比例关系不变。
+- **没有验证高刷 / 多屏 / 高 DPI 下的落下**，与 §21.7 相同的范围限制。
+- **两条被数据推翻的猜测**（本阶段实际发生过）：(1)"每次 `AnimationsEnabled` 都 `new UISettings()` 很贵"——实测 0.048 ms/次，37 次/落下合计 2.6 ms 里大部分是它自己的测量开销；(2)"重排会重新提取图标"——`ui.project.icons.read` 在 24 次落下里是 0。两条都写进了插桩对照，这也是"不要根据猜测重构"的实测版。
+- **落位动画那约 24 ms 的完成延迟没有解**：它在 storyboard 与 compositor 之间，不在应用的代码里（回程 0.1 ms）。要去掉它只能缩短动画时长，那是改设计令牌。
 
 **Phase 4 状态**：Phase 4A（Design Foundation 与三分区 dock 外壳）、4B（Desktop Experience 架构）与 4C（Pinned Apps & Launcher）三段全部落地。dock 现在是一个真正的启动区：可以加 `.exe` 与 `.lnk`、拒绝重复、单击启动、拖动排序、重启恢复、目标消失时仍然留在那里并说得出原因，而且**从不碰用户桌面上的任何文件**。Pinned Apps 不依赖 Clean Desktop，在原生桌面与 Clean Desktop 下同样可用。
 
