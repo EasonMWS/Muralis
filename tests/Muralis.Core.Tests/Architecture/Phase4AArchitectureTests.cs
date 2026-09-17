@@ -53,15 +53,24 @@ public sealed class Phase4AArchitectureTests
     }
 
     [Fact]
-    public void Phase3Takeover_RemainsPresentAsCompatibilityLayer()
+    public void Phase3Takeover_RemainsPresentButIsNoLongerAProductMode()
     {
         Assert.True(File.Exists(Absolute("src/Muralis.Desktop/Modes/DesktopModeService.cs")));
         Assert.True(File.Exists(Absolute("src/Muralis.Desktop/Takeover/DesktopTakeoverService.cs")));
         Assert.True(File.Exists(Absolute("src/Muralis.Desktop/Surfaces/CanvasSurfaceContent.cs")));
 
+        // The frozen layer keeps the one job it still has: a desktop that owes Windows its icons back.
         var coordinator = Source("src/Muralis.Core/Services/DesktopExperienceService.cs");
-        Assert.Contains("DesktopMode.Takeover", coordinator, StringComparison.Ordinal);
-        Assert.Contains("FullTakeoverExperimental", coordinator, StringComparison.Ordinal);
+        Assert.Contains("DesktopMode.Native", coordinator, StringComparison.Ordinal);
+
+        // The retired modes are not choices. The converter still reads them so an old file is not
+        // stranded, but the enum the product exposes holds the two modes and nothing else.
+        var modes = Source("src/Muralis.Core/Models/DesktopExperienceSettings.cs");
+        var enumBody = modes[..modes.IndexOf('}')];
+        Assert.Contains("Native", enumBody, StringComparison.Ordinal);
+        Assert.Contains("Muralis", enumBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("CleanDesktop", enumBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("FullTakeoverExperimental", enumBody, StringComparison.Ordinal);
     }
 
     private static int Count(string source, string text) =>

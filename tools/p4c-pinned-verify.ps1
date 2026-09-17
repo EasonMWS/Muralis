@@ -361,7 +361,7 @@ function Write-DockSettings {
     )
 
     $settings = Read-Settings
-    $settings.SchemaVersion = 2
+    $settings.SchemaVersion = 3
     $dock = [pscustomobject]@{ IsVisible = $DockVisible; PinnedApps = @($Pins) }
     if ($null -ne $settings.PSObject.Properties['Dock']) { $settings.Dock = $dock }
     else { $settings | Add-Member -NotePropertyName Dock -NotePropertyValue $dock }
@@ -1351,7 +1351,7 @@ function Invoke-CleanStage {
     # anyway, and the pins have to work on it exactly as they do on a native desktop.
     Write-DockSettings -Pins @(
         (New-PinSettings -Id 'clean-pin' -Name 'clean program' -Target $fixtureExe)
-    ) -DockVisible $false -Mode 'CleanDesktop'
+    ) -DockVisible $false -Mode 'Muralis'
 
     $desktopBefore = Get-DesktopSnapshot
     $before = @{

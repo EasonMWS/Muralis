@@ -10,13 +10,29 @@ namespace Muralis.Core.Tests.Services;
 public sealed class DesktopExperienceServiceTests
 {
     [Fact]
-    public async Task ApplyCleanDesktop_WhenPresentationUnavailable_FallsBackAndPersistsNative()
+    public async Task ApplyMuralis_HidesTheIconsAndPersistsTheMode()
+    {
+        var phase3 = new FakeDesktopModeService();
+        var clean = new FakeCleanDesktop(true);
+        var settings = new FakeSettingsService();
+        var service = new DesktopExperienceService(phase3, clean, settings);
+
+        var status = await service.ApplyAsync(DesktopExperienceMode.Muralis);
+
+        Assert.Equal(DesktopExperienceMode.Muralis, status.Mode);
+        Assert.True(status.IsMuralis);
+        Assert.True(clean.IsNativeDesktopHidden);
+        Assert.Equal(DesktopExperienceMode.Muralis, settings.Current.DesktopExperience.Mode);
+    }
+
+    [Fact]
+    public async Task ApplyMuralis_WhenUnavailable_FallsBackAndPersistsNative()
     {
         var phase3 = new FakeDesktopModeService();
         var settings = new FakeSettingsService();
         var service = new DesktopExperienceService(phase3, new FakeCleanDesktop(false), settings);
 
-        var status = await service.ApplyAsync(DesktopExperienceMode.CleanDesktop);
+        var status = await service.ApplyAsync(DesktopExperienceMode.Muralis);
 
         Assert.Equal(DesktopExperienceMode.Native, status.Mode);
         Assert.True(status.HasError);
@@ -25,36 +41,56 @@ public sealed class DesktopExperienceServiceTests
     }
 
     [Fact]
-    public async Task ApplyFullTakeover_DelegatesToFrozenPhase3Service()
+    public async Task ApplyMuralis_WhenActivationFails_FallsBackAndPersistsNative()
     {
-        var phase3 = new FakeDesktopModeService();
         var settings = new FakeSettingsService();
-        var service = new DesktopExperienceService(phase3, new FakeCleanDesktop(false), settings);
+        var clean = new FakeCleanDesktop(true) { FailActivation = true };
+        var service = new DesktopExperienceService(new FakeDesktopModeService(), clean, settings);
 
-        var status = await service.ApplyAsync(DesktopExperienceMode.FullTakeoverExperimental);
+        var status = await service.ApplyAsync(DesktopExperienceMode.Muralis);
 
-        Assert.Equal(DesktopMode.Takeover, phase3.LastApplied);
-        Assert.Equal(DesktopExperienceMode.FullTakeoverExperimental, status.Mode);
-        Assert.True(status.Phase3.OwnsTheDesktop);
-        Assert.Equal(DesktopExperienceMode.FullTakeoverExperimental, settings.Current.DesktopExperience.Mode);
+        Assert.Equal(DesktopExperienceMode.Native, status.Mode);
+        Assert.Equal(DesktopExperienceMode.Native, settings.Current.DesktopExperience.Mode);
+        Assert.True(status.HasError);
+        Assert.False(clean.IsNativeDesktopHidden);
     }
 
     [Fact]
-    public async Task Restore_OldTakeover_MigratesWithoutDroppingCompatibility()
+    public async Task ApplyMuralis_WhenTheDesktopStillOwesAGiveBack_PersistsNative()
     {
-        var phase3 = new FakeDesktopModeService
-        {
-            RestoreResult = TakenOver(),
-        };
+        // A desktop that cannot be handed back is not a desktop to hide icons on, so the mode the user
+        // asked for is refused rather than applied on top of an owed recovery.
+        var phase3 = new FakeDesktopModeService { FailNative = true };
+        var clean = new FakeCleanDesktop(true);
         var settings = new FakeSettingsService();
-        settings.Current.SchemaVersion = 1;
-        var service = new DesktopExperienceService(phase3, new FakeCleanDesktop(false), settings);
+        var service = new DesktopExperienceService(phase3, clean, settings);
 
-        var status = await service.RestoreAsync();
+        var status = await service.ApplyAsync(DesktopExperienceMode.Muralis);
 
-        Assert.Equal(1, phase3.RestoreCount);
-        Assert.Equal(DesktopExperienceMode.FullTakeoverExperimental, status.Mode);
-        Assert.Equal(AppSettings.CurrentSchemaVersion, settings.Current.SchemaVersion);
+        Assert.Equal(DesktopExperienceMode.Native, status.Mode);
+        Assert.False(clean.IsNativeDesktopHidden);
+        Assert.Equal(DesktopExperienceMode.Native, settings.Current.DesktopExperience.Mode);
+    }
+
+    [Fact]
+    public async Task LeavingMuralis_ReturnsTheIconsBeforeAnythingElse()
+    {
+        var sequence = new List<string>();
+        var phase3 = new FakeDesktopModeService(sequence);
+        var clean = new FakeCleanDesktop(true, sequence);
+        var settings = new FakeSettingsService();
+        settings.Current.DesktopExperience.Mode = DesktopExperienceMode.Muralis;
+        var service = new DesktopExperienceService(phase3, clean, settings);
+
+        await service.ApplyAsync(DesktopExperienceMode.Muralis);
+        sequence.Clear();
+
+        var status = await service.ApplyAsync(DesktopExperienceMode.Native);
+
+        Assert.Equal(DesktopExperienceMode.Native, status.Mode);
+        Assert.False(clean.IsNativeDesktopHidden);
+        Assert.Equal("clean:deactivate", sequence[0]);
+        Assert.Equal(DesktopExperienceMode.Native, settings.Current.DesktopExperience.Mode);
     }
 
     [Fact]
@@ -72,32 +108,67 @@ public sealed class DesktopExperienceServiceTests
     }
 
     [Fact]
-    public async Task CleanDesktopAndFullTakeover_AreMutuallyExclusive()
+    public async Task Restore_WithASavedMuralisMode_BringsItBackWithoutRewritingTheFile()
     {
-        var sequence = new List<string>();
-        var phase3 = new FakeDesktopModeService(sequence);
-        var clean = new FakeCleanDesktop(true, sequence);
-        var service = new DesktopExperienceService(phase3, clean, new FakeSettingsService());
+        var clean = new FakeCleanDesktop(true);
+        var settings = new FakeSettingsService();
+        settings.Current.DesktopExperience.Mode = DesktopExperienceMode.Muralis;
+        var service = new DesktopExperienceService(new FakeDesktopModeService(), clean, settings);
 
-        Assert.Equal(DesktopExperienceMode.CleanDesktop, (await service.ApplyAsync(DesktopExperienceMode.CleanDesktop)).Mode);
-        Assert.Equal(DesktopExperienceMode.FullTakeoverExperimental, (await service.ApplyAsync(DesktopExperienceMode.FullTakeoverExperimental)).Mode);
+        var status = await service.RestoreAsync();
 
-        Assert.True(sequence.IndexOf("clean:deactivate") < sequence.LastIndexOf("phase3:Takeover"));
-        Assert.False(clean.IsNativeDesktopHidden);
+        Assert.Equal(DesktopExperienceMode.Muralis, status.Mode);
+        Assert.True(clean.IsNativeDesktopHidden);
+        Assert.Equal(0, settings.UpdateCount);
     }
 
     [Fact]
-    public async Task CleanDesktopActivationFailure_FallsBackAndPersistsNative()
+    public async Task Restore_WhenAPhase3DesktopStillOwesAGiveBack_HandsItBackAndForgetsIt()
     {
+        // An older file can still name a withdrawn takeover; landing in it is never allowed, and what is
+        // remembered afterwards is the native desktop that is really in place.
+        var phase3 = new FakeDesktopModeService();
+        phase3.Seed(TakenOver());
         var settings = new FakeSettingsService();
-        var clean = new FakeCleanDesktop(true) { FailActivation = true };
-        var service = new DesktopExperienceService(new FakeDesktopModeService(), clean, settings);
+        settings.Current.DesktopExperience.Mode = DesktopExperienceMode.Muralis;
+        var service = new DesktopExperienceService(phase3, new FakeCleanDesktop(true), settings);
 
-        var status = await service.ApplyAsync(DesktopExperienceMode.CleanDesktop);
+        var status = await service.RestoreAsync();
 
         Assert.Equal(DesktopExperienceMode.Native, status.Mode);
+        Assert.Equal(DesktopMode.Native, phase3.LastApplied);
         Assert.Equal(DesktopExperienceMode.Native, settings.Current.DesktopExperience.Mode);
-        Assert.True(status.HasError);
+    }
+
+    [Fact]
+    public async Task Restore_WhenTheFilePredatesTheTwoModes_UpgradesTheSchema()
+    {
+        var settings = new FakeSettingsService();
+        settings.Current.SchemaVersion = 1;
+        var service = new DesktopExperienceService(new FakeDesktopModeService(), new FakeCleanDesktop(true), settings);
+
+        await service.RestoreAsync();
+
+        Assert.Equal(AppSettings.CurrentSchemaVersion, settings.Current.SchemaVersion);
+    }
+
+    [Fact]
+    public async Task Phase3MovingOnItsOwn_DoesNotRewriteTheUsersChoice()
+    {
+        // The retired layer handing the desktop back is not a mode change the user made, so the saved
+        // preference has to survive it — otherwise Muralis Mode would never last a quit.
+        var phase3 = new FakeDesktopModeService();
+        var settings = new FakeSettingsService();
+        settings.Current.DesktopExperience.Mode = DesktopExperienceMode.Muralis;
+        var service = new DesktopExperienceService(phase3, new FakeCleanDesktop(true), settings);
+
+        await service.ApplyAsync(DesktopExperienceMode.Muralis);
+        var updatesAfterApplying = settings.UpdateCount;
+
+        phase3.Seed(DesktopModeStatus.Native);
+
+        Assert.Equal(updatesAfterApplying, settings.UpdateCount);
+        Assert.Equal(DesktopExperienceMode.Muralis, settings.Current.DesktopExperience.Mode);
     }
 
     private static DesktopModeStatus TakenOver() => new(
@@ -114,9 +185,18 @@ public sealed class DesktopExperienceServiceTests
 
         public DesktopMode LastApplied { get; private set; } = DesktopMode.Native;
 
+        public bool FailNative { get; init; }
+
         public int RestoreCount { get; private set; }
 
         public event EventHandler<DesktopModeStatus>? Changed;
+
+        /// <summary>Puts the frozen service in a state the app has to react to.</summary>
+        public void Seed(DesktopModeStatus status)
+        {
+            Status = status;
+            Changed?.Invoke(this, Status);
+        }
 
         public Task<DesktopModeStatus> RestoreAsync(CancellationToken cancellationToken = default)
         {
@@ -131,6 +211,11 @@ public sealed class DesktopExperienceServiceTests
             LastApplied = mode;
             Status = mode switch
             {
+                DesktopMode.Native when FailNative => new DesktopModeStatus(
+                    DesktopMode.Native,
+                    DesktopTakeoverState.RecoveryRequired,
+                    CanvasPrototypeState.Disabled,
+                    "The native desktop could not be given back."),
                 DesktopMode.Takeover => TakenOver(),
                 DesktopMode.Preview => new DesktopModeStatus(
                     DesktopMode.Preview,
@@ -182,6 +267,8 @@ public sealed class DesktopExperienceServiceTests
     {
         public AppSettings Current { get; } = new();
 
+        public int UpdateCount { get; private set; }
+
         public event EventHandler<AppSettings>? SettingsChanged;
 
         public Task LoadAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -190,6 +277,7 @@ public sealed class DesktopExperienceServiceTests
 
         public void Update(Action<AppSettings> mutate)
         {
+            UpdateCount++;
             mutate(Current);
             SettingsChanged?.Invoke(this, Current);
         }
