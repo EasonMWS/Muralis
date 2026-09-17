@@ -6,8 +6,10 @@ namespace Muralis.Core.Models;
 /// </summary>
 public sealed class AppSettings
 {
+    public const int CurrentSchemaVersion = 2;
+
     /// <summary>Bumped whenever the on-disk shape changes in a breaking way.</summary>
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
     public AppTheme Theme { get; set; } = AppTheme.System;
 
@@ -37,4 +39,16 @@ public sealed class AppSettings
 
     /// <summary>The video shown behind the desktop icons, and whether to bring it back on launch.</summary>
     public VideoWallpaperSettings VideoWallpaper { get; set; } = new();
+
+    /// <summary>
+    /// The product-level desktop experience. This deliberately lives outside the Phase 3 canvas
+    /// document: Native and Clean Desktop do not belong to the takeover layout.
+    /// </summary>
+    public DesktopExperienceSettings DesktopExperience { get; set; } = new();
+
+    /// <summary>
+    /// The dock and the applications pinned to it. Like the desktop experience it is its own section,
+    /// because the dock is useful on a fully native desktop and belongs to no takeover document.
+    /// </summary>
+    public DockSettings Dock { get; set; } = new();
 }

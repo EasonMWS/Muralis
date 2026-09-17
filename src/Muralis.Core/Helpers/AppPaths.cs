@@ -37,6 +37,9 @@ public static class AppPaths
     /// </summary>
     public static string DesktopTakeoverFile => Path.Combine(DesktopDirectory, "takeover-state.json");
 
+    /// <summary>Independent fail-open marker for Clean Desktop icon visibility.</summary>
+    public static string CleanDesktopRecoveryFile => Path.Combine(DesktopDirectory, "clean-desktop-state.json");
+
     public static string LogsDirectory => Path.Combine(RootDirectory, "logs");
 
     public static string CacheDirectory => Path.Combine(RootDirectory, "cache");

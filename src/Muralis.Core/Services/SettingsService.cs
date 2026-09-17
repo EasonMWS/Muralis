@@ -49,6 +49,9 @@ public sealed class SettingsService : ISettingsService
                 .ConfigureAwait(false);
 
             _current = loaded ?? new AppSettings();
+            _current.DesktopExperience ??= new DesktopExperienceSettings();
+            _current.Dock ??= new DockSettings();
+            _current.Dock.PinnedApps ??= [];
             _logger.LogInformation("Settings loaded from {Path}", _settingsFilePath);
         }
         catch (OperationCanceledException)

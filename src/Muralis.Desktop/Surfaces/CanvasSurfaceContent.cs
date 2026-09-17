@@ -129,6 +129,15 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     private ItemView? _pressed;
     private double _grabXDip;
     private double _grabYDip;
+    private double _dragPointerOriginXDip;
+    private double _dragPointerOriginYDip;
+    private double _dragItemOriginXDip;
+    private double _dragItemOriginYDip;
+    private double _dragPreviewCenterXDip;
+    private double _dragPreviewCenterYDip;
+    private double _dragLastPointerXDip;
+    private double _dragLastPointerYDip;
+    private bool? _dragPointerOnDock;
     private double _dockGrabAlongDip;
     private double _dockGrabDepthDip;
 
@@ -1377,6 +1386,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         UpdateDockPointer();
         UpdateHover();
         UpdateDock(interactionLocked: false);
+        ResetCanvasDragPreview();
         Bump();
     }
 
@@ -1729,6 +1739,15 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         // which is what keeps a slightly shaky click from being taken for a drag.
         _grabXDip = x - _pressed.RenderedXDip;
         _grabYDip = y - _pressed.RenderedYDip;
+        _dragPointerOriginXDip = x;
+        _dragPointerOriginYDip = y;
+        _dragItemOriginXDip = _pressed.CenterXDip;
+        _dragItemOriginYDip = _pressed.CenterYDip;
+        _dragPreviewCenterXDip = _pressed.CenterXDip;
+        _dragPreviewCenterYDip = _pressed.CenterYDip;
+        _dragLastPointerXDip = x;
+        _dragLastPointerYDip = y;
+        _dragPointerOnDock = null;
 
         if (_layout.IsDocked(_pressed.Item.Id))
         {
@@ -1782,6 +1801,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         {
             _drag = held;
             Raise(held);
+            held.Visual.StopAnimation("Offset");
 
             // Everything calms down while one item is being moved: the drag is the only motion.
             foreach (var other in _freeViews)
@@ -1794,20 +1814,49 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
             ClearRegion();
         }
 
-        // The item stays fully on the display, which is also what a saved offset reproduces later.
+        TrackCanvasDrag(held, x, y);
+    }
+
+    /// <summary>
+    /// The active free-item drag hot path. The logical item remains untouched until release: each
+    /// pointer report becomes one raw delta calculation and one compositor property write. This is
+    /// intentionally not animated; the hand, rather than a spring or a chase loop, owns the offset.
+    /// </summary>
+    private void TrackCanvasDrag(ItemView held, double x, double y)
+    {
+        // The item stays fully on the display, which is also what the saved offset reproduces later.
         var design = (double)CanvasIconLibrary.DesignSize;
         var half = held.Item.SizeDip / 2.0;
         var maxX = (_displayBounds.Width / _scaleFactor) - half;
         var maxY = (_displayBounds.Height / _scaleFactor) - half;
-        held.CenterXDip = Math.Clamp(x - _grabXDip, Math.Min(half, maxX), Math.Max(half, maxX));
-        held.CenterYDip = Math.Clamp(y - _grabYDip, Math.Min(half, maxY), Math.Max(half, maxY));
-        held.RenderedXDip = held.CenterXDip;
-        held.RenderedYDip = held.CenterYDip;
-        held.Visual.Offset = new Vector3((float)(held.CenterXDip - design / 2), (float)(held.CenterYDip - design / 2), 0);
+        var rawDeltaX = x - _dragPointerOriginXDip;
+        var rawDeltaY = y - _dragPointerOriginYDip;
+        _dragPreviewCenterXDip = Math.Clamp(
+            _dragItemOriginXDip + rawDeltaX,
+            Math.Min(half, maxX),
+            Math.Max(half, maxX));
+        _dragPreviewCenterYDip = Math.Clamp(
+            _dragItemOriginYDip + rawDeltaY,
+            Math.Min(half, maxY),
+            Math.Max(half, maxY));
+        _dragLastPointerXDip = x;
+        _dragLastPointerYDip = y;
 
-        // Carrying an item towards the edge is what brings the dock out to meet it.
-        UpdateDock(interactionLocked: IsPointerOnDock(x, y));
-        Bump();
+        held.Visual.Offset = new Vector3(
+            (float)(_dragPreviewCenterXDip - design / 2),
+            (float)(_dragPreviewCenterYDip - design / 2),
+            0);
+
+        // Dock state only needs work when the carried item crosses its hit band. Keeping the latest
+        // pointer coordinates lets the existing one-shot dock timer finish any reveal transition.
+        _pointerXDip = x;
+        _pointerYDip = y;
+        var pointerOnDock = IsPointerOnDock(x, y);
+        if (_dragPointerOnDock != pointerOnDock)
+        {
+            _dragPointerOnDock = pointerOnDock;
+            UpdateDock(interactionLocked: pointerOnDock);
+        }
     }
 
     /// <summary>
@@ -1867,6 +1916,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
             if (gesture == DesktopGesture.DragEnd)
             {
+                CommitCanvasPreview(dragged);
                 CommitCanvasDrag(dragged, x, y);
             }
 
@@ -2054,6 +2104,37 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
     }
 
     /// <summary>
+    /// Converts the compositor-only preview into the logical centre once, immediately before the
+    /// existing anchor math and persistence run. The visual is rewritten from the committed value so
+    /// no transient delta survives the drag.
+    /// </summary>
+    private void CommitCanvasPreview(ItemView view)
+    {
+        view.CenterXDip = _dragPreviewCenterXDip;
+        view.CenterYDip = _dragPreviewCenterYDip;
+        view.RenderedXDip = _dragPreviewCenterXDip;
+        view.RenderedYDip = _dragPreviewCenterYDip;
+
+        var design = (double)CanvasIconLibrary.DesignSize;
+        view.Visual.Offset = new Vector3(
+            (float)(view.CenterXDip - design / 2),
+            (float)(view.CenterYDip - design / 2),
+            0);
+        ResetCanvasDragPreview();
+    }
+
+    private void ResetCanvasDragPreview()
+    {
+        _dragPointerOriginXDip = 0;
+        _dragPointerOriginYDip = 0;
+        _dragItemOriginXDip = 0;
+        _dragItemOriginYDip = 0;
+        _dragPreviewCenterXDip = 0;
+        _dragPreviewCenterYDip = 0;
+        _dragPointerOnDock = null;
+    }
+
+    /// <summary>
     /// Ends a dock drag: an item let go on the rail keeps its place in the dock, in whatever order the
     /// drag left it, and an item let go away from the rail is put down on the canvas where it was
     /// released. Nothing is written until this moment.
@@ -2155,6 +2236,15 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
 
     private void EndDragCapture()
     {
+        if (_drag is { } dragged)
+        {
+            var design = (double)CanvasIconLibrary.DesignSize;
+            dragged.Visual.Offset = new Vector3(
+                (float)(dragged.CenterXDip - design / 2),
+                (float)(dragged.CenterYDip - design / 2),
+                0);
+        }
+
         _drag = null;
         _dockDrag = null;
         _dockInsertIndex = null;
@@ -2163,6 +2253,7 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
         _trackingLeave = false;
         NativeMethods.ReleaseCapture();
         ClearRegion();
+        ResetCanvasDragPreview();
     }
 
     private void SaveLayout()
@@ -2287,7 +2378,8 @@ internal sealed class CanvasSurfaceContent : ISurfaceContent, ISurfaceMessageSin
                 {
                     var dropped = _drag;
                     _drag = null;
-                    CommitCanvasDrag(dropped, dropped.CenterXDip, dropped.CenterYDip);
+                    CommitCanvasPreview(dropped);
+                    CommitCanvasDrag(dropped, _dragLastPointerXDip, _dragLastPointerYDip);
                     ClearRegion();
                     UpdateRegion();
                     UpdateHover();
