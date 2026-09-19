@@ -32,7 +32,7 @@ public sealed class ShellIconProvider : IShellIconProvider
             return Task.FromResult<ShellIconData?>(null);
         }
 
-        var key = $"{Path.GetFullPath(path)}@{pixelSize}";
+        var key = CacheKey(path, pixelSize);
         if (_cache.TryGetValue(key, out var cached))
         {
             return Task.FromResult(cached);
@@ -56,7 +56,17 @@ public sealed class ShellIconProvider : IShellIconProvider
                     {
                         var bitmap = ShellIconReader.Read(request.Path, request.PixelSize);
                         icon = bitmap is null ? null : new ShellIconData(bitmap.Width, bitmap.Height, bitmap.Pixels);
-                        _cache.TryAdd(request.Key, icon);
+                        if (icon is not null)
+                        {
+                            _cache.TryAdd(request.Key, icon);
+                        }
+                        else
+                        {
+                            _logger.LogDebug(
+                                "The Shell returned no usable {PixelSize}px icon for {Path}; the Dock will keep its fallback",
+                                request.PixelSize,
+                                request.Path);
+                        }
                     }
 
                     request.Completion.TrySetResult(icon);
@@ -88,6 +98,28 @@ public sealed class ShellIconProvider : IShellIconProvider
         _requests.CompleteAdding();
         _worker.Join(TimeSpan.FromSeconds(2));
         _requests.Dispose();
+    }
+
+    /// <summary>
+    /// Size is part of identity so a low-resolution request cannot poison a high-resolution one.
+    /// Last-write time lets an edited shortcut/custom icon refresh without restarting Muralis.
+    /// </summary>
+    internal static string CacheKey(string path, int pixelSize)
+    {
+        var fullPath = Path.GetFullPath(path);
+        long stamp;
+        try
+        {
+            stamp = File.Exists(fullPath) || Directory.Exists(fullPath)
+                ? File.GetLastWriteTimeUtc(fullPath).Ticks
+                : 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            stamp = 0;
+        }
+
+        return $"{fullPath}@{pixelSize}@{stamp}";
     }
 
     private sealed record Request(

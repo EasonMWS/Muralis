@@ -51,8 +51,6 @@ public sealed partial class DockLabPage : Page
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         _shelf.Changed += OnShelfChanged;
-        Dock.ShelfItemInvoked += OnShelfItemInvoked;
-        Dock.PinnedAddRequested += OnPinnedAddRequested;
         Dock.PinnedNotice += OnPinnedNotice;
         PinnedApps.Attach();
         await PinnedApps.RestoreAsync();
@@ -62,8 +60,6 @@ public sealed partial class DockLabPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _shelf.Changed -= OnShelfChanged;
-        Dock.ShelfItemInvoked -= OnShelfItemInvoked;
-        Dock.PinnedAddRequested -= OnPinnedAddRequested;
         Dock.PinnedNotice -= OnPinnedNotice;
         PinnedApps.Detach();
     }
@@ -127,28 +123,13 @@ public sealed partial class DockLabPage : Page
         Diagnostics.Text = "Mode: Mock · 4 items · real Desktop is not being projected";
     }
 
-    private async void OnShelfItemInvoked(object? sender, DesktopShelfItem item)
-    {
-        if (!_realMode)
-        {
-            return;
-        }
-
-        try
-        {
-            await _shelf.OpenAsync(item);
-        }
-        catch (Exception ex)
-        {
-            Diagnostics.Text = $"Open failed: {ex.Message}";
-        }
-    }
-
     /// <summary>
     /// Pinning starts from one place: the picker. Explorer drop and the picker both end up in the
-    /// same call, so an app can only be pinned in one way, with one set of rules.
+    /// same call, so an app can only be pinned in one way, with one set of rules. The shipping dock has
+    /// no add affordance at all — this is the lab page's own button, and the product's add path is the
+    /// Dock page in the app's settings.
     /// </summary>
-    private async void OnPinnedAddRequested(object? sender, EventArgs args)
+    private async void OnPinnedAddRequested(object sender, RoutedEventArgs args)
     {
         if (await PinnedApps.AddFromPickerAsync() is { } message)
         {

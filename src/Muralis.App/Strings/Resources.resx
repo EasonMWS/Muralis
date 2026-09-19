@@ -544,6 +544,18 @@
   <data name="Settings_Dock_Required" xml:space="preserve">
     <value>Muralis Mode keeps the dock up, because it is what stands in for the hidden Windows icons.</value>
   </data>
+  <data name="Settings_Dock_Background_Title" xml:space="preserve">
+    <value>Background</value>
+  </data>
+  <data name="Settings_Dock_Background_Description" xml:space="preserve">
+    <value>Choose floating icons or a restrained glass surface. This does not hide the Dock.</value>
+  </data>
+  <data name="Settings_Dock_Background_Transparent" xml:space="preserve">
+    <value>Transparent</value>
+  </data>
+  <data name="Settings_Dock_Background_Glass" xml:space="preserve">
+    <value>Glass</value>
+  </data>
   <data name="Settings_Status_DockShown" xml:space="preserve">
     <value>The Dock is on the desktop.</value>
   </data>
@@ -1043,6 +1055,18 @@
   <data name="Dock_Pinned_AddApp" xml:space="preserve">
     <value>Add app</value>
   </data>
+  <data name="Dock_Pinned_Empty_State" xml:space="preserve">
+    <value>No apps are pinned. The dock stays out of the way until you add one.</value>
+  </data>
+  <data name="Dock_Pinned_MoveDown" xml:space="preserve">
+    <value>Move right</value>
+  </data>
+  <data name="Dock_Pinned_MoveUp" xml:space="preserve">
+    <value>Move left</value>
+  </data>
+  <data name="Dock_Pinned_Path" xml:space="preserve">
+    <value>Pinned apps, in dock order</value>
+  </data>
   <data name="Dock_Pinned_Full" xml:space="preserve">
     <value>The dock holds {0} pinned apps. Unpin one to add another.</value>
   </data>
@@ -1071,7 +1095,7 @@
     <value>Muralis Mode</value>
   </data>
   <data name="Home_MuralisMode_Tagline" xml:space="preserve">
-    <value>One mode for the whole desktop: the dock, the desktop shelf, motion and widgets.</value>
+    <value>A cleaner desktop, a focused Shelf, and a Dock that keeps what matters close.</value>
   </data>
   <data name="Home_MuralisMode_Ready" xml:space="preserve">
     <value>Ready to upgrade your desktop.</value>
@@ -1123,5 +1147,14 @@
   </data>
   <data name="Home_MuralisMode_Preview" xml:space="preserve">
     <value>Desktop preview</value>
+  </data>
+  <data name="Home_MuralisMode_Brand" xml:space="preserve">
+    <value>Bring your wallpapers. Upgrade your desktop.</value>
+  </data>
+  <data name="Home_MuralisMode_Preview_Native" xml:space="preserve">
+    <value>Native desktop</value>
+  </data>
+  <data name="Home_MuralisMode_Preview_Muralis" xml:space="preserve">
+    <value>Muralis desktop</value>
   </data>
 </root>

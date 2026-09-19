@@ -125,20 +125,104 @@ public sealed class Phase4CArchitectureTests
     }
 
     [Fact]
-    public void ThePinnedZoneCannotScrollAwayWithTheShelf()
+    public void ThePinnedZoneFillsTheStripAndCannotScroll()
     {
-        // The Shelf scrolls; the pins must not. They are neighbours in the same row, and the only
-        // ScrollViewer in the strip is the Shelf's own.
+        // The pins are the whole dock now, and there is nothing left in the strip for them to scroll away
+        // from: no scroller exists at all. The geometric claim the replaced test made is kept rather than
+        // dropped — the drop indicator is still drawn on the pinned zone and nowhere else — because a
+        // reorder line that escaped the zone would be placed at the wrong point on screen with nothing
+        // failing.
         var host = Source("src/Muralis.App/UI/Dock/DockHost.xaml");
-        var pinnedZone = host.IndexOf("x:Name=\"PinnedZone\"", StringComparison.Ordinal);
-        var pinnedItems = host.IndexOf("ItemsSource=\"{x:Bind PinnedApps.Items", StringComparison.Ordinal);
-        var indicator = host.IndexOf("x:Name=\"PinnedDropIndicator\"", StringComparison.Ordinal);
-        var scroller = host.IndexOf("x:Name=\"ShelfScroller\"", StringComparison.Ordinal);
 
-        Assert.True(pinnedZone >= 0 && pinnedItems > pinnedZone, "the pinned zone must exist and carry its own item list");
-        Assert.True(indicator > pinnedItems && indicator < scroller, "the drop indicator must sit inside the pinned zone");
-        Assert.True(pinnedItems < scroller, "the pinned zone must be outside the Shelf's scroller");
-        Assert.Equal(1, Count(host, "<ScrollViewer"));
+        var pinnedZone = host.IndexOf("x:Name=\"PinnedZone\"", StringComparison.Ordinal);
+        Assert.True(pinnedZone >= 0, "the pinned zone must exist");
+
+        // The zone is taken as an actual element region — from its own tag to the matching close — rather
+        // than by comparing two positions in the file. An earlier version bounded the indicator with
+        // `IndexOf("</Grid>", indicator)`, which is satisfied by the document's own closing tag, so moving
+        // the indicator clean out of PinnedZone still passed. This cannot: an element that is not inside the
+        // region is not in the region's text.
+        var zoneEnd = MatchingCloseTag(host, pinnedZone);
+        Assert.True(zoneEnd > pinnedZone, "the pinned zone's element must be closed");
+        var zone = host[pinnedZone..zoneEnd];
+
+        Assert.Contains("ItemsSource=\"{x:Bind PinnedApps.Items", zone, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PinnedDropIndicator\"", zone, StringComparison.Ordinal);
+
+        // And no scroller anywhere in the strip, so the pins cannot scroll away from the zone they are in.
+        Assert.Equal(0, Count(host, "<ScrollViewer"));
+
+        // The indicator is still the accent-coloured mark at the shared pill radius, so the reorder it draws
+        // is the product's own and not a control default.
+        Assert.Contains("Background=\"{ThemeResource MuralisAccentPrimaryBrush}\"", zone, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The index just past the close of the element whose opening tag contains <paramref name="openIndex"/>.
+    /// </summary>
+    /// <remarks>
+    /// Counts nested opens of the same tag name, which is enough for the dock's XAML: the region is a
+    /// <c>Grid</c> holding a <c>StackPanel</c> and one <c>Border</c>, and no element in it is self-closing
+    /// under that name. A file this guard cannot parse fails loudly by returning a position at or before the
+    /// opening tag, which the caller asserts against.
+    /// </remarks>
+    private static int MatchingCloseTag(string xaml, int openIndex)
+    {
+        var tagStart = xaml.LastIndexOf('<', openIndex);
+        if (tagStart < 0)
+        {
+            return -1;
+        }
+
+        var nameEnd = tagStart + 1;
+        while (nameEnd < xaml.Length && (char.IsLetterOrDigit(xaml[nameEnd]) || xaml[nameEnd] == ':'))
+        {
+            nameEnd++;
+        }
+
+        var name = xaml[(tagStart + 1)..nameEnd];
+        if (name.Length == 0)
+        {
+            return -1;
+        }
+
+        var depth = 0;
+        var cursor = tagStart;
+        while (cursor < xaml.Length)
+        {
+            var open = xaml.IndexOf("<" + name, cursor, StringComparison.Ordinal);
+            var close = xaml.IndexOf("</" + name, cursor, StringComparison.Ordinal);
+            if (close < 0)
+            {
+                return -1;
+            }
+
+            // An open that comes after the next close is not nested inside this element.
+            if (open >= 0 && open < close)
+            {
+                // A self-closing tag opens and closes itself, so it must not deepen the count: the dock's own
+                // marker elements are written that way.
+                var tagEnd = xaml.IndexOf('>', open);
+                var selfClosing = tagEnd >= 0 && xaml.LastIndexOf("/>", tagEnd, StringComparison.Ordinal) == tagEnd - 1;
+                cursor = open + name.Length + 1;
+                if (!selfClosing)
+                {
+                    depth++;
+                }
+
+                continue;
+            }
+
+            depth--;
+            cursor = close + name.Length + 2;
+            if (depth <= 0)
+            {
+                var gt = xaml.IndexOf('>', close);
+                return gt < 0 ? -1 : gt + 1;
+            }
+        }
+
+        return -1;
     }
 
     [Fact]

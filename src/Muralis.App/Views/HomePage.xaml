@@ -56,7 +56,17 @@
                         <DoubleAnimation
                             Storyboard.TargetName="HeroMuralisLayer"
                             Storyboard.TargetProperty="Opacity"
-                            To="0"
+                            To="0.68"
+                            Duration="{StaticResource MuralisMotionStandard}" />
+                        <DoubleAnimation
+                            Storyboard.TargetName="HeroMuralisScale"
+                            Storyboard.TargetProperty="ScaleX"
+                            To="0.985"
+                            Duration="{StaticResource MuralisMotionStandard}" />
+                        <DoubleAnimation
+                            Storyboard.TargetName="HeroMuralisScale"
+                            Storyboard.TargetProperty="ScaleY"
+                            To="0.985"
                             Duration="{StaticResource MuralisMotionStandard}" />
                         <DoubleAnimation
                             Storyboard.TargetName="HeroAccentEdge"
@@ -80,7 +90,7 @@
                         <DoubleAnimation
                             Storyboard.TargetName="HeroNativeLayer"
                             Storyboard.TargetProperty="Opacity"
-                            To="0"
+                            To="0.48"
                             Duration="{StaticResource MuralisMotionStandard}" />
                         <DoubleAnimation
                             Storyboard.TargetName="HeroMuralisLayer"
@@ -135,33 +145,77 @@
                     Title="{Binding [Common_Error_Title], Source={StaticResource Loc}}"
                     Visibility="{x:Bind ViewModel.ErrorMessage, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
 
-                <!--  Muralis Mode hero: the flagship entry point, the settings page is where it is configured  -->
-                <materials:GlassSurface Padding="32,28,28,28" Style="{StaticResource MuralisGlassHighStyle}">
-                    <Grid x:Name="HeroSurface" ColumnSpacing="0" SizeChanged="OnHeroSurfaceSizeChanged">
+                <!--  Product hero: a composed desktop experience, not a settings card.  -->
+                <materials:GlassSurface
+                    x:Name="HeroCard"
+                    MinHeight="360"
+                    Padding="0"
+                    Style="{StaticResource MuralisGlassHighStyle}">
+                    <Grid
+                        x:Name="HeroSurface"
+                        MinHeight="360"
+                        SizeChanged="OnHeroSurfaceSizeChanged">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="3*" />
+                            <ColumnDefinition Width="2*" />
                         </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-                        <StackPanel Spacing="14" VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border
+                            Grid.RowSpan="2"
+                            Grid.ColumnSpan="2"
+                            CornerRadius="{StaticResource MuralisRadiusM}"
+                            IsHitTestVisible="False"
+                            Opacity="0.72">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Offset="0" Color="{ThemeResource MuralisSurfaceHighColor}" />
+                                    <GradientStop Offset="0.5" Color="{ThemeResource MuralisSurfaceTintColor}" />
+                                    <GradientStop Offset="1" Color="{ThemeResource MuralisWallpaperMoodColor}" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <Border
+                            Grid.RowSpan="2"
+                            Grid.ColumnSpan="2"
+                            Width="560"
+                            HorizontalAlignment="Right"
+                            CornerRadius="{StaticResource MuralisRadiusM}"
+                            IsHitTestVisible="False"
+                            Opacity="0.34">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Offset="0" Color="{ThemeResource MuralisScrimTransparentColor}" />
+                                    <GradientStop Offset="1" Color="{ThemeResource MuralisGlowTintColor}" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <StackPanel
+                            x:Name="HeroCopy"
+                            Margin="40,34,24,34"
+                            MaxWidth="590"
+                            VerticalAlignment="Center"
+                            Spacing="12">
+                            <StackPanel Orientation="Horizontal" Spacing="9">
                                 <Grid Width="9" Height="9" VerticalAlignment="Center">
-                                    <Ellipse
-                                        x:Name="HeroStatusDotIdle"
-                                        Fill="{ThemeResource MuralisTextTertiaryBrush}" />
+                                    <Ellipse x:Name="HeroStatusDotIdle" Fill="{ThemeResource MuralisTextTertiaryBrush}" />
                                     <Ellipse
                                         x:Name="HeroStatusDotActive"
-                                        Opacity="0"
-                                        Fill="{ThemeResource MuralisAccentPrimaryBrush}" />
+                                        Fill="{ThemeResource MuralisAccentPrimaryBrush}"
+                                        Opacity="0" />
                                 </Grid>
                                 <TextBlock
-                                    AutomationProperties.AutomationId="HeroEyebrowText"
+                                    AutomationProperties.AutomationId="HeroStatusText"
                                     VerticalAlignment="Center"
-                                    CharacterSpacing="30"
+                                    CharacterSpacing="20"
                                     FontWeight="SemiBold"
-                                    Style="{StaticResource MuralisCaptionTextStyle}"
                                     Foreground="{ThemeResource MuralisTextSecondaryBrush}"
-                                    Text="{x:Bind ViewModel.HeroTitle, Mode=OneWay}" />
+                                    Style="{StaticResource MuralisCaptionTextStyle}"
+                                    Text="{x:Bind ViewModel.HeroStatus, Mode=OneWay}" />
                                 <ProgressRing
                                     Width="14"
                                     Height="14"
@@ -173,111 +227,81 @@
                             </StackPanel>
 
                             <TextBlock
-                                AutomationProperties.AutomationId="HeroStatusText"
-                                Style="{StaticResource MuralisTitleLargeTextStyle}"
-                                Text="{x:Bind ViewModel.HeroStatus, Mode=OneWay}"
+                                AutomationProperties.AutomationId="HeroEyebrowText"
+                                FontSize="38"
+                                Style="{StaticResource MuralisDisplayTextStyle}"
+                                Text="{x:Bind ViewModel.HeroTitle, Mode=OneWay}"
                                 TextWrapping="Wrap" />
 
                             <TextBlock
+                                FontSize="17"
+                                Foreground="{ThemeResource MuralisTextPrimaryBrush}"
+                                Style="{StaticResource MuralisBodyTextStyle}"
+                                Text="{Binding [Home_MuralisMode_Brand], Source={StaticResource Loc}}"
+                                TextWrapping="Wrap" />
+
+                            <TextBlock
+                                MaxWidth="530"
                                 Foreground="{ThemeResource MuralisTextSecondaryBrush}"
                                 Style="{StaticResource MuralisBodyTextStyle}"
                                 Text="{x:Bind ViewModel.HeroTagline, Mode=OneWay}"
                                 TextWrapping="Wrap" />
 
                             <TextBlock
-                                Style="{StaticResource CardCaptionStyle}"
                                 Foreground="{ThemeResource MuralisTextTertiaryBrush}"
+                                Style="{StaticResource CardCaptionStyle}"
                                 Text="{x:Bind ViewModel.HeroErrorDetail, Mode=OneWay}"
                                 TextWrapping="Wrap"
                                 Visibility="{x:Bind ViewModel.HeroErrorDetail, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
 
-                            <Grid ColumnSpacing="10" RowSpacing="10">
+                            <Grid
+                                x:Name="HeroFeatureSummary"
+                                Margin="0,4,0,0"
+                                ColumnSpacing="24"
+                                RowSpacing="10">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-
-                                <Border
-                                    Padding="10,6"
-                                    HorizontalAlignment="Left"
-                                    Background="{ThemeResource MuralisSurfaceLowBrush}"
-                                    BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="{StaticResource MuralisRadiusXS}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="{x:Bind ViewModel.HeroDockLabel, Mode=OneWay}" />
-                                        <TextBlock
-                                            AutomationProperties.AutomationId="HeroDockStatus"
-                                            Style="{StaticResource MuralisCaptionTextStyle}"
-                                            Foreground="{ThemeResource MuralisAccentPrimaryBrush}"
-                                            Text="{x:Bind ViewModel.HeroDockStatus, Mode=OneWay}"
-                                            Visibility="{x:Bind ViewModel.HeroDockStatus, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
-                                    </StackPanel>
-                                </Border>
-
-                                <Border
-                                    Grid.Column="1"
-                                    Padding="10,6"
-                                    HorizontalAlignment="Left"
-                                    Background="{ThemeResource MuralisSurfaceLowBrush}"
-                                    BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="{StaticResource MuralisRadiusXS}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="{x:Bind ViewModel.HeroShelfLabel, Mode=OneWay}" />
-                                        <TextBlock
-                                            AutomationProperties.AutomationId="HeroShelfStatus"
-                                            Style="{StaticResource MuralisCaptionTextStyle}"
-                                            Foreground="{ThemeResource MuralisAccentPrimaryBrush}"
-                                            Text="{x:Bind ViewModel.HeroShelfStatus, Mode=OneWay}"
-                                            Visibility="{x:Bind ViewModel.HeroShelfStatus, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
-                                    </StackPanel>
-                                </Border>
-
-                                <Border
-                                    Grid.Row="1"
-                                    Padding="10,6"
-                                    HorizontalAlignment="Left"
-                                    Background="{ThemeResource MuralisSurfaceLowBrush}"
-                                    BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="{StaticResource MuralisRadiusXS}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="{x:Bind ViewModel.HeroMotionLabel, Mode=OneWay}" />
-                                        <TextBlock
-                                            Style="{StaticResource MuralisCaptionTextStyle}"
-                                            Foreground="{ThemeResource MuralisTextTertiaryBrush}"
-                                            Text="{x:Bind ViewModel.HeroMotionStatus, Mode=OneWay}" />
-                                    </StackPanel>
-                                </Border>
-
-                                <Border
-                                    Grid.Row="1"
-                                    Grid.Column="1"
-                                    Padding="10,6"
-                                    HorizontalAlignment="Left"
-                                    Background="{ThemeResource MuralisSurfaceLowBrush}"
-                                    BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="{StaticResource MuralisRadiusXS}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="{x:Bind ViewModel.HeroWidgetsLabel, Mode=OneWay}" />
-                                        <TextBlock
-                                            Style="{StaticResource MuralisCaptionTextStyle}"
-                                            Foreground="{ThemeResource MuralisTextTertiaryBrush}"
-                                            Text="{x:Bind ViewModel.HeroWidgetsStatus, Mode=OneWay}" />
-                                    </StackPanel>
-                                </Border>
+                                <StackPanel x:Name="HeroDockFeature" Orientation="Horizontal" Spacing="8">
+                                    <Border Width="3" Height="16" Background="{ThemeResource MuralisAccentPrimaryBrush}" CornerRadius="2" />
+                                    <TextBlock FontWeight="SemiBold" Style="{StaticResource MuralisBodySmallTextStyle}" Text="{x:Bind ViewModel.HeroDockLabel, Mode=OneWay}" />
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="HeroDockStatus"
+                                        Foreground="{ThemeResource MuralisAccentPrimaryBrush}"
+                                        Style="{StaticResource MuralisCaptionTextStyle}"
+                                        Text="{x:Bind ViewModel.HeroDockStatus, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HeroDockStatus, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+                                </StackPanel>
+                                <StackPanel x:Name="HeroShelfFeature" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <Border Width="3" Height="16" Background="{ThemeResource MuralisAccentSecondaryBrush}" CornerRadius="2" />
+                                    <TextBlock FontWeight="SemiBold" Style="{StaticResource MuralisBodySmallTextStyle}" Text="{x:Bind ViewModel.HeroShelfLabel, Mode=OneWay}" />
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="HeroShelfStatus"
+                                        Foreground="{ThemeResource MuralisAccentPrimaryBrush}"
+                                        Style="{StaticResource MuralisCaptionTextStyle}"
+                                        Text="{x:Bind ViewModel.HeroShelfStatus, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HeroShelfStatus, Mode=OneWay, Converter={StaticResource NullToVisibility}}" />
+                                </StackPanel>
+                                <StackPanel x:Name="HeroMotionFeature" Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                                    <Ellipse Width="5" Height="5" VerticalAlignment="Center" Fill="{ThemeResource MuralisTextTertiaryBrush}" />
+                                    <TextBlock Style="{StaticResource MuralisBodySmallTextStyle}" Text="{x:Bind ViewModel.HeroMotionLabel, Mode=OneWay}" />
+                                    <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="{x:Bind ViewModel.HeroMotionStatus, Mode=OneWay}" />
+                                </StackPanel>
+                                <StackPanel x:Name="HeroWidgetsFeature" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <Ellipse Width="5" Height="5" VerticalAlignment="Center" Fill="{ThemeResource MuralisTextTertiaryBrush}" />
+                                    <TextBlock Style="{StaticResource MuralisBodySmallTextStyle}" Text="{x:Bind ViewModel.HeroWidgetsLabel, Mode=OneWay}" />
+                                    <TextBlock Style="{StaticResource MuralisCaptionTextStyle}" Text="{x:Bind ViewModel.HeroWidgetsStatus, Mode=OneWay}" />
+                                </StackPanel>
                             </Grid>
 
-                            <StackPanel
-                                Margin="0,4,0,0"
-                                Orientation="Horizontal"
-                                Spacing="12">
+                            <StackPanel Margin="0,6,0,0" Orientation="Horizontal" Spacing="12">
                                 <ui:MuralisButton
                                     AutomationProperties.AutomationId="HeroPrimaryAction"
                                     Command="{x:Bind ViewModel.EnterMuralisModeCommand}"
@@ -302,198 +326,166 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <!--  Mini desktop preview: a drawing of the desktop, never a picture of it. Shown only
-                              when the card is wide enough for it and the words beside it: the code behind
-                              puts it away below that rather than letting it squeeze the words. Its surface
-                              is pinned rather than left to the glass style: the style's own brush resolves
-                              against the wrong theme, which paints the panel pale on a dark card.  -->
+                        <!--  Native and Muralis stay visible together so the product difference reads without copy.
+                              The current mode only changes emphasis; the Muralis dock is intentionally panel-free.  -->
                         <materials:GlassSurface
                             x:Name="HeroPreview"
                             Grid.Column="1"
-                            Width="360"
-                            Height="240"
-                            Margin="28,0,0,0"
+                            Width="420"
+                            MaxWidth="520"
+                            Height="270"
+                            Margin="12,30,30,30"
+                            HorizontalAlignment="Right"
                             VerticalAlignment="Center"
-                            Background="{ThemeResource MuralisSurfaceLowBrush}"
                             AutomationProperties.AutomationId="HeroPreview"
                             AutomationProperties.Name="{Binding [Home_MuralisMode_Preview], Source={StaticResource Loc}}"
-                            CornerRadius="{StaticResource MuralisRadiusS}"
+                            Background="{ThemeResource MuralisSurfaceLowBrush}"
+                            CornerRadius="{StaticResource MuralisRadiusM}"
                             IsHitTestVisible="False"
                             IsTabStop="False"
                             Level="Low"
-                            Padding="0"
-                            Visibility="Collapsed">
-                            <Grid>
-                                <Grid x:Name="HeroNativeLayer">
-                                    <Border CornerRadius="{StaticResource MuralisRadiusS}">
+                            Padding="0">
+                            <Viewbox Stretch="Uniform">
+                                <Grid Width="420" Height="270">
+                                    <Border CornerRadius="{StaticResource MuralisRadiusM}">
                                         <Border.Background>
                                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                <GradientStop Offset="0" Color="{ThemeResource MuralisWallpaperMoodColor}" />
-                                                <GradientStop Offset="0.56" Color="{ThemeResource MuralisScrimTransparentColor}" />
+                                                <GradientStop Offset="0" Color="{ThemeResource MuralisSurfaceHighColor}" />
+                                                <GradientStop Offset="0.5" Color="{ThemeResource MuralisWallpaperMoodColor}" />
                                                 <GradientStop Offset="1" Color="{ThemeResource MuralisSurfaceTintColor}" />
                                             </LinearGradientBrush>
                                         </Border.Background>
                                     </Border>
-                                    <Grid
-                                        Margin="16,16,16,0"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Top"
-                                        ColumnSpacing="9"
-                                        RowSpacing="9">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <Border Width="16" Height="16" CornerRadius="4" Background="{ThemeResource MuralisSurfaceHighBrush}" Opacity="0.9" />
-                                        <Border Grid.Column="1" Width="16" Height="16" CornerRadius="4" Background="{ThemeResource MuralisSurfaceHighBrush}" Opacity="0.9" />
-                                        <Border Grid.Column="2" Width="16" Height="16" CornerRadius="4" Background="{ThemeResource MuralisSurfaceHighBrush}" Opacity="0.9" />
-                                        <Border Grid.Row="1" Width="16" Height="16" CornerRadius="4" Background="{ThemeResource MuralisSurfaceHighBrush}" Opacity="0.9" />
-                                        <Border Grid.Row="1" Grid.Column="1" Width="16" Height="16" CornerRadius="4" Background="{ThemeResource MuralisSurfaceHighBrush}" Opacity="0.9" />
-                                        <Border Grid.Row="1" Grid.Column="2" Width="16" Height="16" CornerRadius="4" Background="{ThemeResource MuralisSurfaceHighBrush}" Opacity="0.9" />
-                                    </Grid>
-                                    <Border
-                                        Height="26"
-                                        Margin="8,0,8,10"
-                                        VerticalAlignment="Bottom"
-                                        Background="{ThemeResource MuralisSurfaceLowBrush}"
-                                        BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{StaticResource MuralisRadiusXS}">
-                                        <StackPanel
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Orientation="Horizontal"
-                                            Spacing="6">
-                                            <Border Width="14" Height="14" CornerRadius="3" Background="{ThemeResource MuralisSurfaceSelectedBrush}" />
-                                            <Border Width="14" Height="14" CornerRadius="3" Background="{ThemeResource MuralisSurfaceSelectedBrush}" />
-                                            <Border Width="14" Height="14" CornerRadius="3" Background="{ThemeResource MuralisSurfaceSelectedBrush}" />
-                                            <Border Width="14" Height="14" CornerRadius="3" Background="{ThemeResource MuralisSurfaceSelectedBrush}" />
-                                        </StackPanel>
-                                    </Border>
-                                </Grid>
 
-                                <Grid x:Name="HeroMuralisLayer" Opacity="0" RenderTransformOrigin="0.5,0.5">
-                                    <Grid.RenderTransform>
-                                        <ScaleTransform x:Name="HeroMuralisScale" ScaleX="0.985" ScaleY="0.985" />
-                                    </Grid.RenderTransform>
-                                    <Border CornerRadius="{StaticResource MuralisRadiusS}">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                <GradientStop Offset="0" Color="{ThemeResource MuralisWallpaperMoodColor}" />
-                                                <GradientStop Offset="0.56" Color="{ThemeResource MuralisScrimTransparentColor}" />
-                                                <GradientStop Offset="1" Color="{ThemeResource MuralisSurfaceTintColor}" />
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                    </Border>
-                                    <Border
-                                        Width="96"
-                                        Height="56"
-                                        Margin="16,16,0,0"
+                                    <TextBlock
+                                        Margin="22,16,0,0"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Top"
-                                        Background="{ThemeResource MuralisGlassMediumBrush}"
-                                        BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{StaticResource MuralisRadiusXS}">
-                                        <StackPanel
-                                            Margin="10,0"
-                                            VerticalAlignment="Center"
-                                            Spacing="6">
-                                            <Border Height="4" HorizontalAlignment="Left" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="2" Opacity="0.6" Width="42" />
-                                            <Border Height="4" HorizontalAlignment="Left" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="2" Opacity="0.4" Width="28" />
-                                        </StackPanel>
-                                    </Border>
-                                    <StackPanel
-                                        Margin="0,16,16,0"
+                                        CharacterSpacing="50"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource MuralisTextTertiaryBrush}"
+                                        Style="{StaticResource MuralisCaptionTextStyle}"
+                                        Text="{Binding [Home_MuralisMode_Preview_Native], Source={StaticResource Loc}}" />
+                                    <TextBlock
+                                        Margin="0,16,22,0"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Top"
-                                        Spacing="6">
-                                        <Grid>
-                                            <Border
-                                                Width="58"
-                                                Height="14"
-                                                Background="{ThemeResource MuralisSurfaceHighBrush}"
-                                                BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="4" />
-                                            <Border
-                                                Width="2"
-                                                Height="7"
-                                                Margin="6,0,0,0"
-                                                HorizontalAlignment="Left"
-                                                Background="{ThemeResource MuralisAccentPrimaryBrush}"
-                                                CornerRadius="1" />
-                                        </Grid>
-                                        <Grid>
-                                            <Border
-                                                Width="58"
-                                                Height="14"
-                                                Background="{ThemeResource MuralisSurfaceHighBrush}"
-                                                BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="4" />
-                                            <Border
-                                                Width="2"
-                                                Height="7"
-                                                Margin="6,0,0,0"
-                                                HorizontalAlignment="Left"
-                                                Background="{ThemeResource MuralisAccentPrimaryBrush}"
-                                                CornerRadius="1" />
-                                        </Grid>
-                                        <Grid>
-                                            <Border
-                                                Width="58"
-                                                Height="14"
-                                                Background="{ThemeResource MuralisSurfaceHighBrush}"
-                                                BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="4" />
-                                            <Border
-                                                Width="2"
-                                                Height="7"
-                                                Margin="6,0,0,0"
-                                                HorizontalAlignment="Left"
-                                                Background="{ThemeResource MuralisAccentPrimaryBrush}"
-                                                CornerRadius="1" />
-                                        </Grid>
-                                    </StackPanel>
-                                    <Border
-                                        Margin="0,0,0,12"
-                                        Padding="8,7"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Bottom"
-                                        Background="{ThemeResource MuralisGlassHighBrush}"
-                                        BorderBrush="{ThemeResource MuralisBorderNormalBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{StaticResource MuralisRadiusS}">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <Border Width="24" Height="24" CornerRadius="6" Background="{ThemeResource MuralisSurfaceHighBrush}" BorderBrush="{ThemeResource MuralisBorderSubtleBrush}" BorderThickness="1" />
-                                            <Border Width="24" Height="24" CornerRadius="6" Background="{ThemeResource MuralisSurfaceHighBrush}" BorderBrush="{ThemeResource MuralisBorderSubtleBrush}" BorderThickness="1" />
-                                            <Border
-                                                Width="24"
-                                                Height="24"
-                                                Background="{ThemeResource MuralisSurfaceSelectedBrush}"
-                                                BorderBrush="{ThemeResource MuralisBorderActiveBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="6" />
-                                            <Border Width="24" Height="24" CornerRadius="6" Background="{ThemeResource MuralisSurfaceHighBrush}" BorderBrush="{ThemeResource MuralisBorderSubtleBrush}" BorderThickness="1" />
-                                            <Border Width="24" Height="24" CornerRadius="6" Background="{ThemeResource MuralisSurfaceHighBrush}" BorderBrush="{ThemeResource MuralisBorderSubtleBrush}" BorderThickness="1" />
+                                        CharacterSpacing="50"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource MuralisAccentPrimaryBrush}"
+                                        Style="{StaticResource MuralisCaptionTextStyle}"
+                                        Text="{Binding [Home_MuralisMode_Preview_Muralis], Source={StaticResource Loc}}" />
+
+                                    <Grid
+                                        x:Name="HeroNativeLayer"
+                                        Width="168"
+                                        Height="174"
+                                        Margin="20,45,0,22"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Bottom">
+                                        <Border
+                                            Background="{ThemeResource MuralisSurfaceMediumBrush}"
+                                            BorderBrush="{ThemeResource MuralisBorderNormalBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource MuralisRadiusS}" />
+                                        <Border
+                                            Height="22"
+                                            VerticalAlignment="Top"
+                                            Background="{ThemeResource MuralisSurfaceHighBrush}"
+                                            CornerRadius="10,10,0,0">
+                                            <StackPanel Margin="9,0" VerticalAlignment="Center" Orientation="Horizontal" Spacing="4">
+                                                <Ellipse Width="4" Height="4" Fill="{ThemeResource MuralisTextTertiaryBrush}" />
+                                                <Ellipse Width="4" Height="4" Fill="{ThemeResource MuralisTextTertiaryBrush}" />
+                                                <Ellipse Width="4" Height="4" Fill="{ThemeResource MuralisTextTertiaryBrush}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <StackPanel Margin="12,34,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Spacing="9">
+                                            <StackPanel Orientation="Horizontal" Spacing="7"><Border Width="17" Height="17" Background="{ThemeResource MuralisSurfaceSelectedBrush}" CornerRadius="3" /><Border Width="42" Height="5" VerticalAlignment="Center" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="3" Opacity="0.55" /></StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="7"><Border Width="17" Height="17" Background="{ThemeResource MuralisSurfaceSelectedBrush}" CornerRadius="3" /><Border Width="34" Height="5" VerticalAlignment="Center" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="3" Opacity="0.45" /></StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="7"><Border Width="17" Height="17" Background="{ThemeResource MuralisSurfaceSelectedBrush}" CornerRadius="3" /><Border Width="48" Height="5" VerticalAlignment="Center" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="3" Opacity="0.5" /></StackPanel>
                                         </StackPanel>
-                                    </Border>
+                                        <Border
+                                            Height="24"
+                                            VerticalAlignment="Bottom"
+                                            Background="{ThemeResource MuralisSurfaceHighBrush}"
+                                            CornerRadius="0,0,10,10">
+                                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal" Spacing="5">
+                                                <Border Width="11" Height="11" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="2" Opacity="0.55" />
+                                                <Border Width="11" Height="11" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="2" Opacity="0.55" />
+                                                <Border Width="11" Height="11" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="2" Opacity="0.55" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+
+                                    <Grid
+                                        x:Name="HeroMuralisLayer"
+                                        Width="238"
+                                        Height="190"
+                                        Margin="0,54,18,18"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        Opacity="0.68"
+                                        RenderTransformOrigin="0.5,0.5">
+                                        <Grid.RenderTransform>
+                                            <ScaleTransform x:Name="HeroMuralisScale" ScaleX="0.985" ScaleY="0.985" />
+                                        </Grid.RenderTransform>
+                                        <Border
+                                            BorderBrush="{ThemeResource MuralisBorderHoverBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource MuralisRadiusS}">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Offset="0" Color="{ThemeResource MuralisWallpaperMoodColor}" />
+                                                    <GradientStop Offset="0.58" Color="{ThemeResource MuralisScrimTransparentColor}" />
+                                                    <GradientStop Offset="1" Color="{ThemeResource MuralisGlowTintColor}" />
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                        </Border>
+                                        <Border
+                                            Width="78"
+                                            Height="50"
+                                            Margin="14,14,0,0"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Top"
+                                            Background="{ThemeResource MuralisGlassMediumBrush}"
+                                            BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource MuralisRadiusXS}">
+                                            <StackPanel Margin="10,0" VerticalAlignment="Center" Spacing="6">
+                                                <Border Width="38" Height="4" HorizontalAlignment="Left" Background="{ThemeResource MuralisTextSecondaryBrush}" CornerRadius="2" Opacity="0.68" />
+                                                <Border Width="24" Height="4" HorizontalAlignment="Left" Background="{ThemeResource MuralisTextTertiaryBrush}" CornerRadius="2" Opacity="0.52" />
+                                            </StackPanel>
+                                        </Border>
+                                        <StackPanel Margin="0,14,14,0" HorizontalAlignment="Right" VerticalAlignment="Top" Spacing="6">
+                                            <Grid><Border Width="52" Height="14" Background="{ThemeResource MuralisSurfaceHighBrush}" CornerRadius="4" /><Border Width="3" Height="8" Margin="6,0,0,0" HorizontalAlignment="Left" Background="{ThemeResource MuralisAccentPrimaryBrush}" CornerRadius="2" /></Grid>
+                                            <Grid><Border Width="52" Height="14" Background="{ThemeResource MuralisSurfaceHighBrush}" CornerRadius="4" /><Border Width="3" Height="8" Margin="6,0,0,0" HorizontalAlignment="Left" Background="{ThemeResource MuralisAccentSecondaryBrush}" CornerRadius="2" /></Grid>
+                                            <Grid><Border Width="52" Height="14" Background="{ThemeResource MuralisSurfaceHighBrush}" CornerRadius="4" /><Border Width="3" Height="8" Margin="6,0,0,0" HorizontalAlignment="Left" Background="{ThemeResource MuralisAccentPrimaryBrush}" CornerRadius="2" /></Grid>
+                                        </StackPanel>
+
+                                        <!--  Transparent Dock: icons float directly on the wallpaper, with no rail.  -->
+                                        <StackPanel
+                                            Margin="0,0,0,13"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Bottom"
+                                            Orientation="Horizontal"
+                                            Spacing="7">
+                                            <Border Width="26" Height="26" Background="{ThemeResource MuralisSurfaceHighBrush}" BorderBrush="{ThemeResource MuralisBorderSubtleBrush}" BorderThickness="1" CornerRadius="7" />
+                                            <Border Width="26" Height="26" Background="{ThemeResource MuralisSurfaceHighBrush}" BorderBrush="{ThemeResource MuralisBorderSubtleBrush}" BorderThickness="1" CornerRadius="7" />
+                                            <Border Width="26" Height="26" Background="{ThemeResource MuralisSurfaceSelectedBrush}" BorderBrush="{ThemeResource MuralisBorderActiveBrush}" BorderThickness="1" CornerRadius="7" />
+                                            <Border Width="26" Height="26" Background="{ThemeResource MuralisSurfaceHighBrush}" BorderBrush="{ThemeResource MuralisBorderSubtleBrush}" BorderThickness="1" CornerRadius="7" />
+                                        </StackPanel>
+                                    </Grid>
                                 </Grid>
-                            </Grid>
+                            </Viewbox>
                         </materials:GlassSurface>
 
                         <Border
                             x:Name="HeroAccentEdge"
-                            Width="96"
+                            Grid.RowSpan="2"
+                            Grid.ColumnSpan="2"
+                            Width="116"
                             Height="2"
-                            Margin="32,0,0,0"
+                            Margin="40,0,0,0"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Top"
                             Background="{ThemeResource MuralisAccentPrimaryBrush}"
@@ -505,7 +497,7 @@
 
                 <!--  Featured wallpaper  -->
                 <Border
-                    Height="356"
+                    Height="332"
                     Style="{StaticResource LargeCardBorderStyle}"
                     Visibility="{x:Bind ViewModel.Featured, Mode=OneWay, Converter={StaticResource NullToVisibility}}">
                     <Grid>

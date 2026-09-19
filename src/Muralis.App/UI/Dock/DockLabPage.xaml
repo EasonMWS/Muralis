@@ -41,6 +41,13 @@
                         <x:String>Mock</x:String>
                         <x:String>Real Desktop</x:String>
                     </ComboBox>
+                    <!--
+                        A diagnostic affordance on the lab page, never on the dock: the shipping surface has
+                        no add button, and the product's add path is the Dock page in the app's settings.
+                    -->
+                    <Button
+                        Click="OnPinnedAddRequested"
+                        Content="Pin an app…" />
                 </StackPanel>
                 <TextBlock
                     x:Name="Diagnostics"
@@ -86,9 +93,7 @@
                 x:Name="Dock"
                 Grid.Row="2"
                 HorizontalAlignment="Center"
-                PinnedApps="{x:Bind PinnedApps}"
-                ShelfItems="{x:Bind ShelfItems}"
-                UtilityItems="{x:Bind UtilityItems}" />
+                PinnedApps="{x:Bind PinnedApps}" />
         </Grid>
     </Grid>
 </Page>

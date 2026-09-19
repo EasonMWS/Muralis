@@ -13,7 +13,7 @@ namespace Muralis.App.UI.Dock;
 /// that asked for it — so it is timed from the outside against the same clock the segments use. Only
 /// exists when the profiler is on; with it off the dock never subscribes to layout at all.
 /// </remarks>
-internal sealed class DockLayoutMeter
+internal sealed class DockLayoutMeter : IDisposable
 {
     private const int Passes = 2;
 
@@ -22,6 +22,7 @@ internal sealed class DockLayoutMeter
     private const double FollowWindowMs = 120;
 
     private readonly FrameworkElement _root;
+    private bool _disposed;
     private double _armedAtMs;
     private double _lastMs;
     private double _lastCpuMs;
@@ -47,6 +48,11 @@ internal sealed class DockLayoutMeter
 
     private void OnLayoutUpdated(object? sender, object args)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         if (_remaining <= 0)
         {
             return;
@@ -74,4 +80,25 @@ internal sealed class DockLayoutMeter
 
     private static string Number(double value) =>
         double.IsNaN(value) ? "null" : value.ToString("F3", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Stops watching the layout. Idempotent, and safe to call when the profiler was never on and no meter
+    /// was ever built.
+    /// </summary>
+    /// <remarks>
+    /// The meter subscribes to the dock's own <c>LayoutUpdated</c>, so without this the handler outlives the
+    /// control it was watching for as long as anything holds the meter. Bounded — the root is the dock itself,
+    /// so nothing external is retained — but it is the same missing-unsubscribe shape as the coordinator's, and
+    /// it is released from the same place rather than left to be noticed later.
+    /// </remarks>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _root.LayoutUpdated -= OnLayoutUpdated;
+    }
 }

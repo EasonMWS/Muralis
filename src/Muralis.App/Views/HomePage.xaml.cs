@@ -9,12 +9,12 @@ namespace Muralis.App.Views;
 public sealed partial class HomePage : Page
 {
     /// <summary>
-    /// The width the hero card needs before the mini desktop preview earns its place: the preview itself,
-    /// the room it is set apart by, and enough left over for the headline and the actions beside it.
-    /// Measured on the card rather than on the window, because the shell's navigation pane and the page's
-    /// own margins are already gone by the time the card is laid out.
+    /// The preview moves below the product copy before either side becomes cramped. It stays present and
+    /// scales as one drawing instead of disappearing, because the Native/Muralis comparison is part of the
+    /// hero's explanation rather than decoration.
     /// </summary>
-    private const double WidthThatFitsTheHeroPreview = 780;
+    private const double WidthThatStacksTheHero = 860;
+    private const double WidthThatStacksFeatures = 560;
     private const string WindowsDesktopState = "WindowsDesktop";
     private const string MuralisDesktopState = "MuralisDesktop";
 
@@ -52,13 +52,42 @@ public sealed partial class HomePage : Page
         VisualStateManager.GoToState(this, state, useTransitions);
 
     /// <summary>
-    /// A narrow window loses the preview rather than squeezing the words: the headline is what the card is
-    /// for, and a 360 pixel drawing next to a column of single characters is worse than no drawing at all.
+    /// Reflows the flagship card without clipping: medium windows stack the comparison below the copy, and
+    /// very narrow windows turn the two-column capability summary into four compact rows.
     /// </summary>
-    private void OnHeroSurfaceSizeChanged(object sender, SizeChangedEventArgs e) =>
-        HeroPreview.Visibility = e.NewSize.Width >= WidthThatFitsTheHeroPreview
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+    private void OnHeroSurfaceSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var stacked = e.NewSize.Width < WidthThatStacksTheHero;
+        Grid.SetRow(HeroCopy, 0);
+        Grid.SetColumn(HeroCopy, 0);
+        Grid.SetColumnSpan(HeroCopy, stacked ? 2 : 1);
+        HeroCopy.Margin = stacked
+            ? new Thickness(28, 30, 28, 18)
+            : new Thickness(40, 34, 24, 34);
+
+        Grid.SetRow(HeroPreview, stacked ? 1 : 0);
+        Grid.SetColumn(HeroPreview, stacked ? 0 : 1);
+        Grid.SetColumnSpan(HeroPreview, stacked ? 2 : 1);
+        HeroPreview.Width = stacked ? double.NaN : 420;
+        HeroPreview.Height = stacked ? 220 : 270;
+        HeroPreview.Margin = stacked
+            ? new Thickness(28, 0, 28, 28)
+            : new Thickness(12, 30, 30, 30);
+        HeroPreview.HorizontalAlignment = stacked ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+
+        var stackFeatures = e.NewSize.Width < WidthThatStacksFeatures;
+        PlaceFeature(HeroDockFeature, stackFeatures ? 0 : 0, 0, stackFeatures);
+        PlaceFeature(HeroShelfFeature, stackFeatures ? 1 : 0, stackFeatures ? 0 : 1, stackFeatures);
+        PlaceFeature(HeroMotionFeature, stackFeatures ? 2 : 1, 0, stackFeatures);
+        PlaceFeature(HeroWidgetsFeature, stackFeatures ? 3 : 1, stackFeatures ? 0 : 1, stackFeatures);
+    }
+
+    private static void PlaceFeature(FrameworkElement feature, int row, int column, bool fullWidth)
+    {
+        Grid.SetRow(feature, row);
+        Grid.SetColumn(feature, column);
+        Grid.SetColumnSpan(feature, fullWidth ? 2 : 1);
+    }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {

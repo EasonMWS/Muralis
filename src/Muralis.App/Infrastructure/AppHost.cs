@@ -172,6 +172,7 @@ public sealed class AppHost : IDisposable
         services.AddSingleton<IWallpaperService, WindowsWallpaperService>();
         services.AddSingleton<IStartupService, StartupService>();
         services.AddSingleton<ShellEventSource>();
+        services.AddSingleton<RawPointerBroker>();
         services.AddSingleton<DesktopPointerRouter>();
         services.AddSingleton<IDesktopShell, DesktopShell>();
         services.AddSingleton<IVideoWallpaperService, VideoWallpaperServiceAdapter>();
@@ -230,6 +231,7 @@ public sealed class AppHost : IDisposable
         services.AddTransient<FavoritesViewModel>();
         services.AddTransient<DownloadsViewModel>();
         services.AddTransient<DynamicWallpaperViewModel>();
+        services.AddTransient<DockPinnedAppsViewModel>();
         services.AddTransient<SettingsViewModel>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions

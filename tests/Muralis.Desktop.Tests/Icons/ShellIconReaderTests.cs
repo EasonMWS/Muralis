@@ -85,6 +85,28 @@ public sealed class ShellIconReaderTests
     }
 
     [Fact]
+    public void ToPremultipliedBgra_UsesLegacyMaskWhenAlphaIsMissing()
+    {
+        var pixels = new byte[] { 20, 40, 60, 0, 100, 120, 140, 0 };
+
+        ShellIconReader.ToPremultipliedBgra(
+            pixels,
+            hasAlphaChannel: true,
+            transparencyMask: [1, 0]);
+
+        Assert.Equal([0, 0, 0, 0, 100, 120, 140, 255], pixels);
+    }
+
+    [Fact]
+    public void ShellCacheKey_DistinguishesRequestedPixelSizes()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "muralis-cache-key.exe");
+
+        Assert.NotEqual(ShellIconProvider.CacheKey(path, 48), ShellIconProvider.CacheKey(path, 96));
+        Assert.Equal(ShellIconProvider.CacheKey(path, 96), ShellIconProvider.CacheKey(path, 96));
+    }
+
+    [Fact]
     public void Read_OfATargetThatIsGone_GivesNothing()
     {
         // Answered before any shell call, so a target the user deleted or moved cannot come back

@@ -26,6 +26,9 @@ internal static class NativeMethods
     internal const uint WmNull = 0x0000;
     internal const uint WmDestroy = 0x0002;
     internal const uint WmClose = 0x0010;
+
+    /// <summary>Ends a message loop that has no window of its own; posted with <c>PostThreadMessageW</c>.</summary>
+    internal const uint WmQuit = 0x0012;
     internal const uint WmEraseBackground = 0x0014;
     internal const uint WmSetCursor = 0x0020;
     internal const uint WmDisplayChange = 0x007E;
@@ -136,6 +139,14 @@ internal static class NativeMethods
 
         public readonly int Height => Bottom - Top;
     }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetClientRect(nint hWnd, out Rect rect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetWindowRect(nint hWnd, out Rect rect);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Point
@@ -429,6 +440,13 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.IUnknown)] out object? instance);
 
     /// <summary>Posts to the thread queue: reaches the host even when it has no window.</summary>
+    /// <remarks>
+    /// Distinct from <see cref="PostMessageW"/> for a reason that cost a long detour: a message posted to the
+    /// thread queue carries a null window, and <c>DispatchMessageW</c> does nothing at all with such a message.
+    /// Work that has to run inside a window procedure — a raw input registration, which belongs to the thread
+    /// that makes it — must be posted to the window, not to the thread. Only <c>WM_QUIT</c>, which has no
+    /// window by design, belongs here.
+    /// </remarks>
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool PostThreadMessageW(uint threadId, uint message, nint wParam, nint lParam);

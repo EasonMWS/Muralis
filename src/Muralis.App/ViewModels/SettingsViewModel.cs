@@ -73,6 +73,8 @@ public sealed class DesktopExperienceOption
     public bool IsAvailable { get; }
 }
 
+public sealed record DockBackgroundOption(DockBackgroundStyle Style, string Label);
+
 public sealed partial class SettingsViewModel : ViewModelBase
 {
     private static readonly RotationInterval[] IntervalOrder =
@@ -106,6 +108,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly IUpdateChecker _updateChecker;
     private readonly IDesktopExperienceService _desktopExperience;
     private readonly IDockExperienceService _dockExperience;
+    private readonly DockPinnedAppsViewModel _dockPins;
     private readonly WindowContext _windowContext;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _applyingSettings = true;
@@ -165,6 +168,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         IUpdateChecker updateChecker,
         IDesktopExperienceService desktopExperience,
         IDockExperienceService dockExperience,
+        DockPinnedAppsViewModel dockPins,
         WindowContext windowContext,
         ILocalizationService localization,
         ILogger<SettingsViewModel> logger)
@@ -181,8 +185,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _updateChecker = updateChecker;
         _desktopExperience = desktopExperience;
         _dockExperience = dockExperience;
+        _dockPins = dockPins;
         _windowContext = windowContext;
         _logger = logger;
+
+        _dockPins.Reported += OnDockPinsReported;
 
         _providers.Register(this);
 
@@ -194,13 +201,14 @@ public sealed partial class SettingsViewModel : ViewModelBase
         LaunchAtStartup = SafeReadStartupState(settings.LaunchAtStartup);
         CloseToTray = settings.CloseToTray;
         RotationEnabled = settings.Rotation.Enabled;
-        ShowDock = settings.Dock.IsVisible;
+        ShowDock = settings.Dock.IsVisible || _desktopExperience.Status.Mode == DesktopExperienceMode.Muralis;
 
         FitModes = BuildFitModes();
         IntervalOptions = BuildIntervalOptions();
         RotationSourceOptions = BuildRotationSourceOptions();
         LanguageOptions = BuildLanguageOptions();
         DesktopExperienceOptions = BuildDesktopExperienceOptions();
+        DockBackgroundOptions = BuildDockBackgroundOptions();
         SelectedLanguageOption = FindLanguageOption(localization.Preference);
         BuildProviderSources();
 
@@ -256,6 +264,10 @@ public sealed partial class SettingsViewModel : ViewModelBase
     public IReadOnlyList<LanguageOption> LanguageOptions { get; private set; } = [];
 
     public IReadOnlyList<DesktopExperienceOption> DesktopExperienceOptions { get; private set; } = [];
+
+    public IReadOnlyList<DockBackgroundOption> DockBackgroundOptions { get; private set; } = [];
+
+    public DockBackgroundStyle DockBackgroundStyle => NormalizeDockBackground(_settingsService.Current.Dock.BackgroundStyle);
 
     public DesktopExperienceMode DesktopExperienceMode => _desktopExperience.Status.Mode;
 
@@ -358,13 +370,16 @@ public sealed partial class SettingsViewModel : ViewModelBase
         RotationSourceOptions = BuildRotationSourceOptions();
         LanguageOptions = BuildLanguageOptions();
         DesktopExperienceOptions = BuildDesktopExperienceOptions();
+        DockBackgroundOptions = BuildDockBackgroundOptions();
 
         OnPropertyChanged(nameof(FitModes));
         OnPropertyChanged(nameof(IntervalOptions));
         OnPropertyChanged(nameof(RotationSourceOptions));
         OnPropertyChanged(nameof(LanguageOptions));
         OnPropertyChanged(nameof(DesktopExperienceOptions));
+        OnPropertyChanged(nameof(DockBackgroundOptions));
         OnPropertyChanged(nameof(DesktopExperienceStateText));
+
         OnPropertyChanged(nameof(IsMuralisMode));
         OnPropertyChanged(nameof(CanChangeDockVisibility));
         OnPropertyChanged(nameof(RotationStatusText));
@@ -427,6 +442,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsMuralisMode));
         OnPropertyChanged(nameof(CanChangeDockVisibility));
         OnPropertyChanged(nameof(DesktopExperienceStateText));
+
+        if (result.Mode == DesktopExperienceMode.Muralis && !ShowDock)
+        {
+            ShowDock = true;
+        }
 
         if (result.HasError)
         {
@@ -665,6 +685,55 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _ = ApplyDockVisibilityAsync(value);
     }
 
+    public void SetDockBackgroundStyle(DockBackgroundStyle style)
+    {
+        style = NormalizeDockBackground(style);
+        if (_settingsService.Current.Dock.BackgroundStyle == style)
+        {
+            return;
+        }
+
+        _settingsService.Update(settings => settings.Dock.BackgroundStyle = style);
+        OnPropertyChanged(nameof(DockBackgroundStyle));
+    }
+
+    /// <summary>
+    /// The apps pinned to the dock, and the three things the user can do to that list.
+    /// </summary>
+    /// <remarks>
+    /// Configuration lives here rather than on the desktop strip: the dock itself stays clean, and this
+    /// section edits the same pins the dock is drawing through the same service.
+    /// </remarks>
+    public DockPinnedAppsViewModel DockPins => _dockPins;
+
+    /// <summary>
+    /// The rows carry the localized line about a pin whose file has gone, so a language change has to
+    /// re-render them alongside everything else on the page.
+    /// </summary>
+    private void OnDockPinsReported(object? sender, (string Key, bool IsError) report) =>
+        SetStatus(report.Key, report.IsError);
+
+    /// <summary>
+    /// Lets go of the Dock section when the settings page is left.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This view model is transient and the settings page is not cached, so every visit builds a new pair —
+    /// which means every visit that did not detach would leave one more section subscribed to the
+    /// process-wide pin service and to the language service.
+    /// </para>
+    /// <para>
+    /// Detaching is safe to do on the way out because nothing is lost with it: the pins themselves live in
+    /// <see cref="IPinnedAppService"/>, so the next visit reads the same list back from the same place.
+    /// </para>
+    /// </remarks>
+    public override void DetachFromPage()
+    {
+        _dockPins.Reported -= OnDockPinsReported;
+        _dockPins.DetachFromPage();
+        base.DetachFromPage();
+    }
+
     /// <summary>
     /// Shows or hides the dock and says where it ended up. The service owns the setting and the
     /// window, so this only reports what it answered.
@@ -727,6 +796,15 @@ public sealed partial class SettingsViewModel : ViewModelBase
             Loc.Get("Settings_DesktopExperience_Muralis_Description"),
             _desktopExperience.Status.IsMuralisAvailable),
     ];
+
+    private IReadOnlyList<DockBackgroundOption> BuildDockBackgroundOptions() =>
+    [
+        new(DockBackgroundStyle.Transparent, Loc.Get("Settings_Dock_Background_Transparent")),
+        new(DockBackgroundStyle.Glass, Loc.Get("Settings_Dock_Background_Glass")),
+    ];
+
+    private static DockBackgroundStyle NormalizeDockBackground(DockBackgroundStyle style) =>
+        style == DockBackgroundStyle.Glass ? DockBackgroundStyle.Glass : DockBackgroundStyle.Transparent;
 
     private void BuildProviderSources()
     {

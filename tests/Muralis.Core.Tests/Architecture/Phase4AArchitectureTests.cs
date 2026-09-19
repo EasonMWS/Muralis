@@ -15,19 +15,63 @@ public sealed class Phase4AArchitectureTests
         Assert.Contains("MotionTargets", host, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The bottom Dock's presentation is the pinned applications and nothing else. The Desktop Shelf and
+    /// the utility items are live services — 4A's zones still exist as contracts — but they are no longer
+    /// part of this visual tree, so nothing here may bring them back onto the desktop strip.
+    /// </summary>
     [Fact]
-    public void DockShell_HasFixedOuterZonesAndOneScrollableShelf()
+    public void DockShell_PresentsPinnedAppsAndNoOtherZone()
     {
         var host = Source("src/Muralis.App/UI/Dock/DockHost.xaml");
 
-        Assert.Equal(1, Count(host, "<ScrollViewer"));
-        Assert.Contains("x:Name=\"ShelfScroller\"", host, StringComparison.Ordinal);
+        // No scroller at all: the Shelf's own viewport was the only one, and it has been detached.
+        Assert.Equal(0, Count(host, "<ScrollViewer"));
+        Assert.DoesNotContain("ShelfScroller", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShelfItems", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("UtilityItems", host, StringComparison.Ordinal);
 
-        // Phase 4C made the pinned zone a real launcher, so it is fed by its presenter instead of a
-        // plain item list; the other two zones still bind the collections their host provides.
+        // The pinned zone is still a real launcher, fed by its presenter.
         Assert.Contains("ItemsSource=\"{x:Bind PinnedApps.Items", host, StringComparison.Ordinal);
-        Assert.Contains("ItemsSource=\"{x:Bind ShelfItems", host, StringComparison.Ordinal);
-        Assert.Contains("ItemsSource=\"{x:Bind UtilityItems", host, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PinnedZone\"", host, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Detaching the Shelf from the bottom strip did not delete the Shelf.
+    /// </summary>
+    /// <remarks>
+    /// This preserves the rule the replaced <c>DockShell_HasFixedOuterZonesAndOneScrollableShelf</c> carried:
+    /// the Desktop Shelf is one of the product's surfaces. It is no longer drawn on the bottom strip, but it
+    /// still projects the real desktop, and nothing else in the suite would notice if it were deleted — the
+    /// only other place it is named is a service-existence check that says nothing about its shell
+    /// integration. The seam a future floating Shelf would be built on is asserted here, so removing it is a
+    /// deliberate act with a failing test attached rather than a silent one.
+    /// </remarks>
+    [Fact]
+    public void DockShell_DetachedFromTheShelfWithoutDeletingIt()
+    {
+        // The contract and its implementation are both still here.
+        Assert.True(File.Exists(Absolute("src/Muralis.Core/Abstractions/IDesktopShelfService.cs")));
+        Assert.True(File.Exists(Absolute("src/Muralis.Desktop/Shelf/DesktopShelfService.cs")));
+
+        // It still projects real desktop content: the shell scan, the folder watcher that keeps it live, and
+        // the launch path. Those three are what "a Shelf" means, and none of them is presentation.
+        var shelf = Source("src/Muralis.Desktop/Shelf/DesktopShelfService.cs");
+        Assert.Contains("DesktopContentScanner", shelf, StringComparison.Ordinal);
+        Assert.Contains("FileSystemWatcher", shelf, StringComparison.Ordinal);
+        Assert.Contains("DebounceDelay", shelf, StringComparison.Ordinal);
+        Assert.Contains("public Task OpenAsync(", shelf, StringComparison.Ordinal);
+
+        // And it is still the one the application builds, so the surface can be re-attached without first
+        // resurrecting a service.
+        Assert.Contains(
+            "services.AddSingleton<IDesktopShelfService, DesktopShelfService>();",
+            Source("src/Muralis.App/Infrastructure/AppHost.cs"),
+            StringComparison.Ordinal);
+
+        // The dock itself names none of it, which is the product decision this pair of tests records.
+        var host = Source("src/Muralis.App/UI/Dock/DockHost.xaml");
+        Assert.DoesNotContain("DesktopShelf", host, StringComparison.Ordinal);
     }
 
     [Fact]

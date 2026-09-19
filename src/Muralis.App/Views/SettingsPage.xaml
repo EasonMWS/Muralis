@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Muralis.App.UI.Controls"
     xmlns:models="using:Muralis.Core.Models"
     xmlns:vm="using:Muralis.App.ViewModels"
     Background="Transparent"
@@ -198,6 +199,114 @@
                             OffContent="{Binding [Common_Off], Source={StaticResource Loc}}"
                             OnContent="{Binding [Common_On], Source={StaticResource Loc}}" />
                     </Grid>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Settings_Dock_Background_Title], Source={StaticResource Loc}}" />
+                            <TextBlock
+                                Style="{StaticResource CardCaptionStyle}"
+                                Text="{Binding [Settings_Dock_Background_Description], Source={StaticResource Loc}}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox
+                            x:Name="DockBackgroundCombo"
+                            Grid.Column="1"
+                            MinWidth="150"
+                            DisplayMemberPath="Label"
+                            SelectionChanged="OnDockBackgroundSelectionChanged" />
+                    </Grid>
+
+                    <!--
+                        Pinned apps. Configuration lives here rather than on the desktop strip: the dock
+                        itself stays clean, and this edits the same pins the dock draws — the same service,
+                        the same order, the same add path. The dock has no add affordance of its own.
+                    -->
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding [Dock_Pinned_Path], Source={StaticResource Loc}}" />
+                            <TextBlock
+                                Style="{StaticResource CardCaptionStyle}"
+                                Text="{Binding [Dock_Pinned_Empty], Source={StaticResource Loc}}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Click="OnAddPinnedAppClick"
+                            Content="{Binding [Dock_Pinned_AddApp], Source={StaticResource Loc}}" />
+                    </Grid>
+
+                    <TextBlock
+                        Margin="0,2,0,0"
+                        Style="{StaticResource CardCaptionStyle}"
+                        Text="{Binding [Dock_Pinned_Empty_State], Source={StaticResource Loc}}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind ViewModel.DockPins.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.DockPins.Rows, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DockPinRow">
+                                <Grid Padding="0,10" ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <controls:DockIcon
+                                        VerticalAlignment="Center"
+                                        IconContent="{x:Bind IconContent, Mode=OneWay}"
+                                        IsUnavailable="{x:Bind IsUnavailable}" />
+
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Spacing="3">
+                                        <TextBlock
+                                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                                            Text="{x:Bind DisplayName}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Style="{StaticResource CardCaptionStyle}"
+                                            Text="{x:Bind LaunchTarget}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Foreground="{ThemeResource MuralisTextTertiaryBrush}"
+                                            Style="{StaticResource CardCaptionStyle}"
+                                            Text="{x:Bind Warning}"
+                                            TextWrapping="Wrap"
+                                            Visibility="{x:Bind IsUnavailable, Converter={StaticResource BoolToVisibility}}" />
+                                    </StackPanel>
+
+                                    <StackPanel
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Orientation="Horizontal"
+                                        Spacing="6">
+                                        <Button
+                                            Command="{x:Bind Launch}"
+                                            Content="{Binding [Dock_Pinned_Open], Source={StaticResource Loc}}" />
+                                        <Button
+                                            Command="{x:Bind MoveLeft}"
+                                            Content="{Binding [Dock_Pinned_MoveUp], Source={StaticResource Loc}}" />
+                                        <Button
+                                            Command="{x:Bind MoveRight}"
+                                            Content="{Binding [Dock_Pinned_MoveDown], Source={StaticResource Loc}}" />
+                                        <Button
+                                            Command="{x:Bind Remove}"
+                                            Content="{Binding [Dock_Pinned_Unpin], Source={StaticResource Loc}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
 

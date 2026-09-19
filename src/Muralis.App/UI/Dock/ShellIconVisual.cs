@@ -14,8 +14,11 @@ namespace Muralis.App.UI.Dock;
 /// </summary>
 internal static class ShellIconVisual
 {
-    /// <summary>The size asked of the shell. 48 DIP is the icon box the dock draws.</summary>
-    public const int PixelSize = 48;
+    /// <summary>
+    /// Source pixels asked of the shell. The visual is 44 DIP, so 96px remains sharp at common high
+    /// DPI scales and leaves headroom for future compositor magnification without re-extraction.
+    /// </summary>
+    public const int PixelSize = 96;
 
     /// <summary>The size drawn inside the 48 DIP box, leaving the surface its breathing room.</summary>
     public const double RenderSize = 44;

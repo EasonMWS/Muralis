@@ -2,6 +2,13 @@ using Muralis.Core.DockShell;
 
 namespace Muralis.Core.Models;
 
+/// <summary>The dock-wide surface behind its icons. Transparent is the product default.</summary>
+public enum DockBackgroundStyle
+{
+    Transparent,
+    Glass,
+}
+
 /// <summary>
 /// The dock's own settings: whether it is on the desktop at all, and what the user has pinned to it.
 /// This is deliberately its own section rather than part of the desktop experience or the Phase 3
@@ -14,6 +21,9 @@ public sealed class DockSettings
     /// the user turns it off; pinning nothing still shows the zone and its Add button.
     /// </summary>
     public bool IsVisible { get; set; } = true;
+
+    /// <summary>Visual policy only; it never changes Dock visibility or lifecycle.</summary>
+    public DockBackgroundStyle BackgroundStyle { get; set; } = DockBackgroundStyle.Transparent;
 
     public List<PinnedAppSettings> PinnedApps { get; set; } = [];
 }

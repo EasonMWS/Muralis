@@ -6,10 +6,8 @@ using Muralis.Desktop.Surfaces;
 namespace Muralis.Desktop.Input;
 
 /// <summary>
-/// The one place that watches the pointer for the whole desktop. It listens to raw mouse reports on
-/// a hidden window of the shell thread — a passive registration: no hook, nothing captured, nothing
-/// consumed, every report still reaches every other window unchanged — reads the cursor and the
-/// button state behind each report, works out what the pointer is over and publishes the result.
+/// The desktop consumer of the process-wide raw pointer broker. Its hidden shell-thread window only
+/// preserves this router's timer and event-thread semantics; it no longer owns a raw device registration.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -53,10 +51,12 @@ public sealed class DesktopPointerRouter : IDisposable
     private readonly PointerDispatchGate _gate = new(MinimumDispatchIntervalMilliseconds);
     private readonly CanvasUpdateRate _rate = new();
     private readonly NativeMethods.WindowProc _windowProc;
+    private readonly RawPointerBroker? _broker;
 
     private string? _className;
     private nint _instance;
     private nint _window;
+    private IDisposable? _brokerSubscription;
     private bool _flushArmed;
     private bool _tailPending;
     private bool _hasReading;
@@ -65,13 +65,17 @@ public sealed class DesktopPointerRouter : IDisposable
     private long _dispatches;
     private DesktopPointerContext _context = DesktopPointerContext.Foreign;
 
-    public DesktopPointerRouter(ILogger<DesktopPointerRouter> logger)
-        : this(logger, new Win32PointerSampler(), () => Environment.TickCount64)
+    public DesktopPointerRouter(ILogger<DesktopPointerRouter> logger, RawPointerBroker broker)
+        : this(logger, new Win32PointerSampler(), () => Environment.TickCount64, broker)
     {
     }
 
     /// <summary>The seam the tests use: any pointer source, any clock, no Windows.</summary>
-    internal DesktopPointerRouter(ILogger<DesktopPointerRouter> logger, IDesktopPointerSampler sampler, Func<long> clock)
+    internal DesktopPointerRouter(
+        ILogger<DesktopPointerRouter> logger,
+        IDesktopPointerSampler sampler,
+        Func<long> clock,
+        RawPointerBroker? broker = null)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(sampler);
@@ -80,6 +84,7 @@ public sealed class DesktopPointerRouter : IDisposable
         _logger = logger;
         _sampler = sampler;
         _clock = clock;
+        _broker = broker;
         _windowProc = OnWindowMessage;
     }
 
@@ -104,7 +109,7 @@ public sealed class DesktopPointerRouter : IDisposable
     private bool HasSubscribers => PointerMoved is not null || EnteredDesktopRegion is not null || LeftDesktopRegion is not null;
 
     /// <summary>
-    /// Creates the hidden window and registers the mouse for raw input. Runs on the shell thread,
+    /// Creates the hidden shell-thread window and subscribes to the process broker. Runs on the shell thread,
     /// which is also the thread every event is raised on. Never throws: without a window the canvas
     /// simply keeps using its own window messages.
     /// </summary>
@@ -141,12 +146,12 @@ public sealed class DesktopPointerRouter : IDisposable
                 throw new InvalidOperationException($"CreateWindowEx failed ({Marshal.GetLastWin32Error()}).");
             }
 
-            Register(flags: NativeMethods.RidevInputSink, target: _window);
+            _brokerSubscription = _broker?.Subscribe(OnBrokerPointerMoved);
 
             Current = DesktopPointerState.Unknown;
             _hasReading = false;
             _context = DesktopPointerContext.Foreign;
-            _logger.LogInformation("The desktop pointer router is listening to raw mouse input on the shell thread");
+            _logger.LogInformation("The desktop pointer router is consuming the process raw pointer broker on the shell thread");
         }
         catch (Exception ex)
         {
@@ -161,12 +166,14 @@ public sealed class DesktopPointerRouter : IDisposable
     /// </summary>
     internal void Detach()
     {
+        _brokerSubscription?.Dispose();
+        _brokerSubscription = null;
+
         if (_window != nint.Zero)
         {
-            Register(flags: NativeMethods.RidevRemove, target: nint.Zero);
             NativeMethods.DestroyWindow(_window);
             _window = nint.Zero;
-            _logger.LogInformation("The desktop pointer router released its raw mouse input registration");
+            _logger.LogInformation("The desktop pointer router released its broker subscription");
         }
 
         if (_className is not null)
@@ -276,30 +283,13 @@ public sealed class DesktopPointerRouter : IDisposable
         Detach();
     }
 
-    private void Register(uint flags, nint target)
+    private void OnBrokerPointerMoved(int screenX, int screenY)
     {
-        var devices = new[]
+        // The broker's window lives on its own thread. This router's coalescing/timer state belongs to the
+        // shell thread, so the broker only posts a signal and never executes desktop consumer logic itself.
+        if (_window != nint.Zero)
         {
-            new NativeMethods.RawInputDevice
-            {
-                UsagePage = NativeMethods.HidUsagePageGenericDesktop,
-                Usage = NativeMethods.HidUsageMouse,
-                Flags = flags,
-                Target = target,
-            },
-        };
-
-        if (!NativeMethods.RegisterRawInputDevices(devices, 1, (uint)Marshal.SizeOf<NativeMethods.RawInputDevice>()))
-        {
-            var error = Marshal.GetLastWin32Error();
-            if ((flags & NativeMethods.RidevRemove) != 0)
-            {
-                // A removal that fails has nothing left to release.
-                _logger.LogDebug("The desktop pointer raw input registration was already gone ({Error})", error);
-                return;
-            }
-
-            throw new InvalidOperationException($"Raw input registration failed ({error}).");
+            _ = NativeMethods.PostMessageW(_window, WmBrokerPointer, nint.Zero, nint.Zero);
         }
     }
 
@@ -386,7 +376,7 @@ public sealed class DesktopPointerRouter : IDisposable
     {
         switch (message)
         {
-            case NativeMethods.WmInput:
+            case WmBrokerPointer:
                 try
                 {
                     HandlePointerReport();
@@ -396,9 +386,6 @@ public sealed class DesktopPointerRouter : IDisposable
                     _logger.LogWarning(ex, "A desktop pointer report could not be processed");
                 }
 
-                // The report itself is only a signal — the position is read when the flush timer
-                // fires — and every one of them goes on to DefWindowProc, which is the documented
-                // way to let the system release the raw input buffer.
                 break;
 
             case NativeMethods.WmTimer when (int)wParam == FlushTimerId:
@@ -417,4 +404,6 @@ public sealed class DesktopPointerRouter : IDisposable
 
         return NativeMethods.DefWindowProcW(hWnd, message, wParam, lParam);
     }
+
+    private const uint WmBrokerPointer = 0x8000 + 21;
 }

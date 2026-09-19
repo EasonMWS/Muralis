@@ -544,6 +544,18 @@
   <data name="Settings_Dock_Required" xml:space="preserve">
     <value>Muralis 模式下 Dock 会保持显示，因为它就是被隐藏的 Windows 图标的替代入口。</value>
   </data>
+  <data name="Settings_Dock_Background_Title" xml:space="preserve">
+    <value>背景</value>
+  </data>
+  <data name="Settings_Dock_Background_Description" xml:space="preserve">
+    <value>选择自然悬浮的图标或克制的玻璃表面；此选项不会隐藏 Dock。</value>
+  </data>
+  <data name="Settings_Dock_Background_Transparent" xml:space="preserve">
+    <value>透明</value>
+  </data>
+  <data name="Settings_Dock_Background_Glass" xml:space="preserve">
+    <value>玻璃</value>
+  </data>
   <data name="Settings_Status_DockShown" xml:space="preserve">
     <value>Dock 已显示在桌面上。</value>
   </data>
@@ -1044,6 +1056,18 @@
   <data name="Dock_Pinned_AddApp" xml:space="preserve">
     <value>添加应用</value>
   </data>
+  <data name="Dock_Pinned_Empty_State" xml:space="preserve">
+    <value>还没有固定任何应用。添加之后 Dock 才会出现。</value>
+  </data>
+  <data name="Dock_Pinned_MoveDown" xml:space="preserve">
+    <value>右移</value>
+  </data>
+  <data name="Dock_Pinned_MoveUp" xml:space="preserve">
+    <value>左移</value>
+  </data>
+  <data name="Dock_Pinned_Path" xml:space="preserve">
+    <value>已固定的应用，按 Dock 中的顺序排列</value>
+  </data>
   <data name="Dock_Pinned_Full" xml:space="preserve">
     <value>Dock 最多固定 {0} 个应用。取消其中一个即可继续添加。</value>
   </data>
@@ -1072,7 +1096,7 @@
     <value>Muralis 模式</value>
   </data>
   <data name="Home_MuralisMode_Tagline" xml:space="preserve">
-    <value>一套模式管理整个桌面：Dock、桌面架、动效与小组件。</value>
+    <value>更清爽的桌面、更聚焦的桌面架，以及始终顺手的 Dock。</value>
   </data>
   <data name="Home_MuralisMode_Ready" xml:space="preserve">
     <value>升级你的 Windows 桌面体验。</value>
@@ -1124,5 +1148,14 @@
   </data>
   <data name="Home_MuralisMode_Preview" xml:space="preserve">
     <value>桌面预览</value>
+  </data>
+  <data name="Home_MuralisMode_Brand" xml:space="preserve">
+    <value>让壁纸不止于背景，让桌面焕然一新。</value>
+  </data>
+  <data name="Home_MuralisMode_Preview_Native" xml:space="preserve">
+    <value>原生桌面</value>
+  </data>
+  <data name="Home_MuralisMode_Preview_Muralis" xml:space="preserve">
+    <value>Muralis 桌面</value>
   </data>
 </root>

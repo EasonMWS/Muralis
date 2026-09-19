@@ -106,6 +106,23 @@ public sealed class MuralisModeHeroGuardTests
     }
 
     [Fact]
+    public void TheHeroReadsAsAFlagshipExperienceAtEveryWidth()
+    {
+        var xaml = Source("src/Muralis.App/Views/HomePage.xaml");
+        var codeBehind = Source("src/Muralis.App/Views/HomePage.xaml.cs");
+
+        Assert.Contains("x:Name=\"HeroCard\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"360\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Home_MuralisMode_Brand", xaml, StringComparison.Ordinal);
+        Assert.Contains("Home_MuralisMode_Preview_Native", xaml, StringComparison.Ordinal);
+        Assert.Contains("Home_MuralisMode_Preview_Muralis", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"HeroFeatureSummary\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<Viewbox Stretch=\"Uniform\">", xaml, StringComparison.Ordinal);
+        Assert.Contains("WidthThatStacksTheHero", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("HeroPreview.Visibility", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryStringTheHeroShowsExistsInBothLanguages()
     {
         var referenced = new SortedSet<string>(StringComparer.Ordinal);

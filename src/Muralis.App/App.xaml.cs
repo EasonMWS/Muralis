@@ -6,10 +6,13 @@ using Muralis.App.Services;
 using Muralis.App.Services.Platform;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Desktop.Takeover;
+using Muralis.Core.Diagnostics;
 using Muralis.Core.Helpers;
 using Muralis.Core.Models;
+using Muralis.Desktop.Input;
 using Muralis.Desktop.Shell;
 using Serilog;
+using System.Globalization;
 
 namespace Muralis.App;
 
@@ -95,6 +98,20 @@ public partial class App : Application
             // TrayService listens for its icon, and the single DesktopShell instance created here
             // listens to re-mount desktop surfaces on the new WorkerW. No one else responds to it.
             _host.Services.GetRequiredService<IDesktopShell>();
+
+            // Windows allows one raw input registration per device class per process, so who owns it in the
+            // mode that is actually running is a fact worth having rather than a fact worth assuming. Only
+            // recorded when the dock profiler asked for it, so a shipping run pays nothing.
+            if (DropProfile.IsEnabled)
+            {
+                var registered = RawInputRegistry.Current();
+                DropProfile.Event(
+                    "rawinput.startup",
+                    "\"total\":" + registered.Total.ToString(CultureInfo.InvariantCulture)
+                    + ",\"mouse\":" + registered.Mouse.ToString(CultureInfo.InvariantCulture)
+                    + ",\"other\":" + registered.Other.ToString(CultureInfo.InvariantCulture)
+                    + ",\"shellState\":\"" + _host.Services.GetRequiredService<IDesktopShell>().State + "\"");
+            }
 
             // Bringing the video wallpaper back is off the startup path: the desktop shell owns
             // its own thread, and a missing or broken file must not delay the window.

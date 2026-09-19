@@ -152,7 +152,10 @@ internal static class ShellIconReader
                 return null;
             }
 
-            ToPremultipliedBgra(pixels, shape.BitsPixel >= 32);
+            var transparencyMask = info.ColorBitmap == nint.Zero
+                ? null
+                : ReadTransparencyMask(info.MaskBitmap, width, height);
+            ToPremultipliedBgra(pixels, shape.BitsPixel >= 32, transparencyMask);
             return new IconBitmap(width, height, pixels);
         }
         finally
@@ -176,7 +179,10 @@ internal static class ShellIconReader
     /// with every alpha byte zero, and read literally that is a fully transparent image, so those
     /// pixels are declared opaque instead of being allowed to vanish.
     /// </summary>
-    internal static void ToPremultipliedBgra(byte[] pixels, bool hasAlphaChannel)
+    internal static void ToPremultipliedBgra(
+        byte[] pixels,
+        bool hasAlphaChannel,
+        byte[]? transparencyMask = null)
     {
         var hasAlpha = false;
         if (hasAlphaChannel)
@@ -193,7 +199,12 @@ internal static class ShellIconReader
 
         for (var i = 0; i < pixels.Length; i += 4)
         {
-            var alpha = hasAlpha ? pixels[i + 3] : (byte)255;
+            var pixel = i / 4;
+            var maskedOut = !hasAlpha
+                && transparencyMask is not null
+                && pixel < transparencyMask.Length
+                && transparencyMask[pixel] != 0;
+            var alpha = hasAlpha ? pixels[i + 3] : maskedOut ? (byte)0 : (byte)255;
 
             if (alpha == 0)
             {
@@ -210,5 +221,72 @@ internal static class ShellIconReader
 
             pixels[i + 3] = alpha;
         }
+    }
+
+    /// <summary>
+    /// Reads the icon's legacy AND mask as one byte per pixel: non-zero means transparent. This is
+    /// essential for classic icons whose 32-bit colour bitmap has no alpha data; treating every pixel
+    /// as opaque gives those otherwise-correct icons a black or white square background.
+    /// </summary>
+    private static byte[]? ReadTransparencyMask(nint maskBitmap, int width, int height)
+    {
+        if (maskBitmap == nint.Zero || width <= 0 || height <= 0)
+        {
+            return null;
+        }
+
+        var shape = default(NativeMethods.Bitmap);
+        if (NativeMethods.GetObjectW(maskBitmap, Marshal.SizeOf<NativeMethods.Bitmap>(), ref shape) == 0)
+        {
+            return null;
+        }
+
+        var maskWidth = Math.Min(width, Math.Abs(shape.Width));
+        var maskHeight = Math.Min(height, Math.Abs(shape.Height));
+        if (maskWidth <= 0 || maskHeight <= 0)
+        {
+            return null;
+        }
+
+        var bgra = new byte[maskWidth * maskHeight * 4];
+        var header = new NativeMethods.BitmapInfoHeader
+        {
+            Size = (uint)Marshal.SizeOf<NativeMethods.BitmapInfoHeader>(),
+            Width = maskWidth,
+            Height = -maskHeight,
+            Planes = 1,
+            BitCount = 32,
+            SizeImage = (uint)bgra.Length,
+        };
+
+        var dc = NativeMethods.GetDC(nint.Zero);
+        if (dc == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (NativeMethods.GetDIBits(dc, maskBitmap, 0, (uint)maskHeight, bgra, ref header, 0) == 0)
+            {
+                return null;
+            }
+        }
+        finally
+        {
+            NativeMethods.ReleaseDC(nint.Zero, dc);
+        }
+
+        var mask = new byte[width * height];
+        for (var y = 0; y < maskHeight; y++)
+        {
+            for (var x = 0; x < maskWidth; x++)
+            {
+                var source = (y * maskWidth + x) * 4;
+                mask[y * width + x] = (byte)((bgra[source] | bgra[source + 1] | bgra[source + 2]) == 0 ? 0 : 1);
+            }
+        }
+
+        return mask;
     }
 }

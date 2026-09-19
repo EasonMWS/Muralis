@@ -3,89 +3,114 @@
     x:Class="Muralis.App.UI.Controls.DockIcon"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        MotionHost is drag-only. NexusMotionHost owns composition Scale/Translation/CenterPoint.
+        InteractionHost owns hover/press RenderTransform.
+
+        There is no label. The dock is icon-only, so the name lives in AutomationProperties.Name and in
+        the tooltip rather than in the layout, and nothing sits between the icon box and the dock's own
+        baseline.
+    -->
     <Grid
         x:Name="MotionHost"
-        MinWidth="64"
-        Padding="8"
-        RowSpacing="4">
+        MinWidth="52"
+        RowSpacing="0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="4" />
         </Grid.RowDefinitions>
 
-        <Grid Width="52" Height="52" HorizontalAlignment="Center">
-            <Border
-                x:Name="IconSurface"
-                Width="48"
-                Height="48"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="{ThemeResource MuralisGlassLowBrush}"
-                BorderBrush="{ThemeResource MuralisBorderSubtleBrush}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource MuralisRadiusS}"
-                Shadow="{StaticResource MuralisElevation1Shadow}">
-                <Grid>
-                    <ContentPresenter
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Content="{x:Bind IconContent, Mode=OneWay}" />
-                    <Border
-                        Height="1"
-                        Margin="8,0"
-                        VerticalAlignment="Top"
-                        Background="{ThemeResource MuralisEdgeHighlightLowBrush}"
-                        CornerRadius="{StaticResource MuralisRadiusPill}"
-                        IsHitTestVisible="False" />
-                </Grid>
-            </Border>
-            <Border
-                x:Name="SelectionIndicator"
-                Width="7"
-                Height="7"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                Background="{ThemeResource MuralisAccentSecondaryBrush}"
-                BorderBrush="{ThemeResource MuralisSurfaceHighBrush}"
-                BorderThickness="2"
-                CornerRadius="{StaticResource MuralisRadiusPill}"
-                Opacity="0" />
-            <Border
-                x:Name="UnavailableBadge"
-                Width="14"
-                Height="14"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Bottom"
-                Background="{ThemeResource MuralisSurfaceHighBrush}"
-                BorderBrush="{ThemeResource MuralisBorderNormalBrush}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource MuralisRadiusPill}"
-                IsHitTestVisible="False"
-                Opacity="0">
-                <FontIcon
-                    FontSize="8"
-                    Foreground="{ThemeResource MuralisTextSecondaryBrush}"
-                    Glyph="&#xE7BA;" />
-            </Border>
+        <!--
+            NexusMotionHost is the Nexus motion engine's own layer, and nothing else writes to it.
+
+            It has to be a separate element because UIElement.Scale and UIElement.Translation are mutually
+            exclusive with RenderTransform on the same element, and MotionHost's RenderTransform belongs to
+            the drag. The engine drives Scale and Translation here; the drag keeps driving
+            MotionHost.RenderTransform.TranslateX. Neither can disturb the other.
+
+            It is 52x52 — the icon box — and its centre point is set to the bottom centre of that box, so a
+            magnified icon grows upward and sideways from the dock's baseline instead of from its own middle.
+        -->
+        <Grid
+            x:Name="NexusMotionHost"
+            Width="52"
+            Height="52"
+            Background="Transparent"
+            HorizontalAlignment="Center">
+            <!-- Hover/press owns this element's RenderTransform; Nexus never writes it. -->
+            <Grid x:Name="InteractionHost">
+                <!--
+                    The resting icon paints nothing: the artwork sits directly on the wallpaper, which is
+                    the whole point of the dock's Transparent style. The surface appears only to answer
+                    "the pointer is here" or "this one is chosen", so the dock never reads as a row of
+                    tiles with a panel behind them.
+                -->
+                <Border
+                    x:Name="IconSurface"
+                    Width="48"
+                    Height="48"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="Transparent"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource MuralisRadiusS}">
+                    <Grid>
+                        <ContentPresenter
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Content="{x:Bind IconContent, Mode=OneWay}" />
+                        <Border
+                            x:Name="IconEdgeHighlight"
+                            Height="1"
+                            Margin="8,0"
+                            VerticalAlignment="Top"
+                            Background="{ThemeResource MuralisEdgeHighlightLowBrush}"
+                            CornerRadius="{StaticResource MuralisRadiusPill}"
+                            IsHitTestVisible="False"
+                            Opacity="0" />
+                    </Grid>
+                </Border>
+                <Border
+                    x:Name="SelectionIndicator"
+                    Width="7"
+                    Height="7"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource MuralisAccentSecondaryBrush}"
+                    BorderBrush="{ThemeResource MuralisSurfaceHighBrush}"
+                    BorderThickness="2"
+                    CornerRadius="{StaticResource MuralisRadiusPill}"
+                    Opacity="0" />
+                <Border
+                    x:Name="UnavailableBadge"
+                    Width="14"
+                    Height="14"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource MuralisSurfaceHighBrush}"
+                    BorderBrush="{ThemeResource MuralisBorderNormalBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource MuralisRadiusPill}"
+                    IsHitTestVisible="False"
+                    Opacity="0">
+                    <FontIcon
+                        FontSize="8"
+                        Foreground="{ThemeResource MuralisTextSecondaryBrush}"
+                        Glyph="&#xE7BA;" />
+                </Border>
+            </Grid>
         </Grid>
 
-        <TextBlock
-            x:Name="LabelText"
-            Grid.Row="1"
-            MaxWidth="80"
-            HorizontalAlignment="Center"
-            Style="{StaticResource MuralisCaptionTextStyle}"
-            Text="{x:Bind Label, Mode=OneWay}"
-            TextAlignment="Center"
-            TextTrimming="CharacterEllipsis" />
-
+        <!--
+            Held for the running-app indicator the dock does not draw yet. It is two DIP of empty space
+            at the bottom of the icon box rather than a layout the future has to be threaded through.
+        -->
         <Border
             x:Name="RunningIndicator"
-            Grid.Row="2"
             Width="16"
             Height="2"
+            Margin="0,0,0,-2"
             HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
             Background="{ThemeResource MuralisAccentPrimaryBrush}"
             CornerRadius="{StaticResource MuralisRadiusPill}"
             Opacity="0" />

@@ -55,6 +55,13 @@ public sealed partial class SettingsPage : Page
     }
 
     /// <summary>
+    /// Pins an application through the dock's own add path. The picker, the duplicate rule and the
+    /// persistence all live behind the section's view model, so this only reports the outcome.
+    /// </summary>
+    private async void OnAddPinnedAppClick(object sender, RoutedEventArgs e) =>
+        await ViewModel.DockPins.AddAsync();
+
+    /// <summary>
     /// (Re)builds the combo box item sources from the view model. Called once on load and
     /// again whenever the localized option labels change, so selections are preserved.
     /// </summary>
@@ -81,6 +88,10 @@ public sealed partial class SettingsPage : Page
             DesktopExperienceCombo.ItemsSource = ViewModel.DesktopExperienceOptions;
             DesktopExperienceCombo.SelectedItem = ViewModel.DesktopExperienceOptions
                 .First(option => option.Mode == ViewModel.DesktopExperienceMode);
+
+            DockBackgroundCombo.ItemsSource = ViewModel.DockBackgroundOptions;
+            DockBackgroundCombo.SelectedItem = ViewModel.DockBackgroundOptions
+                .First(option => option.Style == ViewModel.DockBackgroundStyle);
 
             SyncDefaultSourceSelection();
         }
@@ -167,6 +178,14 @@ public sealed partial class SettingsPage : Page
         if (!_initializing && FitModeCombo.SelectedItem is FitModeOption option && option.Mode != ViewModel.DefaultFitMode)
         {
             ViewModel.DefaultFitMode = option.Mode;
+        }
+    }
+
+    private void OnDockBackgroundSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initializing && DockBackgroundCombo.SelectedItem is DockBackgroundOption option)
+        {
+            ViewModel.SetDockBackgroundStyle(option.Style);
         }
     }
 

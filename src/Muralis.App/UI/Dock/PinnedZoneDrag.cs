@@ -65,6 +65,13 @@ internal sealed class PinnedZoneDrag
     public bool Travelled => _travelled;
 
     /// <summary>
+    /// Whether this drag is holding the pointer at all — pressed, whether or not it has travelled yet. The
+    /// magnification wave stands down while this is true: the pointer is doing something else, and an icon
+    /// being driven by two owners at once is the one thing this dock must never do.
+    /// </summary>
+    public bool IsActive => _pressed;
+
+    /// <summary>
     /// Takes the pointer for <paramref name="icon"/>. Everything the drag needs is measured here,
     /// while every translation is still zero, so the resting centres are the real ones.
     /// </summary>
@@ -241,8 +248,18 @@ internal sealed class PinnedZoneDrag
 
         // The pointer owns the icon now, so the icon's own hover preview has to stop: two things
         // animating the same element from different rules is how a drag starts to look elastic.
+        //
+        // The preview is cleared on the interaction layer, which is the element that owns it. Passing
+        // MotionTarget here — the Nexus layer — asked the framework to put a RenderTransform on an element
+        // that already carries CenterPoint, and WinUI refuses exactly that combination: it threw
+        // UnauthorizedAccessException out of this PointerMoved handler on every drag.
+        //
+        // The impact, stated accurately because it was measured: the application catches a XAML unhandled
+        // exception, logs it fatally and keeps running (App.OnXamlUnhandledException sets Handled), so the
+        // process did NOT die. What the user got was a fatal log entry and a crash dialog per drag, and a
+        // gesture that aborted here — before the drop indicator was ever placed.
         _carried!.UsePointerMotion = false;
-        HoverMotion.Exit(_carried.MotionTarget);
+        HoverMotion.Exit(_carried.InteractionLayer);
         PlaceIndicator();
         _indicator.Opacity = 1;
     }

@@ -31,6 +31,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(string.Empty, service.Current.VideoWallpaper.VideoPath);
         Assert.True(service.Current.VideoWallpaper.Muted);
         Assert.Equal(DesktopExperienceMode.Native, service.Current.DesktopExperience.Mode);
+        Assert.Equal(DockBackgroundStyle.Transparent, service.Current.Dock.BackgroundStyle);
     }
 
     [Fact]
@@ -106,6 +107,35 @@ public sealed class SettingsServiceTests : IDisposable
 
         var json = await File.ReadAllTextAsync(_settingsPath);
         Assert.Contains("\"Dark\"", json);
+    }
+
+    [Fact]
+    public async Task DockBackgroundStyle_RoundTripsGlass()
+    {
+        var service = CreateService();
+        await service.LoadAsync();
+        service.Update(settings => settings.Dock.BackgroundStyle = DockBackgroundStyle.Glass);
+        await service.SaveAsync();
+
+        var reloaded = CreateService();
+        await reloaded.LoadAsync();
+
+        Assert.Equal(DockBackgroundStyle.Glass, reloaded.Current.Dock.BackgroundStyle);
+        Assert.Contains("\"BackgroundStyle\": \"Glass\"", await File.ReadAllTextAsync(_settingsPath));
+    }
+
+    [Fact]
+    public async Task OldDockSettings_WithoutBackgroundStyle_MigrateToTransparent()
+    {
+        await File.WriteAllTextAsync(_settingsPath, """
+            { "SchemaVersion": 3, "Dock": { "IsVisible": true, "PinnedApps": [] } }
+            """);
+
+        var service = CreateService();
+        await service.LoadAsync();
+
+        Assert.True(service.Current.Dock.IsVisible);
+        Assert.Equal(DockBackgroundStyle.Transparent, service.Current.Dock.BackgroundStyle);
     }
 
     private SettingsService CreateService() => new(NullLogger<SettingsService>.Instance, _settingsPath);

@@ -39,10 +39,11 @@ public sealed class ArchitectureGuardTests
         AssertOnlyUses(
             "src/Muralis.Desktop",
             "NativeMethods.CreateWindowExW(",
-            "desktop windows are created by the surface host; the shell event source and the pointer router each have a hidden window of their own",
+            "desktop windows are created by the surface host; the shell event source, the pointer router and the raw pointer window each have a hidden window of their own, and never a desktop one",
             "src/Muralis.Desktop/Surfaces/Win32SurfaceHost.cs",
             "src/Muralis.Desktop/Shell/ShellEventSource.cs",
-            "src/Muralis.Desktop/Input/DesktopPointerRouter.cs");
+            "src/Muralis.Desktop/Input/DesktopPointerRouter.cs",
+            "src/Muralis.Desktop/Input/RawInputRegistry.cs");
         AssertOnlyUses(
             "src/Muralis.Desktop",
             "NativeMethods.SetParent(",
@@ -51,13 +52,15 @@ public sealed class ArchitectureGuardTests
     }
 
     [Fact]
-    public void OnlyThePointerRouterRegistersRawInput()
+    public void OnlyTheProcessBrokerRegistersRawInput()
     {
+        // The neutral broker owns one native source. Desktop/wallpaper and Dock are consumers; neither may
+        // acquire, replace or release the process-wide mouse device class on its own.
         AssertOnlyUses(
             "src",
             "NativeMethods.RegisterRawInputDevices(",
-            "raw input is the pointer router's mechanism and no other component may register for it",
-            "src/Muralis.Desktop/Input/DesktopPointerRouter.cs");
+            "raw input is registered only by the process-level broker source",
+            "src/Muralis.Desktop/Input/RawInputRegistry.cs");
     }
 
     [Fact]
