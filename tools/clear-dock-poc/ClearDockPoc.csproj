@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>ClearDockPoc</AssemblyName>
+    <RootNamespace>ClearDockPoc</RootNamespace>
+    <UseWindowsForms>false</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <!--
+    The icon extraction is reused, not rewritten: this proof exists to answer a question about window
+    transparency, and a second icon pipeline would be a second thing to be wrong. The project reference is to
+    the desktop layer only, which is where the shell reader lives.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Muralis.Desktop\Muralis.Desktop.csproj" />
+  </ItemGroup>
+
+</Project>
