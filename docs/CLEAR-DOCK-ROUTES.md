@@ -314,6 +314,21 @@ So the backing proof now asserts, before believing a single pixel, that the dock
 and both the topmost and non-topmost runs report their ranks. A harness that cannot tell "the dock is
 transparent" from "the dock is hidden behind the thing I am measuring through" is not evidence.
 
+**And the gate was tested by breaking it.** A proof that has never failed is a proof nobody has checked, so the
+harness was copied and deliberately broken — the backing forced topmost, which is the worst confound it has —
+and re-run. It exited **1** and named the fault exactly:
+
+```
+z-order: backing at z-rank 11 ...; dock at z-rank 28 ...
+the dock is NOT above the backing; every reading below would be the backing itself
+    - the z-order puts the backing above the dock, so no reading here describes the dock
+    - only 0 of 5 icons were drawn over the backing
+```
+
+Note what the broken run shows and why the check earns its place: every gap still reads magenta. Without the
+z-order assertion and the icon-coverage rule, that run would have been a clean PASS with a dock that was never
+visible — the failure mode that had already produced a perfect magenta result once during this work.
+
 ---
 
 ## What this means for the goal
