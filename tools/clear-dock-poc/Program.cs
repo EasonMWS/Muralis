@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Muralis.Core.Abstractions;
 using Muralis.Core.Motion;
 using Muralis.Desktop.Icons;
+using Muralis.Desktop.Input;
 
 namespace ClearDockPoc;
 
@@ -29,12 +30,47 @@ namespace ClearDockPoc;
 /// </remarks>
 internal static class Program
 {
-    private const int CellWidth = 56;
-    private const int IconBox = 52;
-    private const int Padding = 12;
-    private const int PlatePaddingY = 10;
-    private const int BottomGapDip = 24;
-    private const int VerticalReserve = 44;
+    /// <summary>
+    /// How many raw reports may wait for the window's thread before the oldest are abandoned.
+    /// </summary>
+    /// <remarks>
+    /// Large enough that an ordinary burst of reports is never dropped, small enough that a consumer which has
+    /// stopped draining is a bounded loss rather than a growing backlog. The product's own dock uses a queue of
+    /// the same order for the same reason.
+    /// </remarks>
+    private const int PointerQueueCapacity = 256;
+
+    /// <summary>
+    /// How many distinct icon pixel sizes each icon keeps resampled.
+    /// </summary>
+    /// <remarks>
+    /// The magnification moves through a continuum of scales but draws at whole pixels, so the sizes actually
+    /// needed at any moment are a narrow band 闁?a few dozen across the whole 1.0 to 1.8 range at one display
+    /// scale. This is comfortably above that band and still a hard bound, and a cache empties itself rather than
+    /// growing when a display change moves the band somewhere else entirely.
+    /// </remarks>
+    /// <summary>
+    /// How many distinct icon pixel sizes each icon keeps resampled.
+    /// </summary>
+    /// <remarks>
+    /// Sized from the geometry rather than guessed. The magnification spans <c>MaxScale</c> of the resting box,
+    /// so at 100 % the drawn sizes run from 52 to 94 pixels; at 200 % they run from 104 to 188. This is the wider
+    /// of those spans with room to spare, and the cache is prewarmed to fill it, so the bound is never reached in
+    /// normal running and no frame is ever the one that pays for a resample.
+    /// </remarks>
+    private const int IconScalerCapacity = 256;
+
+    /// <summary>
+    /// The counters as they were last written, so an unchanged reading is not repeated.
+    /// </summary>
+    /// <remarks>
+    /// <c>Reports</c> counts <c>WM_INPUT</c> messages and <c>Queued</c> counts the ones that carried a new cursor
+    /// position, so the first is legitimately the larger: a report that does not move the cursor is the mouse
+    /// saying nothing new, and the source deliberately does not raise one. Both are printed together so that
+    /// difference is visible rather than looking like a lost sample.
+    /// </remarks>
+    private readonly record struct RawCounters(
+        long Reports, long Queued, long Dropped, int Frames, int Applies);
 
     [STAThread]
     private static int Main(string[] args)
@@ -46,6 +82,8 @@ internal static class Program
         var topmost = true;
         var forcedScale = 0.0;
         var sweep = false;
+        var reportCounters = false;
+        var probeStall = false;
         string? pathsFile = null;
 
         for (var i = 0; i < args.Length; i++)
@@ -66,6 +104,12 @@ internal static class Program
                     break;
                 case "--no-topmost":
                     topmost = false;
+                    break;
+                case "--report-counters":
+                    reportCounters = true;
+                    break;
+                case "--probe-stall":
+                    probeStall = true;
                     break;
                 case "--sweep":
                     sweep = true;
@@ -91,46 +135,88 @@ internal static class Program
             return 1;
         }
 
-        // The display's scale. Everything below is stated in DIP and converted once here, which is what makes the
-        // dock the same physical size on a 100 % and a 200 % display: at 200 % the stripe is twice as many
-        // physical pixels, and the icons are read from the shell at twice the pixel size so they stay sharp.
-        // --scale forces a value, because this machine has only a 100 % display and a scale path that has never
-        // been executed is a scale path that does not work.
+        // The display's scale. Every geometric number below is derived from it exactly once, in DockMetrics, so
+        // that DIP stays DIP and pixels stay pixels for the whole renderer. --scale forces a value, because a
+        // scale path that has never been executed is a scale path that does not work.
         var scale = forcedScale > 0 ? forcedScale : GetDisplayScale();
+        var metrics = new DockMetrics(scale);
 
-        var iconPixels = (int)Math.Round(IconBox * scale);
-        var cellWidth = (int)Math.Round(CellWidth * scale);
-        var padding = (int)Math.Round(Padding * scale);
-        var platePaddingY = (int)Math.Round(PlatePaddingY * scale);
-        var verticalReserve = (int)Math.Round(VerticalReserve * scale);
-        var iconBox = (int)Math.Round(IconBox * scale);
-        var bottomGap = (int)Math.Round(BottomGapDip * scale);
+        // Artwork is read at the largest size this icon can ever be drawn at, so no frame ever goes back to the
+        // shell and no frame has to invent detail by scaling the resting artwork up.
+        var artworkPx = metrics.ArtworkPx(DockMotionProfile.Default.MaxScale);
 
         // The icons are read before the window exists, because the shell calls are synchronous work on another
         // thread and a window that appears and then fills in would make the capture racy.
-        var icons = squares ? [] : LoadIcons(targets, iconPixels);
+        var icons = squares ? [] : LoadIcons(targets, artworkPx);
+
+        // Each icon gets its own artwork cache. Sharing one and keying it by the source's dimensions is wrong in
+        // a way that is easy to miss: every shell icon is the same size, so every icon would be handed the first
+        // icon's pixels. That defect drew five copies of one logo while the counters reported five icons drawn.
+        var artwork = new IconArtwork?[icons.Count];
+        for (var i = 0; i < icons.Count; i++)
+        {
+            artwork[i] = icons[i] is { } icon ? new IconArtwork(icon, IconScalerCapacity) : null;
+        }
+
+        // Every size the magnification can reach is resampled now, at startup, rather than inside whichever frame
+        // first needs it. This is the measured fix for a 13.5 ms worst frame whose cost was almost entirely in the
+        // raster stage, and it is what makes the remaining frames uniform: with every size resident, no frame can
+        // miss the cache and pay for a filter.
+        var smallestDrawnPx = metrics.IconBoxPx;
+        var largestDrawnPx = (int)Math.Ceiling(DockMetrics.IconBoxDip * scale * DockMotionProfile.Default.MaxScale);
+        foreach (var art in artwork)
+        {
+            art?.Prewarm(smallestDrawnPx, largestDrawnPx, 1);
+        }
+
+        if (!squares)
+        {
+            long prewarmBytes = 0;
+            var prewarmSizes = 0;
+            foreach (var art in artwork)
+            {
+                if (art is null)
+                {
+                    continue;
+                }
+
+                prewarmBytes += art.CachedBytes;
+                prewarmSizes += art.CachedSizes;
+            }
+
+            Console.WriteLine(
+                $"ARTWORK sizes={prewarmSizes} bytes={prewarmBytes} perIconPx={smallestDrawnPx}..{largestDrawnPx} source={artwork[0]?.SourceWidth}px");
+        }
 
         var screenWidth = GetSystemMetrics(SmCXScreen);
         var screenHeight = GetSystemMetrics(SmCYScreen);
 
-        // The stripe the product geometry defines: the room a magnified icon grows into, the icon box, and the
-        // feet. The reserve is real surface, not decoration, so a magnified icon has somewhere to go.
-        var width = (pins * cellWidth) - (cellWidth - iconBox) + (2 * padding);
-        var height = verticalReserve + iconBox + platePaddingY;
+        var width = metrics.StripeWidthPx(pins);
+        var height = metrics.StripeHeightPx;
+        var x = (screenWidth - width) / 2;
+        var y = screenHeight - height - metrics.BottomGapPx;
+
+        // The pointer arrives on the raw source's thread and the frame is composed on this one, so the adapter
+        // queues reports and posts this window once per batch. The queue is built before the window because the
+        // window's procedure is what drains it.
+        var pointerQueue = new PointerQueue(PointerQueueCapacity);
+
+        // The window's procedure runs on this same thread, inside the message pump below, so a batch posted
+        // before the renderer exists would be drained only after the pump starts 闁?by which time this is set.
+        Interactive? interactive = null;
 
         var exStyle = WsExLayered | WsExToolWindow | WsExNoActivate | (topmost ? WsExTopmost : 0L);
-        var hwnd = CreateWindowEx(
-            exStyle, "STATIC", "Muralis Clear Dock POC", WsPopup,
-            0, 0, width, height, nint.Zero, nint.Zero, nint.Zero, nint.Zero);
+        var hwnd = NativeWindowHost.Create(
+            exStyle, "Muralis Clear Dock POC", x, y, width, height,
+            () => interactive?.DrainPointerBatch());
 
         if (hwnd == nint.Zero)
         {
-            Console.Error.WriteLine($"CreateWindowEx failed: {Marshal.GetLastWin32Error()}");
+            Console.Error.WriteLine($"window creation failed: {Marshal.GetLastWin32Error()}");
             return 2;
         }
 
-        var x = (screenWidth - width) / 2;
-        var y = screenHeight - height - bottomGap;
+        var space = new CoordinateSpace(scale, x, y);
         _ = SetWindowPos(hwnd, topmost ? HwndTopmost : nint.Zero, x, y, width, height, SwpNoActivate | SwpShowWindow);
 
         var surface = new DibSurface(width, height);
@@ -160,8 +246,7 @@ internal static class Program
         var previous = SelectObject(memoryDc, dib);
 
         // Draw one resting frame.
-        var metrics = new Metrics(iconBox, cellWidth, padding, platePaddingY, iconPixels);
-        ComposeResting(surface, icons, pins, squares, alphaSquare, metrics);
+        ComposeResting(surface, artwork, pins, squares, alphaSquare, metrics);
         Marshal.Copy(surface.Pixels, 0, bits, surface.Pixels.Length);
 
         var destination = new Point(x, y);
@@ -184,7 +269,7 @@ internal static class Program
         }
 
         var drawn = icons.Count(static i => i is not null);
-        Console.WriteLine($"hwnd={hwnd} rect=({x},{y}) {width}x{height} pins={pins} iconsLoaded={drawn} squares={squares} topmost={topmost} scale={scale:F2} iconPixels={iconPixels}");
+        Console.WriteLine($"hwnd={hwnd} rect=({x},{y}) {width}x{height} pins={pins} iconsLoaded={drawn} squares={squares} topmost={topmost} scale={scale:F2} iconPixels={metrics.IconBoxPx} artwork={artworkPx}");
         Console.WriteLine($"UpdateLayeredWindow=ok");
         Console.WriteLine($"targets={string.Join('|', targets)}");
         Console.WriteLine("READY");
@@ -192,7 +277,7 @@ internal static class Program
 
         if (frames > 0)
         {
-            RunFrameBenchmark(hwnd, screenDc, memoryDc, bits, surface, icons, pins, squares, frames, metrics);
+            RunFrameBenchmark(hwnd, screenDc, memoryDc, bits, surface, artwork, pins, squares, frames, metrics, probeStall);
         }
 
         // The engine sweep is its own mode and returns: it prints what the product's motion engine answers and
@@ -208,20 +293,30 @@ internal static class Program
             return 0;
         }
 
-        // Live mode: a timer drives hover magnification and click launch. The pointer is polled rather than
-        // taken from the process-wide raw input broker, so this proof does not move input ownership; a real
-        // renderer would consume the broker, which is already renderer-independent.
+        // Live mode. Motion is driven by the process-wide RawPointerBroker, which owns the single native raw
+        // input registration: this renderer is a consumer of it and never registers a device class itself. There
+        // is no timer and no GetCursorPos anywhere on this path 闁?a frame is composed when a report arrives.
         if (!squares)
         {
             Interactive.SetTargets(targets);
-            var interactive = new Interactive(hwnd, screenDc, memoryDc, bits, surface, icons, pins, x, y, metrics);
-            _ = SetTimer(hwnd, 1, 8, nint.Zero);
+            interactive = new Interactive(
+                hwnd, screenDc, memoryDc, bits, surface, artwork, pins, space, metrics, artworkPx, pointerQueue);
             interactive.Start();
+
+            // A harness that kills this process never reaches Stop, so the counters a probe most needs to read 闁?            // whether reports arrive at all, and whether they were kept up with 闁?would be lost exactly when they
+            // matter. The periodic report is opt-in and exists only for measurement: it is a diagnostic, not a
+            // frame clock, and with the flag absent there is no timer in this process at all.
+            var reported = new RawCounters(-1, -1, -1, -1, -1);
+            if (reportCounters)
+            {
+                _ = SetTimer(hwnd, CounterTimerId, CounterReportMilliseconds, nint.Zero);
+            }
+
             while (GetMessage(out var live, nint.Zero, 0, 0) > 0)
             {
-                if (live.Id == WmTimer)
+                if (reportCounters && live.Id == WmTimer && live.WParam == CounterTimerId)
                 {
-                    interactive.Tick();
+                    reported = interactive.ReportCountersIfChanged(reported);
                     continue;
                 }
 
@@ -302,17 +397,6 @@ internal static class Program
         return result;
     }
 
-    /// <summary>
-    /// The dock's geometry in physical pixels, derived once from the display's scale.
-    /// </summary>
-    /// <remarks>
-    /// Every number the renderer uses comes from here, so there is exactly one place where DIP becomes pixels.
-    /// The whole point is that a 200 % display gets a stripe twice as many physical pixels wide and icons read
-    /// from the shell at twice the pixel size — not the same pixel geometry stretched.
-    /// </remarks>
-    private readonly record struct Metrics(
-        int IconBox, int CellWidth, int Padding, int PlatePaddingY, int IconPixels);
-
     /// <summary>The display's scale, read from the system's DPI for the desktop.</summary>
     private static double GetDisplayScale()
     {
@@ -360,18 +444,19 @@ internal static class Program
     /// One resting frame: a fully transparent surface with an icon in each cell, the way the dock rests.
     /// </summary>
     private static void ComposeResting(
-        DibSurface surface, List<ShellIconData?> icons, int pins, bool squares, bool alphaSquare, Metrics m)
+        DibSurface surface, IconArtwork?[] artwork, int pins,
+        bool squares, bool alphaSquare, DockMetrics m)
     {
         surface.Clear();
-        var bottom = surface.Height - m.PlatePaddingY;
+        var bottom = m.RestingBaselinePx;
 
         for (var i = 0; i < pins; i++)
         {
-            var centreX = m.Padding + (i * m.CellWidth) + (m.CellWidth / 2);
+            var centreX = m.PaddingPx + (i * m.CellPx) + (m.CellPx / 2);
 
             if (squares)
             {
-                var size = m.IconBox;
+                var size = m.IconBoxPx;
                 var left = centreX - (size / 2);
                 var top = bottom - size;
                 var colour = SquareColours[i % SquareColours.Length];
@@ -383,44 +468,67 @@ internal static class Program
                 continue;
             }
 
-            if (icons[i] is { } icon)
+            if (artwork[i] is { } art)
             {
-                surface.DrawIcon(icon.PremultipliedBgra, icon.Width, icon.Height, centreX, bottom, m.IconBox);
+                surface.DrawIconScaled(art, centreX, bottom, m.IconBoxPx);
             }
         }
     }
 
     /// <summary>
-    /// Times a realistic motion frame: the whole surface recomposed and uploaded at pointer rate.
+    /// Times a realistic motion frame, split into the stages a stall could be hiding in.
     /// </summary>
     /// <remarks>
-    /// This is the number that decides whether a layered window is a candidate, so it is measured rather than
-    /// assumed. Each frame applies the dock's own motion shape — an icon grows about its bottom centre and rises
-    /// by a lift that falls off with distance — and rewrites every pixel, which is the worst case. Reported as
-    /// percentiles, because an average hides the stalls a person actually feels.
+    /// <para>
+    /// Each frame applies the dock's own motion shape 闁?an icon grows about its bottom centre and rises by a lift
+    /// that falls off with distance 闁?and rewrites every pixel, which is the worst case. Reported as percentiles,
+    /// because an average hides the stalls a person actually feels.
+    /// </para>
+    /// <para>
+    /// Every frame is timed in stages rather than as one number. A single ~10 ms maximum per run has been
+    /// observed since this benchmark existed and could not be attributed; a total that spikes tells you a frame
+    /// was slow, while a stage breakdown tells you <em>which</em> of raster, copy, upload or the runtime was slow.
+    /// The per-frame allocation counter is taken because a stall that is really a garbage collection shows up
+    /// there and nowhere else.
+    /// </para>
     /// </remarks>
     private static void RunFrameBenchmark(
         nint hwnd, nint screenDc, nint memoryDc, nint bits, DibSurface surface,
-        List<ShellIconData?> icons, int pins, bool squares, int frames, Metrics m)
+        IconArtwork?[] artwork, int pins, bool squares, int frames, DockMetrics m, bool probeStall)
     {
-        var times = new double[frames];
+        var totals = new double[frames];
+        var clears = new double[frames];
+        var rasters = new double[frames];
+        var copies = new double[frames];
+        var uploads = new double[frames];
+
         var stopwatch = Stopwatch.StartNew();
         var process = Process.GetCurrentProcess();
-        var bottom = surface.Height - m.PlatePaddingY;
+        var bottom = m.RestingBaselinePx;
+
+        // Sampled before the loop and after it, so the difference is what the benchmark itself allocated.
+        var gcBefore = GC.CollectionCount(0) + GC.CollectionCount(1) + GC.CollectionCount(2);
+        var allocatedBefore = GC.GetTotalAllocatedBytes(precise: false);
+        var worstFrame = -1;
+        var worstTotal = 0.0;
 
         for (var frame = 0; frame < frames; frame++)
         {
             var phase = frame * 0.08;
-            var start = stopwatch.Elapsed.TotalMilliseconds;
+            var frameStart = stopwatch.Elapsed.TotalMilliseconds;
+            var mark = frameStart;
+
             surface.Clear();
+            var t1 = stopwatch.Elapsed.TotalMilliseconds;
+            clears[frame] = t1 - mark;
 
             for (var i = 0; i < pins; i++)
             {
                 var influence = Math.Exp(-Math.Pow(i - ((pins - 1) / 2.0) - (2.0 * Math.Sin(phase)), 2) / 2.0);
                 var scale = 1.0 + (0.8 * influence);
                 var lift = 10.0 * influence * influence;
-                var box = (int)(m.IconBox * scale);
-                var centreX = m.Padding + (i * m.CellWidth) + (m.CellWidth / 2);
+                var box = (int)(m.IconBoxPx * scale);
+                var centreX = m.PaddingPx + (i * m.CellPx) + (m.CellPx / 2);
                 var iconBottom = bottom - (int)lift;
 
                 if (squares)
@@ -429,9 +537,137 @@ internal static class Program
                     surface.FillRect(
                         centreX - (box / 2), iconBottom - box, box, box, colour.B, colour.G, colour.R, 255);
                 }
-                else if (icons[i] is { } icon)
+                else if (artwork[i] is { } art)
                 {
-                    surface.DrawIcon(icon.PremultipliedBgra, icon.Width, icon.Height, centreX, iconBottom, box);
+                    surface.DrawIconScaled(art, centreX, iconBottom, box);
+                }
+            }
+
+            var t2 = stopwatch.Elapsed.TotalMilliseconds;
+            rasters[frame] = t2 - t1;
+
+            Marshal.Copy(surface.Pixels, 0, bits, surface.Pixels.Length);
+            var t3 = stopwatch.Elapsed.TotalMilliseconds;
+            copies[frame] = t3 - t2;
+
+            var destination = new Point(0, 0);
+            var size = new Size(surface.Width, surface.Height);
+            var source = new Point(0, 0);
+            var blend = new BlendFunction
+            {
+                BlendOp = AcSrcOver,
+                BlendFlags = 0,
+                SourceConstantAlpha = 255,
+                AlphaFormat = AcSrcAlpha,
+            };
+
+            _ = UpdateLayeredWindow(hwnd, screenDc, ref destination, ref size, memoryDc, ref source, 0, ref blend, UlwAlpha);
+            var t4 = stopwatch.Elapsed.TotalMilliseconds;
+            uploads[frame] = t4 - t3;
+
+            totals[frame] = t4 - frameStart;
+            if (totals[frame] > worstTotal)
+            {
+                worstTotal = totals[frame];
+                worstFrame = frame;
+            }
+        }
+
+        stopwatch.Stop();
+
+        // A hypothesis test for the one slow frame every run produces. The worst frame lands on the same index
+        // every time, which is not what an external stall looks like, so the frames are run again with a short
+        // blocking sleep in the middle. A sleep enters the kernel and lets the scheduler do the bookkeeping it
+        // otherwise defers; if the stall is that deferred work, it disappears here. If it survives, it is
+        // something about this loop and not the operating system's clock.
+        if (probeStall && frames >= 3000)
+        {
+            ProbeSleepStall(hwnd, screenDc, memoryDc, bits, surface, artwork, pins, squares, m);
+        }
+
+        var gcAfter = GC.CollectionCount(0) + GC.CollectionCount(1) + GC.CollectionCount(2);
+        var allocatedAfter = GC.GetTotalAllocatedBytes(precise: false);
+
+        Console.WriteLine($"BENCH frames={frames} pins={pins} surface={surface.Width}x{surface.Height} squares={squares}");
+        Report("BENCH total", totals, frames);
+        Report("BENCH clear", clears, frames);
+        Report("BENCH raster", rasters, frames);
+        Report("BENCH copy", copies, frames);
+        Report("BENCH upload", uploads, frames);
+        Console.WriteLine($"BENCH impliedMaxFps={1000.0 / Percentile(Sorted(totals), 0.95):F0} (from p95, one upload per frame)");
+        Console.WriteLine($"BENCH worstFrame={worstFrame} worstTotal={worstTotal:F3}ms worstStages=clear {clears[worstFrame]:F3} raster {rasters[worstFrame]:F3} copy {copies[worstFrame]:F3} upload {uploads[worstFrame]:F3}");
+        var cachedSizes = 0;
+        var hits = 0L;
+        var misses = 0L;
+        foreach (var art in artwork)
+        {
+            if (art is null)
+            {
+                continue;
+            }
+
+            cachedSizes += art.CachedSizes;
+            hits += art.Hits;
+            misses += art.Misses;
+        }
+
+        Console.WriteLine($"BENCH gcCollections={gcAfter - gcBefore} allocatedKB={(allocatedAfter - allocatedBefore) / 1024.0:F1} cacheHits={hits} cacheMisses={misses} cachedSizes={cachedSizes}");
+        Console.WriteLine($"BENCH workingSetMB={process.WorkingSet64 / (1024.0 * 1024.0):F1} privateMB={process.PrivateMemorySize64 / (1024.0 * 1024.0):F1}");
+        Console.Out.Flush();
+    }
+
+    /// <summary>
+    /// Runs the same frames with a blocking sleep in the middle, to see whether the one slow frame survives.
+    /// </summary>
+    /// <remarks>
+    /// The worst frame has landed on the same index in every run, which is the signature of something with a
+    /// fixed period rather than a random stall. Windows rounds a thread's scheduling quantum up to the system
+    /// timer tick 閳?classically 15.625 ms 閳?the first time it blocks, and a thread that never blocks never pays
+    /// it. If that is the cause, a sleep in the middle of the run absorbs the charge and the slow frame is gone.
+    /// </remarks>
+    private static void ProbeSleepStall(
+        nint hwnd, nint screenDc, nint memoryDc, nint bits, DibSurface surface,
+        IconArtwork?[] artwork, int pins, bool squares, DockMetrics m)
+    {
+        const int ProbeFrames = 3000;
+        const int SleepAtFrame = 1562;
+        var times = new double[ProbeFrames];
+        var bottom = m.RestingBaselinePx;
+
+        // Its own stopwatch, started here: the benchmark's own has already been stopped by the time this runs,
+        // and timing against a stopped clock reads every frame as instantaneous.
+        var clock = Stopwatch.StartNew();
+
+        for (var frame = 0; frame < ProbeFrames; frame++)
+        {
+            if (frame == SleepAtFrame)
+            {
+                // A real wait, not a spin: this is the call that lets the scheduler settle its accounting.
+                Thread.Sleep(1);
+            }
+
+            var phase = frame * 0.08;
+            var frameStart = clock.Elapsed.TotalMilliseconds;
+
+            surface.Clear();
+            for (var i = 0; i < pins; i++)
+            {
+                var influence = Math.Exp(-Math.Pow(i - ((pins - 1) / 2.0) - (2.0 * Math.Sin(phase)), 2) / 2.0);
+                var scale = 1.0 + (0.8 * influence);
+                var lift = 10.0 * influence * influence;
+                var box = (int)(m.IconBoxPx * scale);
+                var centreX = m.PaddingPx + (i * m.CellPx) + (m.CellPx / 2);
+                var iconBottom = bottom - (int)lift;
+
+                if (squares)
+                {
+                    var colour = SquareColours[i % SquareColours.Length];
+                    surface.FillRect(
+                        centreX - (box / 2), iconBottom - box, box, box, colour.B, colour.G, colour.R, 255);
+                }
+                else if (artwork[i] is { } art)
+                {
+                    surface.DrawIconScaled(art, centreX, iconBottom, box);
                 }
             }
 
@@ -449,23 +685,42 @@ internal static class Program
             };
 
             _ = UpdateLayeredWindow(hwnd, screenDc, ref destination, ref size, memoryDc, ref source, 0, ref blend, UlwAlpha);
-            times[frame] = stopwatch.Elapsed.TotalMilliseconds - start;
+            times[frame] = clock.Elapsed.TotalMilliseconds - frameStart;
         }
 
-        stopwatch.Stop();
-        var ordered = (double[])times.Clone();
-        Array.Sort(ordered);
-        var total = 0.0;
-        foreach (var t in times)
+        var ordered = Sorted(times);
+        var worst = 0;
+        for (var i = 1; i < times.Length; i++)
         {
-            total += t;
+            if (times[i] > times[worst])
+            {
+                worst = i;
+            }
         }
 
-        Console.WriteLine($"BENCH frames={frames} pins={pins} surface={surface.Width}x{surface.Height} squares={squares}");
-        Console.WriteLine($"BENCH p50={Percentile(ordered, 0.50):F3}ms p95={Percentile(ordered, 0.95):F3}ms p99={Percentile(ordered, 0.99):F3}ms max={ordered[^1]:F3}ms mean={total / frames:F3}ms");
-        Console.WriteLine($"BENCH impliedMaxFps={1000.0 / Percentile(ordered, 0.95):F0} (from p95, one upload per frame)");
-        Console.WriteLine($"BENCH workingSetMB={process.WorkingSet64 / (1024.0 * 1024.0):F1} privateMB={process.PrivateMemorySize64 / (1024.0 * 1024.0):F1}");
+        Console.WriteLine(
+            $"BENCH sleepProbe frames={ProbeFrames} sleptAt={SleepAtFrame} p50={Percentile(ordered, 0.50):F3}ms p95={Percentile(ordered, 0.95):F3}ms p99={Percentile(ordered, 0.99):F3}ms max={ordered[^1]:F3}ms worstFrame={worst} elapsed={clock.Elapsed.TotalMilliseconds:F0}ms");
         Console.Out.Flush();
+    }
+
+    private static double[] Sorted(double[] values)
+    {
+        var ordered = (double[])values.Clone();
+        Array.Sort(ordered);
+        return ordered;
+    }
+
+    private static void Report(string label, double[] values, int frames)
+    {
+        var ordered = Sorted(values);
+        var total = 0.0;
+        foreach (var v in values)
+        {
+            total += v;
+        }
+
+        Console.WriteLine(
+            $"{label} p50={Percentile(ordered, 0.50):F3}ms p95={Percentile(ordered, 0.95):F3}ms p99={Percentile(ordered, 0.99):F3}ms max={ordered[^1]:F3}ms mean={total / frames:F3}ms");
     }
 
     /// <summary>
@@ -474,8 +729,7 @@ internal static class Program
     /// <remarks>
     /// <para>
     /// This is the Nexus proof. The interaction harness can only see the peak scale, which says the engine got
-    /// to 1.8 but nothing about the shape of the wave. Here the engine is driven directly over the whole span —
-    /// every icon centre and every gap between them — and every sample is printed, so the properties that make
+    /// to 1.8 but nothing about the shape of the wave. Here the engine is driven directly over the whole span 闁?    /// every icon centre and every gap between them 闁?and every sample is printed, so the properties that make
     /// the dock feel like a dock can be checked rather than assumed:
     /// </para>
     /// <list type="bullet">
@@ -485,12 +739,12 @@ internal static class Program
     /// <item>away from the wave everything is exactly at rest.</item>
     /// </list>
     /// </remarks>
-    private static void RunMotionSweep(int pins, Metrics m)
+    private static void RunMotionSweep(int pins, DockMetrics m)
     {
-        var motion = new DockMotionState(pins, m.CellWidth, m.IconBox, m.Padding);
+        var motion = new DockMotionState(pins, m.CellPx, m.IconBoxPx, m.PaddingPx);
         var profile = DockMotionProfile.Default;
 
-        Console.WriteLine($"SWEEP pins={pins} iconBox={m.IconBox} cell={m.CellWidth} pad={m.Padding}");
+        Console.WriteLine($"SWEEP pins={pins} iconBox={m.IconBoxPx} cell={m.CellPx} pad={m.PaddingPx}");
         Console.WriteLine($"SWEEP profile base={profile.BaseIconSize} spacing={profile.SpacingDip} maxScale={profile.MaxScale} radius={profile.InfluenceRadius} lift={profile.MaximumLift} spread={profile.NeighbourSpread}");
 
         // The span the pointer can occupy: every icon centre, and every gap between two of them. The gaps matter
@@ -548,11 +802,20 @@ internal static class Program
     }
 
     /// <summary>
-    /// Hover magnification and click launch, driven by the product's own motion engine.
+    /// The live dock: pointer reports in, motion engine, one composed frame out.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The pointer comes from the process-wide <see cref="RawPointerBroker"/>. This class is a consumer of that
+    /// broker and does not register a raw input device class, open a second raw window, or install a hook 闁?the
+    /// broker already owns the single registration, and a second owner is the specific failure this arrangement
+    /// exists to prevent. There is no timer and no <c>GetCursorPos</c>: a frame happens because a report arrived.
+    /// </para>
+    /// <para>
     /// It reports what it did on stdout so a harness can check the behaviour rather than take a screenshot's
-    /// word for it: every peak the engine reaches and every launch it performs.
+    /// word for it: every peak the engine reaches, every hover transition, every launch, and the counters that
+    /// say whether reports were kept up with.
+    /// </para>
     /// </remarks>
     private sealed class Interactive
     {
@@ -561,58 +824,266 @@ internal static class Program
         private readonly nint _memoryDc;
         private readonly nint _bits;
         private readonly DibSurface _surface;
-        private readonly List<ShellIconData?> _icons;
+        private readonly IconArtwork?[] _artwork;
         private readonly int _pins;
-        private readonly int _windowX;
-        private readonly int _windowY;
+        private readonly CoordinateSpace _space;
+        private readonly DockMetrics _metrics;
+        private readonly int _artworkPx;
+        private readonly PointerQueue _queue;
         private readonly DockMotionState _motion;
 
-        private readonly Metrics _metrics;
+        /// <summary>The order the icons are drawn in. Reordering changes this and nothing else.</summary>
+        private readonly DockOrder _order;
+
+        private readonly DockDrag _drag;
+
+        /// <summary>Where each slot rests, in DIP. Fixed by the layout, independent of the order.</summary>
+        private readonly double[] _restingCentresDip;
+
+        private readonly RawPointerBroker _broker = new();
+        private IDisposable? _subscription;
+
+        private readonly List<PointerSample> _batch = new(PointerQueueCapacity);
+        private readonly PointerButtonState _buttons = new();
+
         private bool _pointerWasDown;
         private double _peakSeen;
         private int _lastHit = -1;
+        private int _lastCandidate = -2;
+
+        /// <summary>The slot the button went down on, or -1. A click is decided then, not when it is released.</summary>
+        private int _pressedSlot = -1;
 
         public Interactive(
             nint hwnd, nint screenDc, nint memoryDc, nint bits, DibSurface surface,
-            List<ShellIconData?> icons, int pins, int windowX, int windowY, Metrics m)
+            IconArtwork?[] artwork, int pins, CoordinateSpace space, DockMetrics metrics,
+            int artworkPx, PointerQueue queue)
         {
             _hwnd = hwnd;
             _screenDc = screenDc;
             _memoryDc = memoryDc;
             _bits = bits;
             _surface = surface;
-            _icons = icons;
+            _artwork = artwork;
             _pins = pins;
-            _windowX = windowX;
-            _windowY = windowY;
-            _metrics = m;
-            _motion = new DockMotionState(pins, m.CellWidth, m.IconBox, m.Padding);
+            _space = space;
+            _metrics = metrics;
+            _artworkPx = artworkPx;
+            _queue = queue;
+            _motion = new DockMotionState(pins, metrics.CellPx, metrics.IconBoxPx, metrics.PaddingPx);
+
+            _order = new DockOrder(pins);
+            _restingCentresDip = new double[pins];
+            for (var slot = 0; slot < pins; slot++)
+            {
+                _restingCentresDip[slot] = _motion.Centres[slot];
+            }
+
+            _drag = new DockDrag(_order, DockMotionProfile.Default, _restingCentresDip);
         }
 
-        public void Start() => Console.WriteLine("INTERACTIVE ready");
-
-        public void Stop()
+        public void Start()
         {
-            _ = KillTimer(_hwnd, 1);
-            Console.WriteLine($"INTERACTIVE peak={_peakSeen:F4}");
+            // Subscribing is what opens the broker's single raw input registration. Reports then arrive on the
+            // raw source's own thread, which is why the handler does nothing but queue them.
+            _subscription = _broker.Subscribe(OnPointerReport);
+
+            Console.WriteLine(
+                $"INTERACTIVE ready brokerRegistered={_broker.IsRegistered} consumers={_broker.ConsumerCount} queueCapacity={PointerQueueCapacity}");
             Console.Out.Flush();
         }
 
-        /// <summary>One frame: read the pointer, move the wave, redraw, present, and act on a click.</summary>
-        public void Tick()
+        public void Stop()
         {
-            if (!GetCursorPos(out var cursor))
+            _subscription?.Dispose();
+            _subscription = null;
+            _broker.Dispose();
+            _queue.Discard();
+
+            Console.WriteLine($"INTERACTIVE peak={_peakSeen:F4}");
+            WriteCounters("final", Snapshot());
+        }
+
+        /// <summary>
+        /// Writes the counters when they have moved since the last reading, and returns the reading.
+        /// </summary>
+        /// <remarks>
+        /// Measurement only, and opt-in. Without it a harness that kills this process would see no counters at
+        /// all, which is the one case where "no reports arrived" and "reports arrived and nothing happened" are
+        /// indistinguishable 闁?and they need opposite fixes.
+        /// </remarks>
+        public RawCounters ReportCountersIfChanged(RawCounters previous)
+        {
+            var current = Snapshot();
+            if (current == previous)
+            {
+                return previous;
+            }
+
+            WriteCounters("counters", current);
+            return current;
+        }
+
+        /// <summary>
+        /// Every counter read as one consistent set.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not a set of property reads elsewhere. The broker's counter moves on the raw source's
+        /// thread while the queue's moves here, so reading them one at a time can report more reports than were
+        /// queued 闁?which reads as a lost report and is really two different instants being compared.
+        /// </remarks>
+        private RawCounters Snapshot()
+        {
+            // Read as one set, at one instant: the broker's counter moves on the raw source's thread while the
+            // queue's moves here, so reading them separately can show more reports than were queued 闁?which reads
+            // as a lost report and is really two different instants being compared.
+            var reports = _broker.Reports;
+            var queued = _queue.Queued;
+            var dropped = _queue.Dropped;
+            return new RawCounters(reports, queued, dropped, _frames, _applies);
+        }
+
+        private void WriteCounters(string label, RawCounters c)
+        {
+            Console.WriteLine(
+                $"INTERACTIVE {label} raw={c.Reports} queued={c.Queued} dropped={c.Dropped} frames={c.Frames} applies={c.Applies}");
+            ReportLatency();
+            Console.Out.Flush();
+        }
+
+        /// <summary>
+        /// A mouse report, in physical screen pixels, on the raw source's thread.
+        /// </summary>
+        /// <remarks>
+        /// This method exists only to cross threads. It queues the sample and asks the window to drain, and does no
+        /// work that could block the raw source or the rest of its consumers. Every accepted report stays a
+        /// separate sample: the queue is not collapsed to the latest position, because a fast sweep must produce
+        /// the positions it passed through rather than one merged jump.
+        /// </remarks>
+        private void OnPointerReport(int screenX, int screenY)
+        {
+            if (_queue.TryEnqueue(screenX, screenY, Stopwatch.GetTimestamp()))
+            {
+                _ = PostMessage(_hwnd, NativeWindowHost.WmPointerBatch, 0, nint.Zero);
+            }
+        }
+
+        /// <summary>
+        /// Applies every report waiting, oldest first. Runs on the window's thread, once per posted batch.
+        /// </summary>
+        public void DrainPointerBatch()
+        {
+            _batch.Clear();
+            var taken = _queue.Drain(_batch);
+            if (taken == 0)
             {
                 return;
             }
 
-            // Screen pixels to the dock's own space. One pixel per DIP is assumed here because this proof runs
-            // on a single monitor at 100%; the product converts through the window's own scale.
-            var x = cursor.X - _windowX;
-            var y = cursor.Y - _windowY;
+            // Every sample in the batch is applied in order, and a frame is presented once at the end of the
+            // batch rather than once per sample: the motion engine's state is the last report's, so composing
+            // intermediate frames would be work nobody sees. The follow is still direct and 1:1 闁?nothing is
+            // smoothed, and the frame that is shown is composed from the newest report, not an eased guess at it.
+            for (var i = 0; i < _batch.Count; i++)
+            {
+                // Measured before applying, so the number is the report's whole journey: captured on the raw
+                // source's thread, queued, posted, and drained. A backlog shows up here as a growing tail,
+                // which is the reading that distinguishes "reports are slow" from "the consumer is behind".
+                RecordLatency(_batch[i].Timestamp);
+                ApplyPointer(_batch[i]);
+            }
+
+            Compose(_motion);
+            Present();
+            _frames++;
+        }
+
+        private void ApplyPointer(PointerSample sample)
+        {
+            var x = _space.ScreenPxToSurfacePx(sample.ScreenX);
+            var y = _space.ScreenPxToSurfacePxY(sample.ScreenY);
 
             var overDock = x >= 0 && x < _surface.Width && y >= 0 && y < _surface.Height;
-            _motion.Update(overDock ? x : null);
+            var pointerDip = _space.PxToDip(x);
+            var down = _buttons.IsLeftDown;
+
+            // The button's edges decide the gesture, and they are applied before the motion so a press and the
+            // movement that follows it resolve in the same order the hand made them.
+            var pressed = down && !_pointerWasDown;
+            var released = !down && _pointerWasDown;
+
+            var hit = _motion.HitTest(
+                pointerDip,
+                _space.PxToDip(y),
+                DockMetrics.IconBoxDip,
+                _space.PxToDip(_surface.Height),
+                DockMetrics.PlatePaddingYDip);
+
+            if (pressed || released)
+            {
+                // Every edge, with the phase it arrived in. "Two commits for one drag" means two releases were
+                // seen, and the only way to tell a real release from a mis-read button is to print the edges.
+                Console.WriteLine(
+                    $"INTERACTIVE edge={(pressed ? "down" : "up")} phase={_drag.Phase} slot={hit} offset={_drag.OffsetDip:F1}");
+                Console.Out.Flush();
+            }
+
+            if (pressed && overDock && hit >= 0)
+            {
+                _drag.Press(hit, pointerDip);
+                _pressedSlot = hit;
+                Console.WriteLine($"INTERACTIVE press slot={hit}");
+                Console.Out.Flush();
+            }
+            else if (pressed)
+            {
+                _pressedSlot = -1;
+            }
+
+            if (down || _drag.Phase != DragPhase.Idle)
+            {
+                _drag.Move(pointerDip);
+            }
+
+            if (_drag.IsDragging && _drag.CandidateSlot != _lastCandidate)
+            {
+                _lastCandidate = _drag.CandidateSlot;
+                Console.WriteLine(
+                    $"INTERACTIVE candidate slot={_drag.CandidateSlot} from={_drag.DraggedSlot} offset={_drag.OffsetDip:F1}");
+                Console.Out.Flush();
+            }
+
+            if (released)
+            {
+                var moved = _drag.Release();
+                _lastCandidate = -2;
+
+                if (moved is { } move)
+                {
+                    // One line per committed reorder, with the order it produced. A drag that commits twice would
+                    // print twice, so "exactly one commit per drag" is checkable from this alone.
+                    Console.WriteLine(
+                        $"INTERACTIVE reorder from={move.From} to={move.To} commits={_order.Commits} order={_order.Describe()}");
+                }
+                else if (_pressedSlot >= 0)
+                {
+                    // A press that never travelled far enough is a click, and a click still launches. The target
+                    // is the icon the press landed on, not whatever is under the pointer now: a click is decided
+                    // when the button goes down, and resolving it at release would launch a different icon — or
+                    // nothing — whenever the pointer drifted by a pixel in between, which injected input does
+                    // routinely.
+                    Launch(_pressedSlot);
+                }
+
+                _pressedSlot = -1;
+                Console.Out.Flush();
+            }
+
+            // While a drag owns the pointer the wave is not drawn: the wave is a statement about the run, and a
+            // dragged icon is a statement about one icon being held. The engine is put to rest rather than left
+            // frozen, so nothing stale is magnified when the drag ends.
+            _motion.Update(_drag.Phase == DragPhase.Idle && overDock ? pointerDip : null);
+            _applies++;
 
             var peak = _motion.PeakScale;
             if (peak > _peakSeen)
@@ -622,53 +1093,141 @@ internal static class Program
                 Console.Out.Flush();
             }
 
-            Compose(_motion);
-            Present();
-
-            var hit = _motion.HitTest(x, y, _metrics.IconBox, _surface.Height, _metrics.PlatePaddingY, 0);
-            if (hit != _lastHit)
+            // Hover is reported from the icon the pointer is really over, which while dragging is the carried one.
+            var hover = _drag.IsDragging ? _drag.DraggedSlot : hit;
+            if (hover != _lastHit)
             {
-                _lastHit = hit;
-                Console.WriteLine($"INTERACTIVE hover={hit}");
+                _lastHit = hover;
+                Console.WriteLine($"INTERACTIVE hover={hover}");
                 Console.Out.Flush();
-            }
-
-            var down = (GetAsyncKeyState(VkLeftButton) & 0x8000) != 0;
-            if (_pointerWasDown && !down && overDock && hit >= 0)
-            {
-                Launch(hit);
             }
 
             _pointerWasDown = down;
         }
 
+        private int _frames;
+        private int _applies;
+
         /// <summary>
-        /// Draws the current wave. Nothing is painted where there is no icon, so the desktop stays visible.
+        /// Capture-to-apply latency in microseconds, one slot per applied report.
         /// </summary>
+        /// <remarks>
+        /// A fixed buffer rather than a list: this is on the hot path, and a measurement that allocates while it
+        /// measures changes the thing it is measuring. Once full it stops recording, which is reported, so a
+        /// truncated reading can never be mistaken for a complete one.
+        /// </remarks>
+        private readonly double[] _latenciesUs = new double[LatencySamples];
+        private int _latencyCount;
+
+        private const int LatencySamples = 20000;
+
+        /// <summary>How many of the first reports are treated as startup rather than steady state.</summary>
+        private const int WarmupSamples = 3;
+
+        private void RecordLatency(long capturedAt)
+        {
+            if (_latencyCount >= _latenciesUs.Length)
+            {
+                return;
+            }
+
+            var elapsed = Stopwatch.GetTimestamp() - capturedAt;
+            _latenciesUs[_latencyCount++] = elapsed * 1_000_000.0 / Stopwatch.Frequency;
+        }
+
+        private void ReportLatency()
+        {
+            if (_latencyCount == 0)
+            {
+                Console.WriteLine("INTERACTIVE latencyUs samples=0");
+                return;
+            }
+
+            var ordered = new double[_latencyCount];
+            Array.Copy(_latenciesUs, ordered, _latencyCount);
+            Array.Sort(ordered);
+
+            Console.WriteLine(
+                $"INTERACTIVE latencyUs samples={_latencyCount} truncated={_latencyCount >= _latenciesUs.Length} "
+                + $"p50={Percentile(ordered, 0.50):F1} p95={Percentile(ordered, 0.95):F1} p99={Percentile(ordered, 0.99):F1} max={ordered[^1]:F1}");
+
+            // The same reading with the first reports left out. Reports can only be delivered once the raw
+            // source has opened and the window is pumping, and the dock's own startup work 闁?reading five icons
+            // from the shell 闁?is still running on this thread at that moment, so the first samples wait behind
+            // it. Separating the two is what stops a startup cost from being reported as steady-state latency.
+            if (_latencyCount > WarmupSamples)
+            {
+                var steady = new double[_latencyCount - WarmupSamples];
+                Array.Copy(_latenciesUs, WarmupSamples, steady, 0, steady.Length);
+                Array.Sort(steady);
+                Console.WriteLine(
+                    $"INTERACTIVE latencySteadyUs samples={steady.Length} excludedWarmup={WarmupSamples} "
+                    + $"p50={Percentile(steady, 0.50):F1} p95={Percentile(steady, 0.95):F1} p99={Percentile(steady, 0.99):F1} max={steady[^1]:F1}");
+            }
+        }
+
+
+        /// <summary>
+        /// Draws the current frame. Nothing is painted where there is no icon, so the desktop stays visible.
+        /// </summary>
+        /// <remarks>
+        /// The position of an icon is the composition of three separate states, and keeping them separate is what
+        /// stops a drag from corrupting the wave or the wave from fighting the drag:
+        /// <list type="bullet">
+        /// <item>the base slot, which the order decides;</item>
+        /// <item>the engine's Nexus translation and lift, which describe the wave;</item>
+        /// <item>the drag's own offset, which describes the icon being carried and which the engine never sees.</item>
+        /// </list>
+        /// The drag offset is added here, at the point of drawing, rather than being handed to the engine.
+        /// </remarks>
         private void Compose(DockMotionState motion)
         {
             _surface.Clear();
-            var restingBottom = _surface.Height - _metrics.PlatePaddingY;
+            var restingBottom = _metrics.RestingBaselinePx;
 
-            for (var i = 0; i < _pins; i++)
+            _drag.FillCentres(_centresScratch);
+
+            for (var slot = 0; slot < _pins; slot++)
             {
-                if (_icons[i] is not { } icon)
+                // The slot is where it is drawn; the order says which target is drawn there.
+                var target = _order[slot];
+
+                if (_artwork[target] is not { } art)
                 {
                     continue;
                 }
 
-                var sample = motion.Sample(i);
-                var box = (int)Math.Round(_metrics.IconBox * sample.Scale);
-                var centreX = (int)Math.Round(motion.Centres[i] + sample.TranslateX);
-                var bottom = restingBottom - (int)Math.Round(sample.Lift);
-                _surface.DrawIcon(icon.PremultipliedBgra, icon.Width, icon.Height, centreX, bottom, box);
+                // A carried icon is drawn at its natural size and does not rise: the wave is not running, and a
+                // scale from a stopped engine would be a leftover rather than an answer.
+                var dragging = _drag.IsDragging && slot == _drag.DraggedSlot;
+                var sample = motion.Sample(slot);
+                var scale = dragging ? 1.0 : sample.Scale;
+                var liftDip = dragging ? 0.0 : sample.Lift;
+                var waveDip = dragging ? 0.0 : sample.TranslateX;
+
+                var box = _space.DipToPx(DockMetrics.IconBoxDip * scale);
+                if (box <= 0)
+                {
+                    continue;
+                }
+
+                var centreX = _space.DipToPx(_centresScratch[slot] + waveDip);
+                var bottom = restingBottom - _space.DipToPx(liftDip);
+
+                // The artwork was read at the largest size this icon can reach, so every frame is a scale-down
+                // from a source with more detail than it needs. Scaling up from the resting size would invent the
+                // extra detail, which is what made the earlier frames look chunky.
+                _surface.DrawIconScaled(art, centreX, bottom, box);
             }
         }
+
+        /// <summary>Where each slot is drawn this frame, in DIP. Reused so composing allocates nothing.</summary>
+        private readonly double[] _centresScratch = new double[64];
 
         private void Present()
         {
             Marshal.Copy(_surface.Pixels, 0, _bits, _surface.Pixels.Length);
-            var destination = new Point(_windowX, _windowY);
+            var destination = new Point(_space.WindowOriginX, _space.WindowOriginY);
             var size = new Size(_surface.Width, _surface.Height);
             var source = new Point(0, 0);
             var blend = new BlendFunction
@@ -835,20 +1394,14 @@ internal static class Program
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetCursorPos(out Point point);
-
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int key);
+    private static extern bool PostMessage(nint hwnd, uint message, nuint wParam, nint lParam);
 
     [DllImport("user32.dll")]
     private static extern nuint SetTimer(nint hwnd, nuint id, uint interval, nint callback);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool KillTimer(nint hwnd, nuint id);
-
-    private const int VkLeftButton = 0x01;
     private const uint WmTimer = 0x0113;
+    private const nuint CounterTimerId = 1;
+    private const uint CounterReportMilliseconds = 2000;
 
     [DllImport("user32.dll")]
     private static extern nint GetDC(nint hwnd);
@@ -879,3 +1432,4 @@ internal static class Program
         nint hwnd, nint destinationDc, ref Point destination, ref Size size,
         nint sourceDc, ref Point source, uint colourKey, ref BlendFunction blend, uint flags);
 }
+

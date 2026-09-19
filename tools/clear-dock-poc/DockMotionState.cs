@@ -60,10 +60,17 @@ internal sealed class DockMotionState
     public void Update(double? pointerAlongDip) => _engine.Apply(_layout, pointerAlongDip, _profile);
 
     /// <summary>
-    /// The icon under a point in dock space, or -1. Judged against the positions the icons are <em>currently</em>
-    /// drawn at, so a magnified icon is hit where it looks rather than where it rests.
+    /// The icon under a point, or -1. Judged against the positions the icons are <em>currently</em> drawn at, so
+    /// a magnified icon is hit where it looks rather than where it rests.
     /// </summary>
-    public int HitTest(double x, double y, int iconBox, int surfaceHeight, int platePaddingY, int topOffset)
+    /// <remarks>
+    /// Stated in the engine's own space: <paramref name="x"/> and <paramref name="y"/> are DIP, and so is
+    /// <paramref name="surfaceHeightDip"/>. The centres, scales, translations and lifts the engine produces are
+    /// already DIP, so keeping the whole judgement in DIP means the hit test cannot drift against the drawing at
+    /// a display whose scale is not 1 — which is exactly where a mixed-space version goes wrong, because the
+    /// surface is measured in pixels while everything else is measured in DIP.
+    /// </remarks>
+    public int HitTest(double x, double y, double iconBoxDip, double surfaceHeightDip, double platePaddingYDip)
     {
         var best = -1;
         var bestDistance = double.MaxValue;
@@ -72,10 +79,10 @@ internal sealed class DockMotionState
         {
             var sample = _engine.Samples[i];
             var scale = sample.Scale;
-            var half = (iconBox * scale) / 2.0;
+            var half = (iconBoxDip * scale) / 2.0;
             var centreX = _centres[i] + sample.TranslateX;
-            var bottom = surfaceHeight - platePaddingY + topOffset - sample.Lift;
-            var top = bottom - (iconBox * scale);
+            var bottom = surfaceHeightDip - platePaddingYDip - sample.Lift;
+            var top = bottom - (iconBoxDip * scale);
 
             if (x >= centreX - half && x <= centreX + half && y >= top && y <= bottom)
             {

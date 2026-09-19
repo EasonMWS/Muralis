@@ -67,13 +67,67 @@ internal sealed class DibSurface
     public void Clear() => Array.Clear(Pixels);
 
     /// <summary>
+    /// Draws an icon so that it fills <paramref name="boxHeight"/> exactly, centred on
+    /// <paramref name="centreX"/> with its bottom edge at <paramref name="bottomY"/>.
+    /// </summary>
+    /// <remarks>
+    /// The artwork is resampled to the exact pixel size it is drawn at and the result is cached on the icon, so
+    /// this is a copy per frame and never a filter. That is what keeps the pointer path free of resampling work
+    /// while still drawing with a proper kernel rather than nearest-neighbour.
+    /// </remarks>
+    public void DrawIconScaled(IconArtwork artwork, int centreX, int bottomY, int boxHeight)
+    {
+        ArgumentNullException.ThrowIfNull(artwork);
+
+        var scaled = artwork.At(boxHeight);
+        if (scaled is null)
+        {
+            return;
+        }
+
+        Blit(scaled, boxHeight, centreX - (boxHeight / 2), bottomY - boxHeight);
+    }
+
+    /// <summary>Copies a square premultiplied image, clipping it to the surface.</summary>
+    private void Blit(byte[] square, int size, int left, int top)
+    {
+        for (var y = 0; y < size; y++)
+        {
+            var destinationY = top + y;
+            if (destinationY < 0 || destinationY >= Height)
+            {
+                continue;
+            }
+
+            var sourceRow = y * size * 4;
+            var destinationRow = (destinationY * Stride) + (left * 4);
+
+            for (var x = 0; x < size; x++)
+            {
+                var destinationX = left + x;
+                if (destinationX < 0 || destinationX >= Width)
+                {
+                    destinationRow += 4;
+                    continue;
+                }
+
+                var s = sourceRow + (x * 4);
+                Pixels[destinationRow + 0] = square[s + 0];
+                Pixels[destinationRow + 1] = square[s + 1];
+                Pixels[destinationRow + 2] = square[s + 2];
+                Pixels[destinationRow + 3] = square[s + 3];
+                destinationRow += 4;
+            }
+        }
+    }
+
+    /// <summary>
     /// Draws a premultiplied BGRA image so that it fills <paramref name="boxHeight"/> exactly, centred on
     /// <paramref name="centreX"/> with its bottom edge at <paramref name="bottomY"/>.
     /// </summary>
     /// <remarks>
-    /// The scale is nearest-neighbour on purpose for this proof: it keeps the adapter free of a resampler that
-    /// would have to be right before the transparency question it exists to answer could be settled. A real
-    /// renderer would resample once per distinct size and cache it.
+    /// Nearest-neighbour, and kept only for the flat-colour stand-in path that does not go through the scaler.
+    /// Real artwork uses <see cref="DrawIconScaled"/>.
     /// </remarks>
     public void DrawIcon(
         byte[] source, int sourceWidth, int sourceHeight,

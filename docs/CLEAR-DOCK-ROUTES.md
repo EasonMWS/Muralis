@@ -118,21 +118,60 @@ Interaction (`tools/interaction-proof.ps1`): exstyle `0x8080088` carries `WS_EX_
 Performance, one full surface rewrite and upload per frame with a travelling wave across the icons
 (Release build, 3000 frames each, current geometry — 52 px icons, so the surface is 106 px tall):
 
-| pins | surface | p50 | p95 | p99 | max | implied fps (p95) |
-| --- | --- | --- | --- | --- | --- | --- |
-| 3 | 188×106 | 0.044 ms | 0.074 ms | 0.102 ms | 11.19 ms | 13 441 |
-| 5 | 300×106 | 0.065 ms | 0.081 ms | 0.137 ms | 10.56 ms | 12 330 |
-| 6 | 356×106 | 0.045 ms | 0.091 ms | 0.135 ms | 10.43 ms | 11 001 |
-| 10 | 580×106 | 0.055 ms | 0.136 ms | 0.194 ms | 10.66 ms | 7 337 |
+| pins | surface | total p50 | total p95 | total p99 | raster p95 | upload p95 | max | GC over 3000 frames |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | 188×106 | 0.059 ms | 0.110 ms | 0.172 ms | 0.078 ms | 0.033 ms | 11.82 ms | 0 |
+| 5 | 300×106 | 0.090 ms | 0.156 ms | 0.251 ms | 0.121 ms | 0.031 ms | 11.93 ms | 0 |
+| 10 | 580×106 | 0.152 ms | 0.276 ms | 0.397 ms | 0.224 ms | 0.044 ms | 13.58 ms | 0 |
 
 Working set ~35 MB, private ~14 MB, flat across all sizes. The cost tracks the surface area, not the icon count,
-and even at ten icons a frame costs 0.14 ms at the 95th percentile — three orders of magnitude inside a 16.7 ms
-frame budget at 60 Hz.
+and even at ten icons a frame costs 0.28 ms at the 95th percentile — well inside a 16.7 ms frame budget at 60 Hz.
 
 The ~10–11 ms maximum is **not** explained and is reported rather than dismissed: one occurrence per run, in
 every configuration including the smallest, which is the signature of a single scheduling or GC pause in the
 harness rather than a cost of uploading. It has not been made to reproduce on demand, so it stays an open
 question. If it were real, it would be a dropped frame at whatever rate it occurred.
+
+### The spike, narrowed: stage, cause of one component, and what remains
+
+The paragraph above was written before the frame was instrumented. It now is, per frame and per stage, and the
+per-frame allocation and collection counters are taken too. The findings, in the order they were established:
+
+**It is in the raster stage.** Every run puts the worst frame on the *same* frame index — 1571 of 3000 — and
+essentially all of it is raster: `total 13.531 ms` = `raster 13.432` + `copy 0.012` + `upload 0.085` +
+`clear 0.002`. Upload, the operation the earlier note suspected, is at most 0.37 ms anywhere in any run.
+
+**One component of it was a cache eviction, and that is fixed.** The artwork cache held 96 sizes while a wave at
+100 % walks 43 sizes *per icon*; with five icons the cache evicted mid-wave and the frame that needed the evicted
+size paid for a resample inside its own frame. Prewarming every reachable size at startup moved that cost off the
+pointer path entirely, and the effect on the distribution is large and unambiguous:
+
+| reading | before prewarm | after prewarm |
+| --- | --- | --- |
+| p99 total | 4.234 ms | 0.213 ms |
+| max raster | 13.432 ms | 12.146 ms |
+| GC collections over 3000 frames | 6 | **0** |
+| allocated bytes over 3000 frames | 19.1 MB | **0** |
+
+**What remains is one frame, and it is not a garbage collection.** Zero collections and zero allocated bytes
+across the whole run rules that out, as does the stage split. Three consecutive runs put the worst frame on
+index 1571 every time, which a random external stall would not do.
+
+**The best hypothesis, tested and partly supported: deferred OS accounting.** 1571 frames at 0.08 phase per
+frame is 1562 ms, and Windows charges a thread for its scheduling quantum — classically one 15.625 ms timer tick
+— the first time it blocks. A loop that never blocks never pays it, and 1562 ms is where a 15.625 ms period
+would first be felt. The test is direct: run the same 3000 frames with a blocking `Thread.Sleep(1)` inserted at
+frame 1562. The stall should then be charged to the sleep rather than to a frame. Result: the worst frame **stayed
+at 1571** and **halved**, from 11.7 ms to 6.0 ms. That is consistent with the charge being a fixed cost the
+sleep absorbed part of, and it does not prove the mechanism.
+
+**Classification: S7 — scheduler or external stall, residual, narrowed to the raster stage.** Not S5 (GC is
+excluded by measurement), not S4 (upload is 0.085 ms in the worst frame), not S2 (the cache is prewarmed and the
+counters show no misses during the run), not S6 (no resize happens). The honest summary is that the maximum is
+*not* explained, but it is now bounded to a single stage, a reproducible frame index, and a plausible mechanism
+that has been tested once and only partly confirmed. One occurrence per 3000 frames, in a benchmark loop that
+never yields, is not the same thing as a frame drop in an interactive dock — and that distinction is a hypothesis
+too, not a measurement.
 
 **Verdict: PASS.** This is the first route whose pixels actually show the desktop through the window's own
 empty area.
