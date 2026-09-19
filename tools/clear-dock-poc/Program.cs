@@ -295,7 +295,10 @@ internal static class Program
 
         // Live mode. Motion is driven by the process-wide RawPointerBroker, which owns the single native raw
         // input registration: this renderer is a consumer of it and never registers a device class itself. There
-        // is no timer and no GetCursorPos anywhere on this path 闁?a frame is composed when a report arrives.
+        // is no timer and no GetCursorPos in this renderer — a frame is composed when a report arrives. The
+        // position is read one layer down, by the broker's own source inside its WM_INPUT handler, which is that
+        // source's documented behaviour and which also means a report whose position did not change raises
+        // nothing; see the counters, where "raw" is larger than "queued" for exactly that reason.
         if (!squares)
         {
             Interactive.SetTargets(targets);
@@ -945,6 +948,12 @@ internal static class Program
 
         private void WriteCounters(string label, RawCounters c)
         {
+            // "raw" counts WM_INPUT messages; "queued" counts the ones that carried a new cursor position, so the
+            // first is legitimately the larger. The position itself comes from GetCursorPos *inside the broker's
+            // own window procedure* — that is the source's documented behaviour, not a poll, and it is why a
+            // report whose position did not change raises nothing. An earlier comment here claimed there was no
+            // GetCursorPos anywhere on this path, which was wrong: there is none in this process's renderer, but
+            // there is one in the source, one layer down.
             Console.WriteLine(
                 $"INTERACTIVE {label} raw={c.Reports} queued={c.Queued} dropped={c.Dropped} frames={c.Frames} applies={c.Applies}");
             ReportLatency();

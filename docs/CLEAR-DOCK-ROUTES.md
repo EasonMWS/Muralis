@@ -107,6 +107,32 @@ probe points across a five-cell stripe, not four real inter-icon gaps. The count
 geometry was made adaptive (see *The gate that could not fail* below); the deltas, which are the actual
 measurement, are unaffected.
 
+**A defect in this harness, found by independent review rather than by running it.** `$hGaps` and `$sGaps` were
+built with `ForEach-Object { Rgb ... }`, and PowerShell flattens the three-channel array that `Rgb` returns when
+it is emitted from a pipeline. Each entry therefore became a single scalar rather than a triple, `Dist` found no
+green or blue to compare, and the gate checked **only the red channel** while printing coordinates belonging to
+other points. It still reported `TRANSPARENT` for every gap, so it looked like a passing test.
+
+It was fixed with a unary comma (`ForEach-Object { ,(Rgb ...) }`) and re-run; the corrected table is below. The
+conclusion did not change, which is exactly why this is worth writing down: a gate that passes is not the same as
+a gate that works, and this one had been quoting single channels as if they were colours.
+
+| probe | dock hidden | dock shown | delta |
+| --- | --- | --- | --- |
+| gap 0 (x=1196) | `254,254,254` | `254,254,254` | 0 |
+| gap 1 (x=1252) | `249,249,249` | `249,249,249` | 0 |
+| gap 2 (x=1308) | `249,250,251` | `249,250,251` | 0 |
+| gap 3 (x=1364) | `249,250,251` | `249,250,251` | 0 |
+| reserve band (x=1280, y=1313) | `79,82,101` | `79,82,101` | 0 |
+| just outside (grab sanity) | `81,85,104` | `81,85,104` | 0 |
+| five icon cells | — | — | 39 of 45 sampled points carry ink |
+
+**What this gate can and cannot see, stated plainly.** The wallpaper at gaps 0 to 3 is within a few levels of
+white, so this harness *cannot* distinguish a white plate from white wallpaper at those points — the same
+coincidence that made the original gate unfalsifiable. The reserve band is the only interior probe standing on a
+dark backdrop, so it is the only one of these points that would catch a white plate. The evidence that a plate of
+any colour is absent comes from the magenta backing proof, not from this table.
+
 Per-pixel alpha rather than one constant for the window: with the first square drawn at alpha 128, it reads
 `252,124,124` where the wallpaper underneath is `254` — the correct composite of 50 % red over that
 background.
@@ -266,19 +292,25 @@ The screenshot shows it directly: three real icons sitting on pure magenta, with
 taskbar visible *outside* the backing rectangle. The ChatGPT mark's interior shows magenta through its own
 transparent pixels, which is per-pixel alpha doing its job rather than one constant alpha for the window.
 
-**Exact geometry, and a harness bug worth recording.** The stripe was verified to scale exactly on100 / 125 / 150 / 200 / 300 %:
+**Exact geometry, and a harness bug worth recording.** The stripe was verified to scale exactly on
+100 / 125 / 150 / 200 / 300 %, re-measured against the final build:
 
-| scale | surface | icons read at | expected |
-| --- | --- | --- | --- |
-| 100 % | 188×106 | 52 px | 188×106, 52 px |
-| 125 % | 235×132 | 65 px | 235×132, 65 px |
-| 150 % | 282×159 | 78 px | 282×159, 78 px |
-| 200 % | 376×212 | 104 px | 376×212, 104 px |
-| 300 % | 564×318 | 156 px | 564×318, 156 px |
+| scale | surface | icons read at | artwork cached at | expected |
+| --- | --- | --- | --- | --- |
+| 100 % | 188×106 | 52 px | 94 px | 188×106, 52 px |
+| 125 % | 235×133 | 65 px | 117 px | 235×133, 65 px |
+| 150 % | 282×159 | 78 px | 141 px | 282×159, 78 px |
+| 200 % | 376×212 | 104 px | 188 px | 376×212, 104 px |
+| 300 % | 564×318 | 156 px | 281 px | 564×318, 156 px |
 
-This machine has only a 100 % display, so the higher scales are forced through `--scale`, because a scale path
-that has never executed is a scale path that does not work. The icons are re-read from the shell at each
-scale's pixel size, so a 200 % dock gets genuinely sharper artwork rather than a stretched bitmap.
+The expected figures are derived the way `DockMetrics` derives them — each DIP dimension rounded independently —
+and not by scaling a finished measurement, because the two disagree at 125 % (the height is 133, not 132) exactly
+as rounding once per dimension predicts.
+
+This machine has only a 100 % display, so 100 % is the only **real** display reading here. The rest are forced
+through `--scale`: the geometry, the icon pixel sizes and the artwork caches are genuinely recomputed at that
+scale, but the operating system never told the process its DPI changed, and `WM_DPICHANGED` is not handled. That
+gap is recorded in `docs/CLEAR-DOCK-MIGRATION-PLAN.md` rather than papered over.
 
 Both harnesses originally reported a false FAIL here, and the cause was the harness rather than the candidate:
 it assumed **five** icons and computed its expected width from that, while the product's settings file pins
@@ -328,6 +360,25 @@ the dock is NOT above the backing; every reading below would be the backing itse
 Note what the broken run shows and why the check earns its place: every gap still reads magenta. Without the
 z-order assertion and the icon-coverage rule, that run would have been a clean PASS with a dock that was never
 visible — the failure mode that had already produced a perfect magenta result once during this work.
+
+**Two limits of that failure test, both raised by the same independent review and both true.**
+
+The z-order walk is *not* what catches this in the configuration the milestone records. The candidate defaults to
+topmost and the recorded backing runs were topmost, while the backing is forced non-topmost — and a topmost window
+cannot sit below a non-topmost one, so the rank comparison cannot fail for the reason its own comment gives. What
+actually catches a backing placed above the dock is the **icon-coverage rule**: the readings become a perfect
+magenta everywhere *and* every icon reports zero ink, which is a combination a working dock cannot produce. The
+rank check is still worth keeping for the `--no-topmost` configuration, where it is not vacuous and where it did
+in fact report the real ordering.
+
+The kill test above forced the backing topmost, which is the *other* direction, and in that direction the rank
+check does fire. So the gate is falsifiable, but the honest statement of *which* assertion does the catching is
+the ink rule, not the rank walk.
+
+Also worth recording against the "no plate of any colour" phrasing: magenta equality rules out any plate that
+paints its own colour, and cannot rule out a plate that reproduces the backdrop — a screenshot of the desktop
+painted back would read exactly `255,0,255` at every probe. What excludes that is the code, not the harness: the
+surface is cleared to zero every frame and nothing but icons is ever drawn into it.
 
 ---
 

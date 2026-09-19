@@ -14,6 +14,21 @@ These were reused **unchanged** by the prototype, which is the evidence that the
 | Motion tuning | `Muralis.Core.Motion.DockMotionProfile` | read by the prototype for `MaxScale`/`MaximumLift`/`InfluenceRadius`; no number is invented at a call site |
 | Reorder maths | `Muralis.Core.Dock.DockReorder` | `TargetIndex` and `PreviewCentres` driven by the prototype's drag; the preview the product shows is the preview the prototype drew |
 | Pointer source | `Muralis.Desktop.Input.RawPointerBroker` | consumed by the prototype as a subscriber; the prototype registers no device class |
+
+**A correction to an earlier claim in this work.** It was reported that `RegisterRawInputDevices` appears in
+exactly one place in the repository. That was wrong, and the search that produced it was too narrow — it globbed
+two directories rather than the tree. A full sweep finds two registrants:
+
+* `src/Muralis.Desktop/Input/RawInputRegistry.cs:420` — the product's, reached through `RawPointerBroker`;
+* `tools/phase4d-rawtest/Program.cs:78` and `:117` — a separate diagnostic tool with its own `DllImport`.
+
+The claim that matters for this milestone still holds: **the prototype is not a registrant.** It uses
+`RawPointerBroker`, which creates exactly one source in-process (`RawPointerBroker.cs:67-72`) and disposes it with
+the last consumer (`:106-109`). The second registrant is another tool in the repository, not the Dock renderer.
+
+Worth noting for anyone tempted to reuse that architecture guard: `ArchitectureGuardTests.cs:55-64` scans only
+`src` and matches only the literal token `NativeMethods.RegisterRawInputDevices(`, so a direct P/Invoke — exactly
+what `tools/phase4d-rawtest` has — evades it. The guard is not a repository-wide uniqueness check.
 | Icon extraction | `Muralis.Desktop.Icons.ShellIconProvider` / `ShellIconReader` | used directly; reads at the largest size the icon can be drawn at |
 | Stripe geometry | `Muralis.Core.Motion.DockStripeGeometry` | the prototype's `DockMetrics` reproduces its numbers; the geometry itself is what a migration should call |
 

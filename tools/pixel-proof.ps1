@@ -166,7 +166,12 @@ $outside = @{ X = $r.Left + [int]($w / 2); Y = $r.Top - 20 }
 Start-Sleep -Milliseconds 1200
 $hidden = Grab
 $hidden.Save((Join-Path $OutDir 'proof-hidden.png'), [System.Drawing.Imaging.ImageFormat]::Png)
-$hGaps = @($gaps | ForEach-Object { Rgb $hidden $_.X $_.Y })
+# The unary comma matters and is not decoration. PowerShell flattens the three-channel array that Rgb returns
+# when it is emitted from ForEach-Object, so without it $hGaps becomes one long array of scalars rather than an
+# array of triples — and then $hGaps[$i] is a single channel, Dist() finds no G or B to compare, and the gate
+# silently checks only the red channel while printing coordinates that belong to other points. That defect was
+# found by an independent review of this file, not by running it, which is the uncomfortable part.
+$hGaps = @($gaps | ForEach-Object { ,(Rgb $hidden $_.X $_.Y) })
 $hReserve = Rgb $hidden $reserve.X $reserve.Y
 $hOutside = Rgb $hidden $outside.X $outside.Y
 $hIcon0 = Rgb $hidden $iconPoints[0].X $iconPoints[0].Y
@@ -180,7 +185,7 @@ Write-Host "    outside  : $($hOutside -join ',')"
 Start-Sleep -Milliseconds 1400
 $shown = Grab
 $shown.Save((Join-Path $OutDir 'proof-shown.png'), [System.Drawing.Imaging.ImageFormat]::Png)
-$sGaps = @($gaps | ForEach-Object { Rgb $shown $_.X $_.Y })
+$sGaps = @($gaps | ForEach-Object { ,(Rgb $shown $_.X $_.Y) })
 $sReserve = Rgb $shown $reserve.X $reserve.Y
 $sOutside = Rgb $shown $outside.X $outside.Y
 $sIcon0 = Rgb $shown $iconPoints[0].X $iconPoints[0].Y
