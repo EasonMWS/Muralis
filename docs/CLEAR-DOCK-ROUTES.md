@@ -102,6 +102,11 @@ from a 32-bit premultiplied ARGB surface. The surface is alpha 0 everywhere exce
 | just outside (grab sanity) | — | delta 0 | measurement itself is stable |
 | inside a painted square | wallpaper | `255,0,0` | opaque square rendered, delta 504 |
 
+This first run used the flat-colour stand-in at a forced five icons. The four "gaps" above are therefore four
+probe points across a five-cell stripe, not four real inter-icon gaps. The counts were corrected when the probe
+geometry was made adaptive (see *The gate that could not fail* below); the deltas, which are the actual
+measurement, are unaffected.
+
 Per-pixel alpha rather than one constant for the window: with the first square drawn at alpha 128, it reads
 `252,124,124` where the wallpaper underneath is `254` — the correct composite of 50 % red over that
 background.
@@ -111,16 +116,23 @@ Interaction (`tools/interaction-proof.ps1`): exstyle `0x8080088` carries `WS_EX_
 (`ChatGPT` → `ChatGPT`).
 
 Performance, one full surface rewrite and upload per frame with a travelling wave across the icons
-(Release build, 3000 frames each):
+(Release build, 3000 frames each, current geometry — 52 px icons, so the surface is 106 px tall):
 
-| pins | surface | p50 | p95 | p99 | max |
-| --- | --- | --- | --- | --- | --- |
-| 3 | 188×86 | 0.029 ms | 0.066 ms | 0.129 ms | 9.36 ms |
-| 6 | 356×86 | 0.045 ms | 0.079 ms | 0.127 ms | 9.50 ms |
-| 10 | 580×86 | 0.075 ms | 0.114 ms | 0.160 ms | 8.77 ms |
+| pins | surface | p50 | p95 | p99 | max | implied fps (p95) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3 | 188×106 | 0.044 ms | 0.074 ms | 0.102 ms | 11.19 ms | 13 441 |
+| 5 | 300×106 | 0.065 ms | 0.081 ms | 0.137 ms | 10.56 ms | 12 330 |
+| 6 | 356×106 | 0.045 ms | 0.091 ms | 0.135 ms | 10.43 ms | 11 001 |
+| 10 | 580×106 | 0.055 ms | 0.136 ms | 0.194 ms | 10.66 ms | 7 337 |
 
-Working set ~33 MB, private ~13.6 MB, flat across all three sizes. The ~9 ms outliers are single occurrences
-per run and look like GC pauses in the harness rather than upload cost.
+Working set ~35 MB, private ~14 MB, flat across all sizes. The cost tracks the surface area, not the icon count,
+and even at ten icons a frame costs 0.14 ms at the 95th percentile — three orders of magnitude inside a 16.7 ms
+frame budget at 60 Hz.
+
+The ~10–11 ms maximum is **not** explained and is reported rather than dismissed: one occurrence per run, in
+every configuration including the smallest, which is the signature of a single scheduling or GC pause in the
+harness rather than a cost of uploading. It has not been made to reproduce on demand, so it stays an open
+question. If it were real, it would be a dropped frame at whatever rate it occurred.
 
 **Verdict: PASS.** This is the first route whose pixels actually show the desktop through the window's own
 empty area.
@@ -131,13 +143,13 @@ The POC was then extended from flat squares to the real thing, and the milestone
 
 | requirement | result |
 | --- | --- |
-| 5 real app icons | 5 icons loaded through the product's own `ShellIconProvider`, from the pinned apps in the product's own settings file |
+| real app icons | every app pinned in the product's own settings file, loaded through the product's own `ShellIconProvider` (3 at the time of writing; the harness follows whatever is pinned) |
 | real wallpaper between the icons | every gap between icons reads **delta 0** against the same point with the window hidden |
 | real wallpaper above the icons | the reserve band reads **delta 0** |
 | hover magnification | the product's own `DockMotionEngine` drives it; peak reached **1.8000**, the profile's `MaxScale` exactly |
 | click launch | clicking icon 1 produced `launch=1 target=…\ComfyUI-aki-v3.lnk`, and the foreground window did not change |
 | non-activating | `WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE \| WS_EX_LAYERED`, foreground unchanged across a click |
-| no plate | the empty surface is cleared to alpha 0 each frame, and no background is ever painted |
+| no plate | the empty surface is cleared to alpha 0 each frame, and no background is ever painted — and proved so over a magenta background, where a plate of any colour would be unmistakable |
 
 The icons are drawn from the shell's own premultiplied BGRA (the icon reader's documented output), copied into
 the DIB rather than blended — blending there would multiply the alpha twice and darken every icon edge.
@@ -149,13 +161,70 @@ icons legitimately cover the gaps beside them. The first run of the final proof 
 exactly that reason. The gate now parks the pointer away from the candidate before it samples, because the
 resting state is the one the gate is about.
 
-A near-white icon centre reads as "matches wallpaper" when the wallpaper behind it is also near-white. The gate
-therefore reports every icon centre and requires that at least one gained ink, rather than requiring the first
-one to have changed — real artwork contains white pixels, and a white pixel is not a missing icon.
+A near-white icon centre reads as "matches wallpaper" when the wallpaper behind it is also near-white. Checking
+only the centre of each icon made that a coin flip: the ChatGPT mark is genuinely white at its middle, so it
+read as "nothing drawn" while the icon was in fact drawn correctly. Each icon cell is now sampled on a 3×3 grid
+and counted for *coverage* — the property that actually distinguishes an icon from an empty cell — with the
+cover of the backing proof as an independent second reading. Eye-checking the capture is what caught this: the
+numbers alone said two of three icons had been drawn.
 
-**Not yet done, and not claimed.** Drag reorder, DPI scaling, multi-monitor, accessibility, and running apps are
-out of scope for this milestone. The input adapter polls the cursor rather than consuming the process-wide
+**Not yet done, and not claimed.** Drag reorder, multi-monitor, accessibility, and running apps are out of scope
+for this milestone. The input adapter polls the cursor rather than consuming the process-wide
 `RawPointerBroker`; a product renderer would consume the broker, which is already renderer-independent.
+
+### The gate that could not fail, and the one that can
+
+The comparison above is the right test but it has a hole on this machine, and the hole had to be closed before
+the result meant anything: **the wallpaper where the dock sits is white** (`249,249,249`). An opaque *white*
+plate — the exact defect Operation Clear Dock exists to remove — would read identically to the wallpaper at
+every probe point. A gate that passes whether or not the bug is present is not a gate.
+
+`tools/backing-proof.ps1` closes it by removing the coincidence. A solid **magenta** window is placed directly
+behind the dock, covering it with a margin. Magenta is a colour no dock plate would ever be, so a white, grey,
+Mica or Acrylic plate is hundreds off it. Reading the composited screen again:
+
+| probe | expected if transparent | measured | verdict |
+| --- | --- | --- | --- |
+| gap between icons 0 | magenta `255,0,255` | `255,0,255` | exact |
+| gap 1 | magenta | `255,0,255` | exact |
+| reserve band above the icons | magenta | `255,0,255` | exact |
+| beside the dock, left | magenta (backing is real) | `255,0,255` | exact |
+| beside the dock, right | magenta | `255,0,255` | exact |
+| same gaps, dock hidden | magenta | `255,0,255` | exact |
+| icon 0 / 1 / 2 over the backing | not the backing | 6/9, 7/9, 9/9 points differ | icons genuinely drawn |
+
+The screenshot shows it directly: three real icons sitting on pure magenta, with the desktop wallpaper and the
+taskbar visible *outside* the backing rectangle. The ChatGPT mark's interior shows magenta through its own
+transparent pixels, which is per-pixel alpha doing its job rather than one constant alpha for the window.
+
+**Exact geometry, and a harness bug worth recording.** The stripe was verified to scale exactly on
+100 / 125 / 150 / 200 / 300 %:
+
+| scale | surface | icons read at | expected |
+| --- | --- | --- | --- |
+| 100 % | 188×106 | 52 px | 188×106, 52 px |
+| 125 % | 235×132 | 65 px | 235×132, 65 px |
+| 150 % | 282×159 | 78 px | 282×159, 78 px |
+| 200 % | 376×212 | 104 px | 376×212, 104 px |
+| 300 % | 564×318 | 156 px | 564×318, 156 px |
+
+This machine has only a 100 % display, so the higher scales are forced through `--scale`, because a scale path
+that has never executed is a scale path that does not work. The icons are re-read from the shell at each
+scale's pixel size, so a 200 % dock gets genuinely sharper artwork rather than a stretched bitmap.
+
+Both harnesses originally reported a false FAIL here, and the cause was the harness rather than the candidate:
+it assumed **five** icons and computed its expected width from that, while the product's settings file pins
+**three**. Every other number (height, icon pixel size, and the per-scale ratios) matched exactly at every
+scale. The probe points are now derived from the window the candidate actually created — the pinned count is
+read back out of the width — because a harness that guesses the geometry reports its own guess as a finding.
+With three apps a fourth "gap" point lands inside a real icon and reads as an opaque plate that does not exist,
+which is precisely the false alarm the earlier runs produced.
+
+**Window semantics.** With `--no-topmost` the extended style reads `0x08080080`: `WS_EX_LAYERED`,
+`WS_EX_TOOLWINDOW` and `WS_EX_NOACTIVATE` set, **`WS_EX_TOPMOST` clear** — which the product requires, since
+`IsAlwaysOnTop = false`. In that mode the window sits in the normal band with the desktop below it, and the
+foreground window is unchanged. The earlier proof ran topmost only for capture convenience; the flagged run
+proves the same transparency without it.
 
 ---
 

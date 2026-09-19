@@ -11,16 +11,22 @@
     plausible one.
 
     Usage:
-      ./tools/pixel-proof.ps1 -Exe <path> [-Args '--pins 5'] [-SquareSize 48] [-Cell 56] [-Pad 12]
+      ./tools/pixel-proof.ps1 -Exe <path> [-Args '--pins 5'] [-Cell 56] [-IconBox 52] [-Pad 12]
+
+    The probe points are derived from the window the candidate actually created rather than assumed, because a
+    harness that guesses the geometry reports its own guess as a finding: with three pinned apps a fourth "gap"
+    point lands inside a real icon and reads as an opaque plate that does not exist.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $Exe,
     [string[]] $AppArgs = @(),
-    [int] $SquareSize = 48,
+    [int] $IconBox = 52,
     [int] $Cell = 56,
     [int] $Pad = 12,
-    [int] $SquareInset = 2,
+    [int] $PlatePaddingY = 10,
+    [int] $VerticalReserve = 44,
+    [double] $DpiScale = 1.0,
     [string] $OutDir = 'D:\AI\temp\dsh-cu-eval\clear-dock\proof'
 )
 
@@ -83,7 +89,10 @@ Write-Host "candidate: $Exe  args: $($AppArgs -join ' ')"
 
 $stdoutPath = Join-Path $OutDir 'poc-stdout.txt'
 if (Test-Path $stdoutPath) { Remove-Item $stdoutPath -Force }
-$proc = Start-Process -FilePath $Exe -ArgumentList $AppArgs -PassThru -RedirectStandardOutput $stdoutPath
+# ArgumentList rejects an empty collection, so it is only passed when there is something to pass.
+$startArgs = @{ FilePath = $Exe; PassThru = $true; RedirectStandardOutput = $stdoutPath }
+if ($AppArgs.Count -gt 0) { $startArgs['ArgumentList'] = $AppArgs }
+$proc = Start-Process @startArgs
 
 # Readiness is established from PowerShell's own view of the process: the window must exist, be visible, and
 # have been presented. The candidate's stdout is reported for the record but is not a precondition, because a
@@ -116,24 +125,39 @@ $w = $r.Right - $r.Left; $ht = $r.Bottom - $r.Top
 Write-Host "  window: hwnd=$h rect=($($r.Left),$($r.Top)) ${w}x${ht} visible=$([Pp.W]::IsWindowVisible($h))"
 
 # --- the probe points, in screen coordinates ---
-# Between-squares points: the centre of each gap, in the vertical middle of the icon band.
+# Everything is derived from the window the candidate actually created, in physical pixels. The pinned count is
+# read back out of the width, so the probe points describe the dock that exists rather than the one the harness
+# expected: a gap point that lands inside a real icon would be reported as an opaque plate.
+$pad = [int][Math]::Round($Pad * $DpiScale)
+$plateY = [int][Math]::Round($PlatePaddingY * $DpiScale)
+$reserveH = [int][Math]::Round($VerticalReserve * $DpiScale)
+$cellPx = [int][Math]::Round($Cell * $DpiScale)
+$iconPx = [int][Math]::Round($IconBox * $DpiScale)
+$gapPx = $cellPx - $iconPx
+
+# The pinned count is read back out of the width: width = pins*cell - gap + 2*pad, so the count follows from the
+# window the candidate really created. Guarded against a width that cannot be a dock at all.
+$pins = [int][Math]::Round(($w - (2 * $pad) + $gapPx) / [double]$cellPx)
+if ($pins -lt 1 -or $pins -gt 40) { throw "the window width ${w}px does not describe a dock (derived $pins icons)" }
+Write-Host "  derived: pins=$pins cell=${cellPx}px icon=${iconPx}px gap=${gapPx}px pad=${pad}px"
+
+# The vertical middle of the icon band, which is where a gap between two icons is genuinely empty.
+$bandCentre = $r.Top + $reserveH + [int](($ht - $reserveH - $plateY) / 2)
+
+# Between-icon gaps: the centre of each gap, which is exactly empty by construction.
 $gaps = @()
-for ($i = 0; $i -lt 4; $i++) {
-    $gx = $r.Left + $Pad + (($i + 1) * $Cell) - [int]($Cell / 2) + [int]($SquareSize / 2)
-    $gx = $r.Left + $Pad + ($i * $Cell) + $Cell - 2   # the 4 DIP gap between icon cells
-    $gaps += @{ X = $gx; Y = $r.Top + $Pad + [int]($SquareSize / 2) }
+for ($i = 0; $i -lt ($pins - 1); $i++) {
+    $gaps += @{ X = $r.Left + $pad + (($i + 1) * $cellPx) - [int]($gapPx / 2); Y = $bandCentre }
 }
-# The reserve band above the squares: must also be desktop.
+# The reserve band above the icons: must also be desktop, and is the largest single empty area.
 $reserve = @{ X = $r.Left + [int]($w / 2); Y = $r.Top + 3 }
 # The centre of every icon cell. These are opaque wherever an icon actually has ink, and reporting all of them
 # is what makes the check usable for real artwork: an icon whose centre happens to be white would otherwise
 # look like "nothing was drawn", which is a false alarm rather than a finding.
 $iconPoints = @()
-for ($i = 0; $i -lt 5; $i++) {
-    $iconPoints += @{ X = $r.Left + $Pad + ($i * $Cell) + [int]($Cell / 2); Y = $r.Top + $r.Bottom; }
+for ($i = 0; $i -lt $pins; $i++) {
+    $iconPoints += @{ X = $r.Left + $pad + ($i * $cellPx) + [int]($cellPx / 2); Y = $bandCentre }
 }
-$iconPoints = @($iconPoints | ForEach-Object { @{ X = $_.X; Y = $r.Top + [int](($r.Bottom - $r.Top) * 0.72) } })
-$inSquare = $iconPoints[0]
 # A point just outside the window, which is desktop in both readings and validates the grab itself.
 $outside = @{ X = $r.Left + [int]($w / 2); Y = $r.Top - 20 }
 
@@ -145,7 +169,7 @@ $hidden.Save((Join-Path $OutDir 'proof-hidden.png'), [System.Drawing.Imaging.Ima
 $hGaps = @($gaps | ForEach-Object { Rgb $hidden $_.X $_.Y })
 $hReserve = Rgb $hidden $reserve.X $reserve.Y
 $hOutside = Rgb $hidden $outside.X $outside.Y
-$hSquare = Rgb $hidden $inSquare.X $inSquare.Y
+$hIcon0 = Rgb $hidden $iconPoints[0].X $iconPoints[0].Y
 Write-Host "`n  --- dock HIDDEN (wallpaper reference) ---" -ForegroundColor Yellow
 Write-Host "    gaps     : $((($hGaps | ForEach-Object { $_ -join ',' }) -join '  '))"
 Write-Host "    reserve  : $($hReserve -join ',')"
@@ -159,43 +183,78 @@ $shown.Save((Join-Path $OutDir 'proof-shown.png'), [System.Drawing.Imaging.Image
 $sGaps = @($gaps | ForEach-Object { Rgb $shown $_.X $_.Y })
 $sReserve = Rgb $shown $reserve.X $reserve.Y
 $sOutside = Rgb $shown $outside.X $outside.Y
-$sSquare = Rgb $shown $inSquare.X $inSquare.Y
+$sIcon0 = Rgb $shown $iconPoints[0].X $iconPoints[0].Y
 Write-Host "`n  --- dock SHOWN ---" -ForegroundColor Yellow
 Write-Host "    gaps     : $((($sGaps | ForEach-Object { $_ -join ',' }) -join '  '))"
 Write-Host "    reserve  : $($sReserve -join ',')"
 Write-Host "    outside  : $($sOutside -join ',')"
-Write-Host "    in-square: $($sSquare -join ',')  (painted opaque, must NOT be the wallpaper)"
+Write-Host "    icon 0   : $($sIcon0 -join ',')  (where the first icon is drawn; must NOT be the wallpaper if it has ink)"
 
 # --- the gate ---
 $failures = New-Object System.Collections.Generic.List[string]
 $tolerance = 6   # compositor rounding only; a visible plate is off by hundreds
 
+# One machine-readable line per sample, with its coordinates. A harness whose evidence cannot be read back is a
+# harness whose verdict cannot be checked, and a human-readable dump has already been misread once here.
+$samples = New-Object System.Collections.Generic.List[string]
+$samples.Add("SAMPLE window rect=($($r.Left),$($r.Top)) ${w}x${ht} pins=$pins cell=${cellPx} icon=${iconPx} pad=${pad}")
+foreach ($g in $gaps) { $samples.Add("SAMPLE gap x=$($g.X) y=$($g.Y)") }
+$samples.Add("SAMPLE reserve x=$($reserve.X) y=$($reserve.Y)")
+$samples.Add("SAMPLE outside x=$($outside.X) y=$($outside.Y)")
+foreach ($p in $iconPoints) { $samples.Add("SAMPLE icon x=$($p.X) y=$($p.Y)") }
+
 for ($i = 0; $i -lt $gaps.Count; $i++) {
     $d = Dist $hGaps[$i] $sGaps[$i]
     $verdict = if ($d -le $tolerance) { 'TRANSPARENT' } else { "OPAQUE (delta $d)" }
     Write-Host ("    gap {0}: hidden={1} shown={2}  -> {3}" -f $i, ($hGaps[$i] -join ','), ($sGaps[$i] -join ','), $verdict)
+    $samples.Add("GAP $i x=$($gaps[$i].X) y=$($gaps[$i].Y) hidden=$($hGaps[$i] -join ',') shown=$($sGaps[$i] -join ',') delta=$d")
     if ($d -gt $tolerance) { $failures.Add("gap $i differs by $d") }
 }
 $dReserve = Dist $hReserve $sReserve
 Write-Host ("    reserve : hidden={0} shown={1}  -> {2}" -f ($hReserve -join ','), ($sReserve -join ','), $(if ($dReserve -le $tolerance) { 'TRANSPARENT' } else { "OPAQUE (delta $dReserve)" }))
+$samples.Add("RESERVE x=$($reserve.X) y=$($reserve.Y) hidden=$($hReserve -join ',') shown=$($sReserve -join ',') delta=$dReserve")
 if ($dReserve -gt $tolerance) { $failures.Add("reserve band differs by $dReserve") }
 
 $dOutside = Dist $hOutside $sOutside
 Write-Host ("    outside : delta {0} (grab sanity; must be ~0)" -f $dOutside)
+$samples.Add("OUTSIDE x=$($outside.X) y=$($outside.Y) hidden=$($hOutside -join ',') shown=$($sOutside -join ',') delta=$dOutside")
 if ($dOutside -gt $tolerance) { $failures.Add("the grab itself is unstable: outside differs by $dOutside") }
 
-# At least one icon centre must have changed, or nothing was drawn at all. Not every one will: real artwork has
-# white and pale pixels, and a pixel that matches the wallpaper is not evidence of a missing icon.
+# Every icon cell is sampled on a grid, not at its centre. A single centre pixel cannot tell a drawn icon from a
+# hole: the wallpaper here is white where the dock sits, and an icon whose artwork is white at its centre would
+# read as "nothing was drawn" — a false alarm. Sampling a grid counts coverage instead, which is the property
+# that actually distinguishes an icon from an empty cell.
 $drawnIcons = 0
+$totalInk = 0
+$totalProbes = 0
 for ($i = 0; $i -lt $iconPoints.Count; $i++) {
-    $d = Dist (Rgb $hidden $iconPoints[$i].X $iconPoints[$i].Y) (Rgb $shown $iconPoints[$i].X $iconPoints[$i].Y)
-    $mark = if ($d -gt $tolerance) { 'INK' } else { 'matches wallpaper' }
-    Write-Host ("    icon {0} centre: hidden={1} shown={2}  -> {3} (delta {4})" -f `
-        $i, ((Rgb $hidden $iconPoints[$i].X $iconPoints[$i].Y) -join ','), ((Rgb $shown $iconPoints[$i].X $iconPoints[$i].Y) -join ','), $mark, $d)
-    if ($d -gt $tolerance) { $drawnIcons++ }
+    $cx = $iconPoints[$i].X
+    $cy = $iconPoints[$i].Y
+    $ink = 0
+    $probes = 0
+    for ($dx = -1; $dx -le 1; $dx++) {
+        for ($dy = -1; $dy -le 1; $dy++) {
+            $px = $cx + [int]($dx * $iconPx * 0.3)
+            $py = $cy + [int]($dy * $iconPx * 0.3)
+            $probes++
+            if ((Dist (Rgb $hidden $px $py) (Rgb $shown $px $py)) -gt $tolerance) { $ink++ }
+        }
+    }
+    $totalInk += $ink
+    $totalProbes += $probes
+    if ($ink -gt 0) { $drawnIcons++ }
+    Write-Host ("    icon {0}: {1} of {2} sampled points changed  ({3})" -f $i, $ink, $probes, $(if ($ink -gt 0) { 'DRAWN' } else { 'NOTHING DRAWN' }))
+    $samples.Add("ICON $i x=$cx y=$cy ink=$ink/$probes")
 }
-Write-Host ("    icons with visible ink: {0} of {1}" -f $drawnIcons, $iconPoints.Count)
-if ($drawnIcons -eq 0) { $failures.Add('no icon centre changed, so nothing was actually drawn') }
+Write-Host ("    icons drawn: {0} of {1}   ink coverage {2} of {3} sampled points" -f $drawnIcons, $iconPoints.Count, $totalInk, $totalProbes)
+if ($drawnIcons -eq 0) {
+    $failures.Add('no icon cell changed anywhere, so nothing was actually drawn')
+} elseif ($totalInk -lt [int]($totalProbes * 0.5)) {
+    $failures.Add("only $totalInk of $totalProbes icon points changed, which is too little to be a drawn icon")
+}
+
+$samples.Add("VERDICT pins=$pins gaps=$($gaps.Count) icons=$drawnIcons ink=$totalInk/$totalProbes failures=$($failures.Count)")
+$samples | Set-Content -Path (Join-Path $OutDir 'proof-samples.txt') -Encoding UTF8
 
 Write-Host "`n=== VERDICT ===" -ForegroundColor Cyan
 if ($failures.Count -eq 0) {

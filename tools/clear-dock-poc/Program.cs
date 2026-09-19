@@ -34,7 +34,6 @@ internal static class Program
     private const int PlatePaddingY = 10;
     private const int BottomGapDip = 24;
     private const int VerticalReserve = 44;
-    private const int IconPixelSize = 48;
 
     [STAThread]
     private static int Main(string[] args)
@@ -43,6 +42,8 @@ internal static class Program
         var frames = 0;
         var squares = false;
         var alphaSquare = false;
+        var topmost = true;
+        var forcedScale = 0.0;
         string? pathsFile = null;
 
         for (var i = 0; i < args.Length; i++)
@@ -61,6 +62,16 @@ internal static class Program
                 case "--alpha-square":
                     alphaSquare = true;
                     break;
+                case "--no-topmost":
+                    topmost = false;
+                    break;
+                case "--scale" when i + 1 < args.Length:
+
+                    // Taken as a whole percent on purpose: a decimal scale has to be parsed against the right
+                    // culture, and a harness on a machine using a comma decimal separator would otherwise pass
+                    // 150 and get 15000.
+                    forcedScale = int.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture) / 100.0;
+                    break;
                 case "--paths" when i + 1 < args.Length:
                     pathsFile = args[++i];
                     break;
@@ -75,19 +86,34 @@ internal static class Program
             return 1;
         }
 
+        // The display's scale. Everything below is stated in DIP and converted once here, which is what makes the
+        // dock the same physical size on a 100 % and a 200 % display: at 200 % the stripe is twice as many
+        // physical pixels, and the icons are read from the shell at twice the pixel size so they stay sharp.
+        // --scale forces a value, because this machine has only a 100 % display and a scale path that has never
+        // been executed is a scale path that does not work.
+        var scale = forcedScale > 0 ? forcedScale : GetDisplayScale();
+
+        var iconPixels = (int)Math.Round(IconBox * scale);
+        var cellWidth = (int)Math.Round(CellWidth * scale);
+        var padding = (int)Math.Round(Padding * scale);
+        var platePaddingY = (int)Math.Round(PlatePaddingY * scale);
+        var verticalReserve = (int)Math.Round(VerticalReserve * scale);
+        var iconBox = (int)Math.Round(IconBox * scale);
+        var bottomGap = (int)Math.Round(BottomGapDip * scale);
+
         // The icons are read before the window exists, because the shell calls are synchronous work on another
         // thread and a window that appears and then fills in would make the capture racy.
-        var icons = squares ? [] : LoadIcons(targets);
+        var icons = squares ? [] : LoadIcons(targets, iconPixels);
 
         var screenWidth = GetSystemMetrics(SmCXScreen);
         var screenHeight = GetSystemMetrics(SmCYScreen);
 
         // The stripe the product geometry defines: the room a magnified icon grows into, the icon box, and the
         // feet. The reserve is real surface, not decoration, so a magnified icon has somewhere to go.
-        var width = (pins * CellWidth) - (CellWidth - IconBox) + (2 * Padding);
-        var height = VerticalReserve + IconBox + PlatePaddingY;
+        var width = (pins * cellWidth) - (cellWidth - iconBox) + (2 * padding);
+        var height = verticalReserve + iconBox + platePaddingY;
 
-        var exStyle = WsExLayered | WsExToolWindow | WsExNoActivate | WsExTopmost;
+        var exStyle = WsExLayered | WsExToolWindow | WsExNoActivate | (topmost ? WsExTopmost : 0L);
         var hwnd = CreateWindowEx(
             exStyle, "STATIC", "Muralis Clear Dock POC", WsPopup,
             0, 0, width, height, nint.Zero, nint.Zero, nint.Zero, nint.Zero);
@@ -99,8 +125,8 @@ internal static class Program
         }
 
         var x = (screenWidth - width) / 2;
-        var y = screenHeight - height - BottomGapDip;
-        _ = SetWindowPos(hwnd, HwndTopmost, x, y, width, height, SwpNoActivate | SwpShowWindow);
+        var y = screenHeight - height - bottomGap;
+        _ = SetWindowPos(hwnd, topmost ? HwndTopmost : nint.Zero, x, y, width, height, SwpNoActivate | SwpShowWindow);
 
         var surface = new DibSurface(width, height);
 
@@ -129,7 +155,8 @@ internal static class Program
         var previous = SelectObject(memoryDc, dib);
 
         // Draw one resting frame.
-        ComposeResting(surface, icons, pins, squares, alphaSquare);
+        var metrics = new Metrics(iconBox, cellWidth, padding, platePaddingY, iconPixels);
+        ComposeResting(surface, icons, pins, squares, alphaSquare, metrics);
         Marshal.Copy(surface.Pixels, 0, bits, surface.Pixels.Length);
 
         var destination = new Point(x, y);
@@ -152,7 +179,7 @@ internal static class Program
         }
 
         var drawn = icons.Count(static i => i is not null);
-        Console.WriteLine($"hwnd={hwnd} rect=({x},{y}) {width}x{height} pins={pins} iconsLoaded={drawn} squares={squares}");
+        Console.WriteLine($"hwnd={hwnd} rect=({x},{y}) {width}x{height} pins={pins} iconsLoaded={drawn} squares={squares} topmost={topmost} scale={scale:F2} iconPixels={iconPixels}");
         Console.WriteLine($"UpdateLayeredWindow=ok");
         Console.WriteLine($"targets={string.Join('|', targets)}");
         Console.WriteLine("READY");
@@ -160,7 +187,7 @@ internal static class Program
 
         if (frames > 0)
         {
-            RunFrameBenchmark(hwnd, screenDc, memoryDc, bits, surface, icons, pins, squares, frames);
+            RunFrameBenchmark(hwnd, screenDc, memoryDc, bits, surface, icons, pins, squares, frames, metrics);
         }
 
         // Live mode: a timer drives hover magnification and click launch. The pointer is polled rather than
@@ -169,7 +196,7 @@ internal static class Program
         if (!squares)
         {
             Interactive.SetTargets(targets);
-            var interactive = new Interactive(hwnd, screenDc, memoryDc, bits, surface, icons, pins, x, y);
+            var interactive = new Interactive(hwnd, screenDc, memoryDc, bits, surface, icons, pins, x, y, metrics);
             _ = SetTimer(hwnd, 1, 8, nint.Zero);
             interactive.Start();
             while (GetMessage(out var live, nint.Zero, 0, 0) > 0)
@@ -258,9 +285,40 @@ internal static class Program
     }
 
     /// <summary>
+    /// The dock's geometry in physical pixels, derived once from the display's scale.
+    /// </summary>
+    /// <remarks>
+    /// Every number the renderer uses comes from here, so there is exactly one place where DIP becomes pixels.
+    /// The whole point is that a 200 % display gets a stripe twice as many physical pixels wide and icons read
+    /// from the shell at twice the pixel size — not the same pixel geometry stretched.
+    /// </remarks>
+    private readonly record struct Metrics(
+        int IconBox, int CellWidth, int Padding, int PlatePaddingY, int IconPixels);
+
+    /// <summary>The display's scale, read from the system's DPI for the desktop.</summary>
+    private static double GetDisplayScale()
+    {
+        var dc = GetDC(nint.Zero);
+        if (dc == nint.Zero)
+        {
+            return 1.0;
+        }
+
+        try
+        {
+            var dpi = GetDeviceCaps(dc, LogPixelsX);
+            return dpi > 0 ? dpi / 96.0 : 1.0;
+        }
+        finally
+        {
+            _ = ReleaseDC(nint.Zero, dc);
+        }
+    }
+
+    /// <summary>
     /// Reads each application's icon once, through the product's own shell extraction.
     /// </summary>
-    private static List<ShellIconData?> LoadIcons(List<string> targets)
+    private static List<ShellIconData?> LoadIcons(List<string> targets, int iconPixels)
     {
         var icons = new List<ShellIconData?>(targets.Count);
         using var provider = new ShellIconProvider(NullLogger<ShellIconProvider>.Instance);
@@ -268,7 +326,7 @@ internal static class Program
         {
             try
             {
-                icons.Add(provider.GetAsync(target, IconPixelSize).GetAwaiter().GetResult());
+                icons.Add(provider.GetAsync(target, iconPixels).GetAwaiter().GetResult());
             }
             catch (Exception ex)
             {
@@ -284,18 +342,18 @@ internal static class Program
     /// One resting frame: a fully transparent surface with an icon in each cell, the way the dock rests.
     /// </summary>
     private static void ComposeResting(
-        DibSurface surface, List<ShellIconData?> icons, int pins, bool squares, bool alphaSquare)
+        DibSurface surface, List<ShellIconData?> icons, int pins, bool squares, bool alphaSquare, Metrics m)
     {
         surface.Clear();
-        var bottom = surface.Height - PlatePaddingY;
+        var bottom = surface.Height - m.PlatePaddingY;
 
         for (var i = 0; i < pins; i++)
         {
-            var centreX = Padding + (i * CellWidth) + (CellWidth / 2);
+            var centreX = m.Padding + (i * m.CellWidth) + (m.CellWidth / 2);
 
             if (squares)
             {
-                var size = IconBox;
+                var size = m.IconBox;
                 var left = centreX - (size / 2);
                 var top = bottom - size;
                 var colour = SquareColours[i % SquareColours.Length];
@@ -309,7 +367,7 @@ internal static class Program
 
             if (icons[i] is { } icon)
             {
-                surface.DrawIcon(icon.PremultipliedBgra, icon.Width, icon.Height, centreX, bottom, IconBox);
+                surface.DrawIcon(icon.PremultipliedBgra, icon.Width, icon.Height, centreX, bottom, m.IconBox);
             }
         }
     }
@@ -325,12 +383,12 @@ internal static class Program
     /// </remarks>
     private static void RunFrameBenchmark(
         nint hwnd, nint screenDc, nint memoryDc, nint bits, DibSurface surface,
-        List<ShellIconData?> icons, int pins, bool squares, int frames)
+        List<ShellIconData?> icons, int pins, bool squares, int frames, Metrics m)
     {
         var times = new double[frames];
         var stopwatch = Stopwatch.StartNew();
         var process = Process.GetCurrentProcess();
-        var bottom = surface.Height - PlatePaddingY;
+        var bottom = surface.Height - m.PlatePaddingY;
 
         for (var frame = 0; frame < frames; frame++)
         {
@@ -343,8 +401,8 @@ internal static class Program
                 var influence = Math.Exp(-Math.Pow(i - ((pins - 1) / 2.0) - (2.0 * Math.Sin(phase)), 2) / 2.0);
                 var scale = 1.0 + (0.8 * influence);
                 var lift = 10.0 * influence * influence;
-                var box = (int)(IconBox * scale);
-                var centreX = Padding + (i * CellWidth) + (CellWidth / 2);
+                var box = (int)(m.IconBox * scale);
+                var centreX = m.Padding + (i * m.CellWidth) + (m.CellWidth / 2);
                 var iconBottom = bottom - (int)lift;
 
                 if (squares)
@@ -418,13 +476,14 @@ internal static class Program
         private readonly int _windowY;
         private readonly DockMotionState _motion;
 
+        private readonly Metrics _metrics;
         private bool _pointerWasDown;
         private double _peakSeen;
         private int _lastHit = -1;
 
         public Interactive(
             nint hwnd, nint screenDc, nint memoryDc, nint bits, DibSurface surface,
-            List<ShellIconData?> icons, int pins, int windowX, int windowY)
+            List<ShellIconData?> icons, int pins, int windowX, int windowY, Metrics m)
         {
             _hwnd = hwnd;
             _screenDc = screenDc;
@@ -435,7 +494,8 @@ internal static class Program
             _pins = pins;
             _windowX = windowX;
             _windowY = windowY;
-            _motion = new DockMotionState(pins, CellWidth, IconBox, Padding);
+            _metrics = m;
+            _motion = new DockMotionState(pins, m.CellWidth, m.IconBox, m.Padding);
         }
 
         public void Start() => Console.WriteLine("INTERACTIVE ready");
@@ -474,7 +534,7 @@ internal static class Program
             Compose(_motion);
             Present();
 
-            var hit = _motion.HitTest(x, y, IconBox, _surface.Height, PlatePaddingY, 0);
+            var hit = _motion.HitTest(x, y, _metrics.IconBox, _surface.Height, _metrics.PlatePaddingY, 0);
             if (hit != _lastHit)
             {
                 _lastHit = hit;
@@ -497,7 +557,7 @@ internal static class Program
         private void Compose(DockMotionState motion)
         {
             _surface.Clear();
-            var restingBottom = _surface.Height - PlatePaddingY;
+            var restingBottom = _surface.Height - _metrics.PlatePaddingY;
 
             for (var i = 0; i < _pins; i++)
             {
@@ -507,7 +567,7 @@ internal static class Program
                 }
 
                 var sample = motion.Sample(i);
-                var box = (int)Math.Round(IconBox * sample.Scale);
+                var box = (int)Math.Round(_metrics.IconBox * sample.Scale);
                 var centreX = (int)Math.Round(motion.Centres[i] + sample.TranslateX);
                 var bottom = restingBottom - (int)Math.Round(sample.Lift);
                 _surface.DrawIcon(icon.PremultipliedBgra, icon.Width, icon.Height, centreX, bottom, box);
@@ -676,6 +736,11 @@ internal static class Program
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDeviceCaps(nint dc, int index);
+
+    private const int LogPixelsX = 88;
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -77,12 +77,25 @@ $ht = $r.Bottom - $r.Top
 Write-Host "=== MILESTONE PROOF: hover + click ===" -ForegroundColor Cyan
 Write-Host "  window: ($($r.Left),$($r.Top)) ${w}x${ht}"
 
+# How many icons the candidate actually drew, read back from its own report. The candidate resolves the pinned
+# apps from the product's settings file, so asking for more than are pinned yields fewer — and a harness that
+# assumes its request was honoured then fails a correct candidate for not hovering icons that do not exist.
+$pins = $Pins
+$reported = @(Get-Content $so -ErrorAction SilentlyContinue | Where-Object { $_ -like 'hwnd=*' } | Select-Object -First 1)
+$reportedLine = if ($reported.Count -gt 0) { [string]$reported[0] } else { '' }
+Write-Host "  candidate reported: $(if ($reportedLine) { $reportedLine } else { '(nothing yet)' })"
+if ($reportedLine -match 'pins=(\d+)') {
+    $pins = [int]$Matches[1]
+}
+if ($pins -ne $Pins) { Write-Host "  requested $Pins icons, the candidate drew $pins (that is all that is pinned)" -ForegroundColor Yellow }
+if ($pins -lt 1) { throw 'the candidate reported no icons' }
+
 Start-Sleep -Milliseconds 1200
 $stampBefore = (Get-Content $so -ErrorAction SilentlyContinue | Measure-Object).Count
 
 # --- hover each icon in turn, then park away from the dock ---
 $railY = $r.Top + [int]($ht * 0.72)
-for ($i = 0; $i -lt $Pins; $i++) {
+for ($i = 0; $i -lt $pins; $i++) {
     $cx = $r.Left + $Pad + ($i * $Cell) + [int]($Cell / 2)
     [void][Hv.W]::SetCursorPos($cx, $railY)
     Start-Sleep -Milliseconds 320
@@ -93,14 +106,19 @@ Start-Sleep -Milliseconds 700
 
 $lines = @(Get-Content $so -ErrorAction SilentlyContinue)
 $newLines = if ($lines.Count -gt $stampBefore) { $lines[$stampBefore..($lines.Count - 1)] } else { @() }
-$peaks = @($newLines | Where-Object { $_ -like 'INTERACTIVE peak=*' } | ForEach-Object {
-    if ($_ -match 'peak=([0-9.]+)') { [double]$Matches[1] } })
+
+# The peak is a running maximum that the candidate reports only when it rises, so it may be announced before this
+# harness starts its window — and then never repeated. Reading the maximum over the whole output is therefore the
+# correct reading, not a stale one: the value is monotonic, so the largest line ever printed is the true peak.
+# The hover transitions are events rather than a running maximum, so those are read inside the window only.
+$peakLines = @($lines | Where-Object { $_ -like 'INTERACTIVE peak=*' })
+$peaks = @($peakLines | ForEach-Object { if ($_ -match 'peak=([0-9.]+)') { [double]$Matches[1] } })
 $hovers = @($newLines | Where-Object { $_ -like 'INTERACTIVE hover=*' } | ForEach-Object {
     if ($_ -match 'hover=(-?\d+)') { [int]$Matches[1] } })
 
 $maxPeak = if ($peaks.Count) { ($peaks | Measure-Object -Maximum).Maximum } else { 1.0 }
 Write-Host "`n  hover magnification:" -ForegroundColor Yellow
-Write-Host "    peak samples : $($peaks.Count)"
+Write-Host "    peak samples : $($peaks.Count)  (running maximum; may precede this harness's window)"
 Write-Host "    max peak     : $maxPeak"
 Write-Host "    engine max   : 1.8 (DockMotionProfile.MaxScale)"
 Write-Host "    distinct hovers seen: $(($hovers | Sort-Object -Unique) -join ', ')"
@@ -129,9 +147,14 @@ $failed | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
 Write-Host "    foreground before/after: $fgBefore -> $fgAfter  $(if ($fgBefore -eq $fgAfter) { '(unchanged - did not activate)' } else { '(CHANGED)' })"
 
 # --- the gate ---
+# The hover count is checked against the icons that exist, not the number requested, and the expected set is
+# "no hit" plus one distinct hit per icon: hovering each in turn must produce each of those and no others.
 $failures = New-Object System.Collections.Generic.List[string]
+$expectedHovers = $pins + 1
+$distinct = @($hovers | Sort-Object -Unique)
 if ($maxPeak -lt 1.7) { $failures.Add("hover magnification peaked at $maxPeak, well below the engine's 1.8") }
-if ($hovers.Count -lt $Pins) { $failures.Add("only $($hovers.Count) hover changes for $Pins icons") }
+if ($hovers.Count -lt $expectedHovers) { $failures.Add("only $($hovers.Count) hover changes for $pins icons; expected at least $expectedHovers (no hit, plus each icon)") }
+if ($distinct.Count -lt $expectedHovers) { $failures.Add("only $(($distinct -join ', ')) were ever hovered, so not every icon responded") }
 if ($launches.Count -eq 0) { $failures.Add('clicking an icon did not launch it') }
 if ($failed.Count -gt 0) { $failures.Add('a launch was attempted and failed') }
 if ($fgAfter -eq $h) { $failures.Add('the candidate took the foreground') }
