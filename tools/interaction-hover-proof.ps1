@@ -1,5 +1,24 @@
 <#
-    MILESTONE PROOF — hover magnification and click launch on a clear-dock candidate.
+    SUPERSEDED — do not use this to judge the current candidate.
+
+    This harness drives the pointer with SetCursorPos, which moves the cursor WITHOUT producing a raw input
+    report. That was fine while the proof renderer polled the cursor position on a timer, because polling reads
+    the position however it got there. The renderer is now event-driven from the process-wide RawPointerBroker
+    and never polls, so a harness built on SetCursorPos reports no motion at all — and a report of "the dock did
+    not move" from it says nothing about the dock.
+
+    What replaced it, exercising identical ground through the same event-driven path:
+
+      * tools/raw-pointer-proof.ps1  — hover, every icon reachable, peak reaches MaxScale, the pointer leaving
+                                       resets the wave, report and drop counters, capture-to-apply latency.
+      * tools/drag-reorder-proof.ps1 — click launches and does not reorder; a drag reorders exactly once and
+                                       does not launch.
+
+    Kept rather than deleted because it is the record of how the earlier milestone was verified, and because the
+    SetCursorPos-versus-mouse_event distinction is worth having written down where someone will find it.
+#>
+<#
+    MILESTONE PROOF (historical) — hover magnification and click launch on a clear-dock candidate.
 
     Drives the real pointer across the candidate's icons at the positions the dock itself reports, and reads the
     candidate's own stdout to see what it did: the peak magnification the motion engine reached, which icon it
