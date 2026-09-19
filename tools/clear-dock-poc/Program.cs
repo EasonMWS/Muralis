@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Muralis.Core.Abstractions;
+using Muralis.Core.Motion;
 using Muralis.Desktop.Icons;
 
 namespace ClearDockPoc;
@@ -44,6 +45,7 @@ internal static class Program
         var alphaSquare = false;
         var topmost = true;
         var forcedScale = 0.0;
+        var sweep = false;
         string? pathsFile = null;
 
         for (var i = 0; i < args.Length; i++)
@@ -64,6 +66,9 @@ internal static class Program
                     break;
                 case "--no-topmost":
                     topmost = false;
+                    break;
+                case "--sweep":
+                    sweep = true;
                     break;
                 case "--scale" when i + 1 < args.Length:
 
@@ -188,6 +193,19 @@ internal static class Program
         if (frames > 0)
         {
             RunFrameBenchmark(hwnd, screenDc, memoryDc, bits, surface, icons, pins, squares, frames, metrics);
+        }
+
+        // The engine sweep is its own mode and returns: it prints what the product's motion engine answers and
+        // then exits, so a harness can check the arithmetic instead of inferring it from pixels.
+        if (sweep)
+        {
+            RunMotionSweep(pins, metrics);
+            _ = SelectObject(memoryDc, previous);
+            _ = DeleteObject(dib);
+            _ = DeleteDC(memoryDc);
+            _ = ReleaseDC(nint.Zero, screenDc);
+            _ = DestroyWindow(hwnd);
+            return 0;
         }
 
         // Live mode: a timer drives hover magnification and click launch. The pointer is polled rather than
@@ -447,6 +465,79 @@ internal static class Program
         Console.WriteLine($"BENCH p50={Percentile(ordered, 0.50):F3}ms p95={Percentile(ordered, 0.95):F3}ms p99={Percentile(ordered, 0.99):F3}ms max={ordered[^1]:F3}ms mean={total / frames:F3}ms");
         Console.WriteLine($"BENCH impliedMaxFps={1000.0 / Percentile(ordered, 0.95):F0} (from p95, one upload per frame)");
         Console.WriteLine($"BENCH workingSetMB={process.WorkingSet64 / (1024.0 * 1024.0):F1} privateMB={process.PrivateMemorySize64 / (1024.0 * 1024.0):F1}");
+        Console.Out.Flush();
+    }
+
+    /// <summary>
+    /// Walks the pointer across the dock and prints what the product's motion engine answers at each step.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the Nexus proof. The interaction harness can only see the peak scale, which says the engine got
+    /// to 1.8 but nothing about the shape of the wave. Here the engine is driven directly over the whole span —
+    /// every icon centre and every gap between them — and every sample is printed, so the properties that make
+    /// the dock feel like a dock can be checked rather than assumed:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>the scale under the pointer is exactly the profile's maximum, and falls off both ways;</item>
+    /// <item>the largest icon does not move, and the ones beside it are pushed outwards, never inwards;</item>
+    /// <item>the pitch between neighbours is preserved, so magnification opens the run rather than bursting it;</item>
+    /// <item>away from the wave everything is exactly at rest.</item>
+    /// </list>
+    /// </remarks>
+    private static void RunMotionSweep(int pins, Metrics m)
+    {
+        var motion = new DockMotionState(pins, m.CellWidth, m.IconBox, m.Padding);
+        var profile = DockMotionProfile.Default;
+
+        Console.WriteLine($"SWEEP pins={pins} iconBox={m.IconBox} cell={m.CellWidth} pad={m.Padding}");
+        Console.WriteLine($"SWEEP profile base={profile.BaseIconSize} spacing={profile.SpacingDip} maxScale={profile.MaxScale} radius={profile.InfluenceRadius} lift={profile.MaximumLift} spread={profile.NeighbourSpread}");
+
+        // The span the pointer can occupy: every icon centre, and every gap between two of them. The gaps matter
+        // as much as the centres because the worst case for the sideways push is a pointer parked between two
+        // icons, where both sides of the run take their share at once.
+        var stops = new List<double>();
+        for (var i = 0; i < pins; i++)
+        {
+            stops.Add(motion.Centres[i]);
+            if (i + 1 < pins)
+            {
+                stops.Add((motion.Centres[i] + motion.Centres[i + 1]) / 2.0);
+            }
+        }
+
+        foreach (var pointer in stops)
+        {
+            motion.Update(pointer);
+            var parts = new List<string>(pins);
+            for (var i = 0; i < pins; i++)
+            {
+                var s = motion.Sample(i);
+                parts.Add(string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"i{i}:s{s.Scale:F6},x{s.TranslateX:F6},l{s.Lift:F6}"));
+            }
+
+            Console.WriteLine(string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"SWEEP pointer={pointer:F3} peak={motion.PeakScale:F6} active={motion.IsActive} {string.Join(' ', parts)}"));
+        }
+
+        // And the resting answer, which is what the dock must return to when the pointer leaves.
+        motion.Update(null);
+        var rest = new List<string>(pins);
+        for (var i = 0; i < pins; i++)
+        {
+            var s = motion.Sample(i);
+            rest.Add(string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"i{i}:s{s.Scale:F6},x{s.TranslateX:F6},l{s.Lift:F6}"));
+        }
+
+        Console.WriteLine(string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"SWEEP pointer=away peak={motion.PeakScale:F6} active={motion.IsActive} {string.Join(' ', rest)}"));
+        Console.WriteLine("SWEEP done");
         Console.Out.Flush();
     }
 

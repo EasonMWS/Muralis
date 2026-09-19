@@ -14,6 +14,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $Exe,
+    [string[]] $AppArgs = @(),
     [int] $Pins = 5,
     [int] $Cell = 56,
     [int] $Pad = 12,
@@ -27,6 +28,7 @@ Add-Type -Namespace Hv -Name W -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
 [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint d, IntPtr e);
 [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, System.Text.StringBuilder s, int n);
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
 [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr p);
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool IsWindowVisible(IntPtr h);
@@ -57,7 +59,12 @@ function Find-Candidate {
 
 $so = Join-Path $OutDir 'hover-stdout.txt'
 if (Test-Path $so) { Remove-Item $so -Force }
-$proc = Start-Process -FilePath $Exe -ArgumentList @('--pins', "$Pins") -PassThru -RedirectStandardOutput $so
+# Caller arguments are placed first so an explicit --paths list picks the apps, while --pins is still supplied as
+# the default the candidate honours when it resolves the product's own settings instead.
+$runArgs = @($AppArgs) + @('--pins', "$Pins")
+$startArgs = @{ FilePath = $Exe; PassThru = $true; RedirectStandardOutput = $so }
+if ($runArgs.Count -gt 0) { $startArgs['ArgumentList'] = $runArgs }
+$proc = Start-Process @startArgs
 
 $wins = @()
 $deadline = (Get-Date).AddSeconds(30)
@@ -146,6 +153,25 @@ $launches | ForEach-Object { Write-Host "      $_" }
 $failed | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
 Write-Host "    foreground before/after: $fgBefore -> $fgAfter  $(if ($fgBefore -eq $fgAfter) { '(unchanged - did not activate)' } else { '(CHANGED)' })"
 
+# The foreground changing is not itself a failure: clicking a launch target is *supposed* to open that app, and
+# an app that opens takes the foreground. What must never happen is the DOCK taking it. The two are told apart by
+# the window that ended up in front: the dock's own window, or somebody else's.
+$fgIsDock = $fgAfter -eq $h
+$fgPid = 0
+[void][Hv.W]::GetWindowThreadProcessId($fgAfter, [ref]$fgPid)
+$fgIsCandidateProcess = $fgPid -eq $proc.Id
+$fgClass = ''
+if ($fgAfter -ne [IntPtr]::Zero) {
+    $sb = New-Object System.Text.StringBuilder 256
+    [void][Hv.W]::GetClassName($fgAfter, $sb, 256)
+    $fgClass = $sb.ToString()
+}
+Write-Host "    window in front afterwards: hwnd=$fgAfter class='$fgClass' pid=$fgPid (candidate pid $($proc.Id))"
+Write-Host "    the dock itself in front? $fgIsDock    owned by the candidate process? $fgIsCandidateProcess"
+if ($fgBefore -ne $fgAfter) {
+    Write-Host "    -> the foreground moved to whatever was launched, not to the dock" -ForegroundColor Green
+}
+
 # --- the gate ---
 # The hover count is checked against the icons that exist, not the number requested, and the expected set is
 # "no hit" plus one distinct hit per icon: hovering each in turn must produce each of those and no others.
@@ -157,7 +183,9 @@ if ($hovers.Count -lt $expectedHovers) { $failures.Add("only $($hovers.Count) ho
 if ($distinct.Count -lt $expectedHovers) { $failures.Add("only $(($distinct -join ', ')) were ever hovered, so not every icon responded") }
 if ($launches.Count -eq 0) { $failures.Add('clicking an icon did not launch it') }
 if ($failed.Count -gt 0) { $failures.Add('a launch was attempted and failed') }
-if ($fgAfter -eq $h) { $failures.Add('the candidate took the foreground') }
+# Non-activating is about the dock, not about the app the click was asked to open.
+if ($fgIsDock) { $failures.Add('the candidate took the foreground') }
+if ($fgIsCandidateProcess -and $fgAfter -ne [IntPtr]::Zero) { $failures.Add("the foreground window belongs to the candidate process (hwnd $fgAfter)") }
 
 Write-Host "`n=== VERDICT ===" -ForegroundColor Cyan
 if ($failures.Count -eq 0) {

@@ -143,18 +143,48 @@ The POC was then extended from flat squares to the real thing, and the milestone
 
 | requirement | result |
 | --- | --- |
-| real app icons | every app pinned in the product's own settings file, loaded through the product's own `ShellIconProvider` (3 at the time of writing; the harness follows whatever is pinned) |
-| real wallpaper between the icons | every gap between icons reads **delta 0** against the same point with the window hidden |
+| 5 real app icons | ChatGPT · ComfyUI-aki-v3 · ComfyUI · Visual Studio Code · Steam, loaded through the product's own `ShellIconProvider`; **5 of 5 drawn**, 37 of 45 sampled points carrying ink |
+| real wallpaper between the icons | all four inter-icon gaps read **delta 0** against the same point with the window hidden |
 | real wallpaper above the icons | the reserve band reads **delta 0** |
-| hover magnification | the product's own `DockMotionEngine` drives it; peak reached **1.8000**, the profile's `MaxScale` exactly |
-| click launch | clicking icon 1 produced `launch=1 target=…\ComfyUI-aki-v3.lnk`, and the foreground window did not change |
-| non-activating | `WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE \| WS_EX_LAYERED`, foreground unchanged across a click |
+| hover magnification | the product's own `DockMotionEngine` drives it; peak reached **1.8000**, the profile's `MaxScale` exactly, and all five icons report a distinct hover |
+| click launch | clicking icon 2 produced `launch=2 target=…\ComfyUI.lnk`; the window that came forward was the launched launcher's, **not** the dock's |
+| non-activating | `WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE \| WS_EX_LAYERED`; the dock never owns the foreground |
 | no plate | the empty surface is cleared to alpha 0 each frame, and no background is ever painted — and proved so over a magenta background, where a plate of any colour would be unmistakable |
+| non-topmost | the backing proof also passes with `--no-topmost`, where the extended style is `0x08080080` and `WS_EX_TOPMOST` is clear, as the product requires |
+
+With five icons the stripe is **300×106** physical pixels at 100 % (5×52 + 4×4 + 2×12), and it scales to
+375×132 at 125 %, 450×159 at 150 %, 600×212 at 200 % and 900×318 at 300 %.
+
+The five apps come from a `--paths` list rather than the product's settings file, because only three apps are
+pinned there. The candidate draws whatever it is given, and with no `--paths` it draws exactly the pinned apps;
+pinning two more apps made no sense for a proof that has to be repeatable.
 
 The icons are drawn from the shell's own premultiplied BGRA (the icon reader's documented output), copied into
 the DIB rather than blended — blending there would multiply the alpha twice and darken every icon edge.
 
-**Two findings worth keeping.**
+### The Nexus proof: the motion engine, checked as arithmetic
+
+Peak scale alone says the engine reached 1.8 and nothing about the shape of the wave, so `tools/nexus-proof.ps1`
+drives the engine across the whole span — every icon centre and every gap between two of them — and checks the
+properties that make the dock feel like a dock. The expected transformation is recomputed from the candidate's
+own printed scales, so the check is self-consistent and nothing about the geometry is assumed.
+
+| property | result |
+| --- | --- |
+| scale under the pointer | exactly **1.8** (`MaxScale`) on every icon centre, lift exactly **10.0** (`MaximumLift`) |
+| the run keeps its pitch | every adjacent gap is the laid-out **4 DIP** at every pointer position, including the pair straddling the peak; largest error **2.5×10⁻⁵ DIP**, which is the printing precision |
+| translation | exactly the accumulated half-widths walking outwards from the peak, in both directions |
+| the peak icon | never moves — it is the one place the wave leaves alone |
+| lift vs scale | the lift is the influence squared, so it dies away faster than the size does |
+| beyond the influence radius | scale is exactly 1 and the lift exactly 0, so the far end of a long dock costs nothing |
+| pointer away | all five return to scale 1, translate 0, lift 0 |
+
+One subtlety worth recording, because it is a real behaviour rather than a defect: an icon beyond the influence
+radius does **not** grow, but it does **move**. Preserving the gaps beside an enlarged icon means the whole run
+slides, so "at rest" for a distant icon means unscaled and unlifted, not untranslated. The first version of this
+proof asserted the stronger claim and failed a correct engine.
+
+### Two findings worth keeping.
 
 A proof harness that leaves the pointer resting on the dock measures the *hovering* dock, where the magnified
 icons legitimately cover the gaps beside them. The first run of the final proof reported the gaps as opaque for
@@ -197,8 +227,7 @@ The screenshot shows it directly: three real icons sitting on pure magenta, with
 taskbar visible *outside* the backing rectangle. The ChatGPT mark's interior shows magenta through its own
 transparent pixels, which is per-pixel alpha doing its job rather than one constant alpha for the window.
 
-**Exact geometry, and a harness bug worth recording.** The stripe was verified to scale exactly on
-100 / 125 / 150 / 200 / 300 %:
+**Exact geometry, and a harness bug worth recording.** The stripe was verified to scale exactly on100 / 125 / 150 / 200 / 300 %:
 
 | scale | surface | icons read at | expected |
 | --- | --- | --- | --- |
@@ -225,6 +254,26 @@ which is precisely the false alarm the earlier runs produced.
 `IsAlwaysOnTop = false`. In that mode the window sits in the normal band with the desktop below it, and the
 foreground window is unchanged. The earlier proof ran topmost only for capture convenience; the flagged run
 proves the same transparency without it.
+
+**A second instance of the same trap, in the harness rather than the product.** Putting the magenta backing
+behind a *non-topmost* dock took four attempts, and the reason is worth keeping because it is the A1/A2/B/C
+lesson again in a new place:
+
+- Leaving the backing in the normal band let it sink behind other windows, so the probe read the wallpaper. That
+  looked exactly like a dock failing to be transparent, and it was not: with the dock hidden the same points
+  were also not magenta, which is what gave the fault away.
+- Promoting the backing to the topmost band put it *above* the non-topmost dock, so every "transparent" reading
+  was the backing's own colour and no icon was ever visible. A perfect magenta result that proved nothing.
+- `SetWindowPos(dock, hwndInsertAfter: backing, …)` **returned success and did not move the window.** Measured
+  directly: the dock stayed two ranks below the backing. This is precisely the trap the failed routes hit — the
+  API accepts the call and does nothing — and it is why the harness now *walks the z-order and checks the rank*
+  instead of trusting the return value.
+- `SetWindowPos(dock, HWND_TOP, …)` does move it, measurably: the dock went from rank 29 to 22 while the
+  backing stayed at 27.
+
+So the backing proof now asserts, before believing a single pixel, that the dock really is above the backing,
+and both the topmost and non-topmost runs report their ranks. A harness that cannot tell "the dock is
+transparent" from "the dock is hidden behind the thing I am measuring through" is not evidence.
 
 ---
 

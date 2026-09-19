@@ -48,11 +48,15 @@ Add-Type -Namespace Bp -Name W -MemberDefinition @'
 [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool GetWindowRect(IntPtr h, out RECT r);
 [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool ShowWindow(IntPtr h, int cmd);
 [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int ht, uint flags);
+[DllImport("user32.dll")] public static extern IntPtr GetTopWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
 public delegate bool EnumProc(IntPtr h, IntPtr p);
 public struct RECT { public int Left, Top, Right, Bottom; }
 public const int SW_HIDE = 0, SW_SHOWNOACTIVATE = 4;
 public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
 public static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+public static readonly IntPtr HWND_TOP = IntPtr.Zero;
 public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
 '@
 
@@ -141,11 +145,51 @@ $margin = 60
 $form.SetBounds($r.Left - $margin, $r.Top - $margin, $w + (2 * $margin), $ht + (2 * $margin))
 [System.Windows.Forms.Application]::DoEvents()
 Start-Sleep -Milliseconds 300
-# The dock is topmost in its default mode; the backing stays in the normal band, so the dock is above it while
-# the desktop is below it. Neither window is allowed to activate.
-[void][Bp.W]::SetWindowPos($h, [Bp.W]::HWND_TOPMOST, 0, 0, 0, 0, ([Bp.W]::SWP_NOMOVE -bor [Bp.W]::SWP_NOSIZE -bor [Bp.W]::SWP_NOACTIVATE -bor [Bp.W]::SWP_SHOWWINDOW))
+# The backing stays in the NORMAL band and the dock is raised to the top of that same band, rather than being
+# made topmost. Two reasons, both learned the hard way:
+#   * the product requires a non-topmost dock, so a proof that promoted it to the topmost band would be measuring
+#     a different window from the one that ships;
+#   * `SetWindowPos(hwnd, hwndInsertAfter: backing, ...)` reports success on this layered window and does not
+#     move it, so inserting directly after the backing cannot be relied on. HWND_TOP does move it, measurably.
+# The z-order is checked below instead of assumed, because a backing above the dock makes every reading the
+# backing's own colour — a harness fault that looks exactly like a dock that fails to draw.
+$form.TopMost = $false
+[System.Windows.Forms.Application]::DoEvents()
+Start-Sleep -Milliseconds 250
+[void][Bp.W]::SetWindowPos($h, [Bp.W]::HWND_TOP, 0, 0, 0, 0, ([Bp.W]::SWP_NOMOVE -bor [Bp.W]::SWP_NOSIZE -bor [Bp.W]::SWP_NOACTIVATE -bor [Bp.W]::SWP_SHOWWINDOW))
 [System.Windows.Forms.Application]::DoEvents()
 Start-Sleep -Milliseconds 700
+
+# Prove the stack before believing any pixel that depends on it. If the backing is not below the dock, every
+# "transparent" reading would be the backing colour rather than the dock letting it through, and the icons would
+# be hidden behind it — which is a harness fault that reads exactly like a dock that does not draw.
+$stack = New-Object System.Collections.Generic.List[string]
+$walk = [Bp.W]::GetTopWindow([IntPtr]::Zero)
+$rank = 0
+$dockRank = -1
+$formRank = -1
+while ($walk -ne [IntPtr]::Zero -and $rank -lt 200) {
+    $cls = New-Object System.Text.StringBuilder 256
+    [void][Bp.W]::GetClassName($walk, $cls, 256)
+    $txt = New-Object System.Text.StringBuilder 256
+    [void][Bp.W]::GetWindowTextW($walk, $txt, 256)
+    $title = $txt.ToString()
+    $isBacking = ($walk -eq $form.Handle)
+    $isDock = ($walk -eq $h)
+    if ($isBacking -or $isDock) {
+        $stack.Add("$(if ($isDock) { 'dock' } else { 'backing' }) at z-rank $rank (class '$($cls.ToString())', title '$title')")
+        if ($isDock) { $dockRank = $rank }
+        if ($isBacking) { $formRank = $rank }
+    }
+    $walk = [Bp.W]::GetWindow($walk, 2)
+    $rank++
+}
+
+Write-Host "  z-order: $(($stack -join '; '))"
+$stackOk = ($dockRank -ge 0) -and ($formRank -ge 0) -and ($dockRank -lt $formRank)
+if (-not $stackOk) {
+    Write-Host "  the dock is NOT above the backing; every reading below would be the backing itself" -ForegroundColor Red
+}
 
 # The dock magnifies under the pointer, so park it away before measuring the resting state.
 [void][Bp.W]::SetCursorPos(40, 200)
@@ -187,6 +231,9 @@ Start-Sleep -Milliseconds 600
 $samples = New-Object System.Collections.Generic.List[string]
 $failures = New-Object System.Collections.Generic.List[string]
 $tolerance = 6
+if (-not $stackOk) {
+    $failures.Add('the z-order puts the backing above the dock, so no reading here describes the dock')
+}
 
 function Check-Magenta([string]$label, $point, [System.Drawing.Bitmap]$bmp) {
     $px = Rgb $bmp $point.X $point.Y
